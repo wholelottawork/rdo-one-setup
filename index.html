@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RDO ONE — Perpetuals Terminal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/src/styles.css" />
+</head>
+<body>
+<div id="app">
+
+  <!-- ══ HEADER ═══════════════════════════════════════════════════ -->
+  <header class="hdr">
+    <div class="hdr-left">
+      <div class="hdr-logo">
+        <span class="logo-rdo">RDO</span><span class="logo-one">ONE</span>
+      </div>
+      <div class="hdr-div"></div>
+
+      <nav class="hdr-nav">
+        <a class="hdr-nav-link active" href="/">Trade</a>
+        <a class="hdr-nav-link" href="/portfolio.html">Portfolio</a>
+      </nav>
+
+      <div class="hdr-div"></div>
+
+      <button class="mkt-btn" id="mktBtn">
+        <span id="mktSymbol">BTC-USDC</span>
+        <span class="mkt-arrow">▾</span>
+      </button>
+
+      <!-- market dropdown -->
+      <div id="mktDropdown" class="mkt-dropdown hidden">
+        <input id="mktSearch" class="mkt-search" placeholder="Search market..." autocomplete="off" />
+        <div class="mkt-list" id="mktList"></div>
+      </div>
+    </div>
+
+    <div class="hdr-stats">
+      <div class="hdr-stat">
+        <span class="hdr-stat-label">Mark</span>
+        <span class="hdr-stat-val" id="statMark">—</span>
+      </div>
+      <div class="hdr-stat">
+        <span class="hdr-stat-label">24h Change</span>
+        <span class="hdr-stat-val" id="statChange">—</span>
+      </div>
+      <div class="hdr-stat">
+        <span class="hdr-stat-label">24h Volume</span>
+        <span class="hdr-stat-val" id="statVolume">—</span>
+      </div>
+      <div class="hdr-stat">
+        <span class="hdr-stat-label">Funding / Countdown</span>
+        <span class="hdr-stat-val" id="statFunding">— / —</span>
+      </div>
+    </div>
+
+    <div class="hdr-right">
+      <span id="balanceDisplay" class="hdr-balance hidden">$0.00</span>
+      <button id="depositBtn" class="deposit-btn hidden" onclick="window.rdo.openDeposit()">DEPOSIT</button>
+      <button id="walletBtn" class="wallet-btn" onclick="window.rdo.connectWallet()">Connect</button>
+    </div>
+  </header>
+
+  <!-- ══ WORKSPACE ═════════════════════════════════════════════════ -->
+  <div class="workspace">
+
+    <!-- ─ X TRACKER ─────────────────────────────────────────────── -->
+    <aside class="xt-col">
+      <div class="xt-hdr">
+        <span class="xt-title">Tracker</span>
+        <button class="xt-connect-btn" id="xtConnectBtn" onclick="window.rdo.connectX()">Connect X</button>
+      </div>
+      <div class="xt-feed" id="xtFeed">
+        <div class="xt-empty">Connect your X account to see real-time news and mentions for <span class="xt-ticker" id="xtTicker">BTC</span></div>
+      </div>
+    </aside>
+
+    <!-- ─ CHART COLUMN ──────────────────────────────────────────── -->
+    <section class="chart-col">
+
+      <!-- chart sub-header -->
+      <div class="chart-subhdr">
+        <div class="chart-subhdr-left">
+          <span id="chartLabel" class="chart-label">BTCUSD · 1m · Hyperliquid</span>
+          <span id="chartOhlc" class="chart-ohlc">
+            O <b id="oO">—</b>&nbsp; H <b id="oH">—</b>&nbsp; L <b id="oL">—</b>&nbsp; C <b id="oC">—</b>
+          </span>
+        </div>
+        <div class="chart-intervals">
+          <button class="iv-btn active" data-iv="1">1m</button>
+          <button class="iv-btn" data-iv="3">3m</button>
+          <button class="iv-btn" data-iv="5">5m</button>
+          <button class="iv-btn" data-iv="15">15m</button>
+          <button class="iv-btn" data-iv="60">1h</button>
+          <button class="iv-btn" data-iv="240">4h</button>
+          <button class="iv-btn" data-iv="1440">1D</button>
+        </div>
+        <div class="chart-subhdr-tools">
+          <button class="chart-tool-btn" title="Indicators">⊞ Indicators</button>
+        </div>
+      </div>
+
+      <!-- chart draw tools + canvas -->
+      <div class="chart-body">
+        <div class="draw-tools">
+          <button class="dt" title="Cursor">✛</button>
+          <button class="dt" title="Crosshair">⊕</button>
+          <div class="dt-sep"></div>
+          <button class="dt" title="Trend line">╱</button>
+          <button class="dt" title="Horizontal line">—</button>
+          <button class="dt" title="Rectangle">▭</button>
+          <button class="dt" title="Fibonacci">∿</button>
+          <div class="dt-sep"></div>
+          <button class="dt" title="Text">T</button>
+          <div class="dt-sep"></div>
+          <button class="dt" title="Magnet">⊙</button>
+        </div>
+
+        <div class="canvas-wrap" id="priceChart"></div>
+      </div>
+
+    </section>
+
+    <!-- ─ LIVE TRADES ────────────────────────────────────────────── -->
+    <section class="tr-col">
+      <div class="tr-col-hdr">
+        <span class="tr-col-title">Live Trades</span>
+        <span class="tr-col-pair" id="tradesPair">BTC-USDC</span>
+      </div>
+      <div class="tr-col-labels">
+        <span>Price</span>
+        <span>Size</span>
+        <span>Time</span>
+      </div>
+      <div id="tradesList" class="tr-col-list"></div>
+    </section>
+
+    <!-- ─ TRADE PANEL ─────────────────────────────────────────────── -->
+    <aside class="tp-col">
+
+      <!-- margin / leverage row -->
+      <div class="tp-margin-row">
+        <select class="tp-select" id="marginType">
+          <option>Cross</option>
+          <option>Isolated</option>
+        </select>
+        <div class="tp-lev-wrap">
+          <input id="levInput" class="tp-lev-input" type="number" min="1" max="50" value="20" />
+          <span class="tp-lev-x">x</span>
+        </div>
+        <select class="tp-select">
+          <option>Unified</option>
+        </select>
+      </div>
+
+      <!-- order type tabs -->
+      <div class="tp-order-tabs">
+        <button class="tp-otab active" data-ot="market">Market</button>
+        <button class="tp-otab" data-ot="limit">Limit</button>
+      </div>
+
+      <!-- buy / sell buttons -->
+      <div class="tp-sides">
+        <button id="btnBuy"  class="tp-side tp-buy  active" onclick="window.rdo.setSide(true)">Buy / Long</button>
+        <button id="btnSell" class="tp-side tp-sell"        onclick="window.rdo.setSide(false)">Sell / Short</button>
+      </div>
+
+      <!-- trade form -->
+      <div class="tp-form">
+        <div class="tp-info-row">
+          <span class="tp-info-label">Available to Trade</span>
+          <span id="tpAvail" class="tp-info-val">0.00 USDC</span>
+        </div>
+        <div class="tp-info-row">
+          <span class="tp-info-label">Current Position</span>
+          <span id="tpCurPos" class="tp-info-val">0.00000 BTC</span>
+        </div>
+
+        <div class="tp-field-label">Size</div>
+        <div class="tp-size-wrap">
+          <input id="sizeInput" class="tp-size-input" type="number" placeholder="0" min="0" oninput="window.rdo.updateStats()" />
+          <div class="tp-size-unit" id="sizeUnit">BTC</div>
+        </div>
+
+        <!-- slider -->
+        <input id="sizeSlider" class="tp-slider" type="range" min="0" max="100" value="0"
+          oninput="window.rdo.onSlider(this.value)" />
+        <div class="tp-slider-marks">
+          <span>0%</span><span>25%</span><span>50%</span><span>75%</span><span>100%</span>
+        </div>
+
+        <!-- options -->
+        <div class="tp-options">
+          <label class="tp-check">
+            <input type="checkbox" id="chkReduce" />
+            <span>Reduce Only</span>
+          </label>
+          <label class="tp-check">
+            <input type="checkbox" id="chkTpSl" />
+            <span>Take Profit / Stop Loss</span>
+          </label>
+        </div>
+
+        <!-- connect / trade button -->
+        <button id="tradeBtn" class="tp-action-btn tp-buy-bg" onclick="window.rdo.submitTrade()">
+          Connect
+        </button>
+
+        <div id="tradeErr" class="tp-err hidden"></div>
+
+        <!-- order stats -->
+        <div class="tp-stats">
+          <div class="tp-stat-row">
+            <span>Liquidation Price</span>
+            <span id="stLiq">N/A</span>
+          </div>
+          <div class="tp-stat-row">
+            <span>Order Value</span>
+            <span id="stVal">N/A</span>
+          </div>
+          <div class="tp-stat-row">
+            <span>Margin Required</span>
+            <span id="stMargin">--</span>
+          </div>
+          <div class="tp-stat-row">
+            <span>Slippage</span>
+            <span id="stSlip">--</span>
+          </div>
+          <div class="tp-stat-row">
+            <span>Fee</span>
+            <span id="stFee">0.0450% / 0.0150%</span>
+          </div>
+        </div>
+
+        <!-- account equity -->
+        <div class="tp-section-title">Account Equity</div>
+        <div class="tp-stats">
+          <div class="tp-stat-row">
+            <span>Spot</span>
+            <span id="eqSpot">$0.00</span>
+          </div>
+          <div class="tp-stat-row">
+            <span><a href="#" class="tp-link">Perps</a></span>
+            <span id="eqPerps">$0.00</span>
+          </div>
+        </div>
+
+        <!-- perps overview -->
+        <div class="tp-section-title">Perps Overview</div>
+        <div class="tp-stats">
+          <div class="tp-stat-row">
+            <span><a href="#" class="tp-link">Balance</a></span>
+            <span id="ovBalance">$0.00</span>
+          </div>
+          <div class="tp-stat-row">
+            <span>Unrealized PnL</span>
+            <span id="ovPnl">$0.00</span>
+          </div>
+          <div class="tp-stat-row">
+            <span>Cross Margin Ratio</span>
+            <span id="ovCmr">0.00%</span>
+          </div>
+          <div class="tp-stat-row">
+            <span><a href="#" class="tp-link">Maintenance Margin</a></span>
+            <span id="ovMm">$0.00</span>
+          </div>
+          <div class="tp-stat-row">
+            <span><a href="#" class="tp-link">Cross Account Leverage</a></span>
+            <span id="ovLev">0.00x</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- ══ BOTTOM PANEL ══════════════════════════════════════════════ -->
+  <section class="btm-panel">
+    <div class="btm-tabs">
+      <button class="btm-tab active" data-bt="positions">Positions</button>
+      <button class="btm-tab" data-bt="balances">Balances</button>
+      <button class="btm-tab" data-bt="open-orders">Open Orders</button>
+      <button class="btm-tab" data-bt="trade-history">Trade History</button>
+      <button class="btm-tab" data-bt="funding">Funding History</button>
+      <button class="btm-tab" data-bt="order-history">Order History</button>
+    </div>
+
+    <div class="btm-content">
+      <!-- POSITIONS -->
+      <div id="btPositions" class="btm-pane">
+        <div class="btm-col-hdr">
+          <span>Market</span>
+          <span>Size</span>
+          <span>Position Value</span>
+          <span>Entry Price</span>
+          <span>Mark Price</span>
+          <span>PNL (ROE %)</span>
+          <span>Liq. Price</span>
+          <span>Margin</span>
+          <span>Funding</span>
+          <span>Side</span>
+          <span>Market</span>
+        </div>
+        <div id="posRows" class="btm-rows">
+          <div class="btm-empty">No open positions yet</div>
+        </div>
+      </div>
+
+      <!-- BALANCES -->
+      <div id="btBalances" class="btm-pane hidden">
+        <div class="btm-empty">Connect wallet to view balances</div>
+      </div>
+
+      <!-- OPEN ORDERS -->
+      <div id="btOpenOrders" class="btm-pane hidden">
+        <div class="btm-empty">No open orders</div>
+      </div>
+
+      <!-- TRADE HISTORY -->
+      <div id="btTradeHistory" class="btm-pane hidden">
+        <div class="btm-empty">No trade history</div>
+      </div>
+
+      <!-- FUNDING -->
+      <div id="btFunding" class="btm-pane hidden">
+        <div class="btm-empty">No funding history</div>
+      </div>
+
+      <!-- ORDER HISTORY -->
+      <div id="btOrderHistory" class="btm-pane hidden">
+        <div class="btm-empty">No order history</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- status bar -->
+  <div class="status-bar">
+    <span class="ws-dot" id="wsDot"></span>
+    <span id="wsStatus" class="ws-status">CONNECTING...</span>
+    <span class="sb-sep">·</span>
+    <span id="clockEl" class="sb-clock">—</span>
+  </div>
+
+</div>
+
+<!-- deposit modal -->
+<div id="depositModal" class="modal-overlay hidden" onclick="window.rdo.closeDeposit(event)">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">DEPOSIT FUNDS</div>
+        <div class="modal-sub">Swap any token → USDC on Hyperliquid</div>
+      </div>
+      <span class="modal-close" onclick="window.rdo.closeDeposit()">✕</span>
+    </div>
+
+    <div class="deposit-steps">
+      <div class="step"><span class="step-num">1</span><span>Pick source token (SOL, ETH, USDC, BTC...)</span></div>
+      <div class="step"><span class="step-num">2</span><span>Approve in Phantom — one tap</span></div>
+      <div class="step"><span class="step-num">3</span><span>USDC arrives in ~2 min, ready to trade</span></div>
+    </div>
+
+    <div class="deposit-addr-box">
+      <div class="deposit-addr-label">Your Hyperliquid address</div>
+      <div class="deposit-addr" id="depositAddr">Connect wallet first</div>
+    </div>
+
+    <div class="deposit-routes">
+      <div class="deposit-route">
+        <span class="deposit-route-from">Solana (SOL / USDC)</span>
+        <span class="deposit-route-arrow">→</span>
+        <span class="deposit-route-to">HyperEVM via LI.FI</span>
+        <span class="deposit-route-time">~2 min</span>
+      </div>
+      <div class="deposit-route">
+        <span class="deposit-route-from">Ethereum (ETH / USDC)</span>
+        <span class="deposit-route-arrow">→</span>
+        <span class="deposit-route-to">HyperEVM via LI.FI</span>
+        <span class="deposit-route-time">~3 min</span>
+      </div>
+      <div class="deposit-route">
+        <span class="deposit-route-from">Direct USDC deposit</span>
+        <span class="deposit-route-arrow">→</span>
+        <span class="deposit-route-to">Send to address above on HyperEVM (chain ID 998)</span>
+        <span class="deposit-route-time">~1 min</span>
+      </div>
+    </div>
+
+    <div class="modal-note">
+      Wire up <code>@lifi/widget</code> in <code>src/deposit.js</code> to enable one-click swaps from any chain.
+    </div>
+  </div>
+</div>
+
+<!-- toast -->
+<div id="toastWrap" class="toast-wrap"></div>
+
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>
