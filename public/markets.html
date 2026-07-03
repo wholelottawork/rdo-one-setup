@@ -4,7 +4,6 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>RDO ONE — Markets</title>
-  <script src="https://s3.tradingview.com/tv.js"></script>
   <style>
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
     :root{
@@ -46,12 +45,27 @@
     h1{font-size:18px;font-weight:700;letter-spacing:-.03em;margin-bottom:16px}
 
     /* ─── Stat cards ───────────────────────────────────────────────────── */
-    .stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}
-    @media(max-width:900px){.stat-grid{grid-template-columns:repeat(2,1fr)}}
-    .stat-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:14px 16px}
-    .stat-val{font-size:18px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
-    .stat-lbl{font-size:11px;color:var(--text3);margin-top:4px;font-weight:500}
-    .stat-sub{font-size:10px;font-weight:600;font-variant-numeric:tabular-nums;margin-left:4px}
+    .stat-top{display:flex;flex-direction:column;gap:10px;margin-bottom:10px}
+    .big-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:16px 18px;display:flex;justify-content:space-between;align-items:center;gap:12px}
+    .bc-left{display:flex;flex-direction:column;gap:4px;min-width:0}
+    .bc-val{font-size:22px;font-weight:700;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+    .bc-lbl{font-size:11px;color:var(--text3);font-weight:500;display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+    .bc-ch{font-size:11px;font-weight:600;font-variant-numeric:tabular-nums}
+    .bc-spark{flex-shrink:0;width:120px;height:44px;overflow:hidden}
+    .bc-spark svg{width:100%;height:100%;display:block}
+    .small-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .small-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:14px 16px}
+    .sc-val{font-size:20px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+    .sc-lbl{font-size:11px;color:var(--text3);margin-top:4px;font-weight:500}
+
+    /* ─── Market Statistics ─────────────────────────────────────────────── */
+    .mkt-stats-wrap{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;margin-bottom:16px}
+    .mkt-stats-hdr{padding:10px 16px;border-bottom:1px solid var(--border);font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--text3);text-transform:uppercase}
+    .mst-row{display:flex;justify-content:space-between;align-items:center;padding:9px 16px;border-bottom:1px solid var(--border)}
+    .mst-row:last-child{border-bottom:none}
+    .mst-lbl{font-size:12px;color:var(--text3)}
+    .mst-val{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;font-variant-numeric:tabular-nums}
+    .mst-ch{font-size:11px;font-weight:600}
 
     /* ─── Panels row ───────────────────────────────────────────────────── */
     .panels{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}
@@ -68,15 +82,6 @@
     .p-price{font-size:11px;font-variant-numeric:tabular-nums}
     .p-pct{font-size:11px;font-weight:600;font-variant-numeric:tabular-nums}
     .rank-badge{width:18px;height:18px;border-radius:50%;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:var(--text3);flex-shrink:0}
-
-    /* ─── Chart ────────────────────────────────────────────────────────── */
-    .chart-wrap{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;margin-bottom:16px}
-    .chart-hdr{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-    .chart-sym{font-size:14px;font-weight:700;letter-spacing:-.02em}
-    .chart-price{font-size:13px;font-variant-numeric:tabular-nums;color:var(--text2)}
-    .chart-ch{font-size:12px;font-weight:600;font-variant-numeric:tabular-nums}
-    .chart-hint{margin-left:auto;font-size:11px;color:var(--text3)}
-    #tv-chart{height:400px;background:var(--bg)}
 
     /* ─── Table ────────────────────────────────────────────────────────── */
     .tbl-wrap{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;margin-bottom:16px}
@@ -139,23 +144,37 @@
   <h1>Market Overview</h1>
 
   <!-- Stat cards -->
-  <div class="stat-grid">
-    <div class="stat-card">
-      <div class="stat-val" id="s-mcap">—</div>
-      <div class="stat-lbl">Market Cap <span class="stat-sub" id="s-mcap-ch"></span></div>
+  <div class="stat-top">
+    <div class="big-card">
+      <div class="bc-left">
+        <div class="bc-val" id="s-mcap">—</div>
+        <div class="bc-lbl">Market Cap <span class="bc-ch" id="s-mcap-ch"></span></div>
+      </div>
+      <div class="bc-spark" id="spark-mcap"></div>
     </div>
-    <div class="stat-card">
-      <div class="stat-val" id="s-vol">—</div>
-      <div class="stat-lbl">24h Volume</div>
+    <div class="big-card">
+      <div class="bc-left">
+        <div class="bc-val" id="s-vol">—</div>
+        <div class="bc-lbl">24h Trading Volume <span class="bc-ch" id="s-vol-ch"></span></div>
+      </div>
+      <div class="bc-spark" id="spark-vol"></div>
     </div>
-    <div class="stat-card">
-      <div class="stat-val" id="s-btc">—</div>
-      <div class="stat-lbl">BTC Dominance</div>
+    <div class="small-row">
+      <div class="small-card">
+        <div class="sc-val" id="s-btc">—</div>
+        <div class="sc-lbl">BTC Dominance</div>
+      </div>
+      <div class="small-card">
+        <div class="sc-val" id="s-fg">—</div>
+        <div class="sc-lbl" id="s-fg-l">Fear &amp; Greed</div>
+      </div>
     </div>
-    <div class="stat-card">
-      <div class="stat-val" id="s-fg">—</div>
-      <div class="stat-lbl" id="s-fg-l">Fear &amp; Greed</div>
-    </div>
+  </div>
+
+  <!-- Market Statistics -->
+  <div class="mkt-stats-wrap">
+    <div class="mkt-stats-hdr">Market Statistics</div>
+    <div id="mkt-stats-body"><div style="padding:16px;color:var(--text3);font-size:12px">Loading…</div></div>
   </div>
 
   <!-- Trending + Top Gainers -->
@@ -168,26 +187,6 @@
       <div class="panel-hdr">Top Gainers (24h)</div>
       <div id="gainers"><div class="loading-rows">Loading…</div></div>
     </div>
-  </div>
-
-  <!-- TradingView chart -->
-  <div class="chart-wrap">
-    <div class="chart-hdr">
-      <span class="chart-sym" id="chart-sym">BTC / USDT</span>
-      <span class="chart-price" id="chart-px">—</span>
-      <span class="chart-ch" id="chart-ch"></span>
-      <span class="chart-hint">Click any coin to load chart</span>
-    </div>
-    <div id="tv-chart"></div>
-  </div>
-
-  <!-- Top 20 table -->
-  <div class="tbl-wrap">
-    <div class="tbl-hdr">
-      <span class="tbl-title">Top 20 by Market Cap</span>
-      <span class="tbl-ts" id="tbl-ts">—</span>
-    </div>
-    <div id="coins-tbl"><div class="loading-rows">Loading market data…</div></div>
   </div>
 
   <!-- Converter -->
@@ -205,6 +204,15 @@
       </div>
     </div>
   </div>
+
+  <!-- Top 20 table -->
+  <div class="tbl-wrap">
+    <div class="tbl-hdr">
+      <span class="tbl-title">Top 20 by Market Cap</span>
+      <span class="tbl-ts" id="tbl-ts">—</span>
+    </div>
+    <div id="coins-tbl"><div class="loading-rows">Loading market data…</div></div>
+  </div>
 </main>
 
 <script>
@@ -216,10 +224,8 @@ const CG_TTL = 70_000;
 // ─── State ─────────────────────────────────────────────────────────────────
 const cgCache = {};
 let coins = [];
-let chartSym = 'BTCUSDT';
-let tvReady = false;
-let tvWidget = null;
 let tickerData = {};
+let globalData = null;
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 function el(id) { return document.getElementById(id); }
@@ -276,7 +282,7 @@ async function cgFetch(path) {
 // ─── Ticker bar ─────────────────────────────────────────────────────────────
 function buildTicker() {
   const html = SYMS.map(s => `
-    <span class="t-item t-${s}" onclick="selectCoin('${s}','${LABEL[s]}')">
+    <span class="t-item t-${s}">
       <span class="t-sym">${LABEL[s]}</span>
       <span class="t-px">—</span>
       <span class="t-ch">—</span>
@@ -306,6 +312,90 @@ async function fetchTicker() {
   } catch {}
 }
 
+// ─── Sparkline ───────────────────────────────────────────────────────────────
+function makeSpark(rawPts, color) {
+  // Downsample to ~40 points for performance
+  const step = Math.max(1, Math.floor(rawPts.length / 40));
+  const pts  = rawPts.filter((_, i) => i % step === 0);
+  if (pts.length < 2) return '';
+  const vals = pts.map(p => p[1]);
+  const min  = Math.min(...vals), max = Math.max(...vals);
+  const rng  = max - min || 1;
+  const W = 120, H = 44;
+  const px = i  => (i / (pts.length - 1)) * W;
+  const py = v  => H - ((v - min) / rng) * H * 0.8 - H * 0.1;
+  const linePts = pts.map((p, i) => `${px(i).toFixed(1)},${py(p[1]).toFixed(1)}`).join(' ');
+  const lastX = px(pts.length - 1).toFixed(1);
+  const areaD = `M 0,${py(pts[0][1]).toFixed(1)} ` +
+    pts.slice(1).map((p, i) => `L ${px(i+1).toFixed(1)},${py(p[1]).toFixed(1)}`).join(' ') +
+    ` L ${lastX},${H} L 0,${H} Z`;
+  const gId = 'sg' + Math.random().toString(36).slice(2,6);
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+    <defs><linearGradient id="${gId}" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="${color}" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="${color}" stop-opacity="0"/>
+    </linearGradient></defs>
+    <path d="${areaD}" fill="url(#${gId})"/>
+    <polyline points="${linePts}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>`;
+}
+
+async function fetchSparklines() {
+  try {
+    // BTC 4h klines as market direction proxy (42 candles = 7 days)
+    const res = await fetch('/binance/api/v3/klines?symbol=BTCUSDT&interval=4h&limit=42');
+    if (!res.ok) return;
+    const klines = await res.json();
+    // [index, close] and [index, quote_volume]
+    const mcPts  = klines.map((k, i) => [i, parseFloat(k[4])]);
+    const volPts = klines.map((k, i) => [i, parseFloat(k[7])]);
+    // BTC price change: last close vs 6 candles ago (6×4h = 24h)
+    const mcLast  = mcPts[mcPts.length - 1][1];
+    const mc24ago = mcPts[Math.max(0, mcPts.length - 7)][1];
+    const mcPct   = mc24ago ? ((mcLast - mc24ago) / mc24ago) * 100 : 0;
+    // Volume change: sum last 6 candles vs prior 6 candles (24h vs prior 24h)
+    const last6Vol = volPts.slice(-6).reduce((s, p) => s + p[1], 0);
+    const prev6Vol = volPts.slice(-12, -6).reduce((s, p) => s + p[1], 0);
+    const volPct   = prev6Vol ? ((last6Vol - prev6Vol) / prev6Vol) * 100 : 0;
+    const mcColor  = mcPct  >= 0 ? '#1fa67d' : '#ed7088';
+    const volColor = volPct >= 0 ? '#1fa67d' : '#ed7088';
+    const mcChEl  = el('s-mcap-ch');
+    const volChEl = el('s-vol-ch');
+    if (mcChEl)  { mcChEl.textContent  = fmtPct(mcPct);  mcChEl.className  = 'bc-ch ' + pCls(mcPct); }
+    if (volChEl) { volChEl.textContent = fmtPct(volPct); volChEl.className = 'bc-ch ' + pCls(volPct); }
+    const smEl = el('spark-mcap');
+    const svEl = el('spark-vol');
+    if (smEl) smEl.innerHTML = makeSpark(mcPts,  mcColor);
+    if (svEl) svEl.innerHTML = makeSpark(volPts, volColor);
+  } catch {}
+}
+
+// ─── Market Statistics ────────────────────────────────────────────────────────
+function renderMarketStats() {
+  const btc  = tickerData['BTCUSDT'];
+  const eth  = tickerData['ETHUSDT'];
+  const d    = globalData;
+  const c0   = coins[0]; // BTC from CoinGecko (market cap sorted)
+  const rows = [
+    ['BTC Price',       btc ? fmtPx(btc.px)   : '—', btc ? fmtPct(btc.ch)   : null, btc ? pCls(btc.ch)  : ''],
+    ['ETH Price',       eth ? fmtPx(eth.px)   : '—', eth ? fmtPct(eth.ch)   : null, eth ? pCls(eth.ch)  : ''],
+    ['BTC Market Cap',  c0  ? fmtLarge(c0.market_cap)   : '—', null, ''],
+    ['BTC 24h Volume',  c0  ? fmtLarge(c0.total_volume)  : '—', null, ''],
+    ['Total Market Cap',d   ? fmtLarge(d.total_market_cap?.usd ?? 0) : '—',
+                        d   ? fmtPct(d.market_cap_change_percentage_24h_usd ?? 0) : null,
+                        d   ? pCls(d.market_cap_change_percentage_24h_usd ?? 0) : ''],
+    ['BTC Dominance',   d   ? (d.market_cap_percentage?.btc ?? 0).toFixed(1) + '%' : '—', null, ''],
+    ['Total Volume 24h',d   ? fmtLarge(d.total_volume?.usd ?? 0) : '—', null, ''],
+  ];
+  const body = el('mkt-stats-body');
+  if (!body) return;
+  body.innerHTML = rows.map(([lbl, val, ch, cls]) => `
+    <div class="mst-row">
+      <span class="mst-lbl">${lbl}</span>
+      <span class="mst-val">${val}${ch ? `<span class="mst-ch ${cls}">${ch}</span>` : ''}</span>
+    </div>`).join('');
+}
+
 // ─── Global stats + Fear & Greed ───────────────────────────────────────────
 async function fetchGlobal() {
   const [gj, fgj] = await Promise.allSettled([
@@ -314,15 +404,14 @@ async function fetchGlobal() {
   ]);
   const d = gj.status === 'fulfilled' ? gj.value?.data : null;
   if (d) {
+    globalData = d;
     const mcap = d.total_market_cap?.usd ?? 0;
     const vol  = d.total_volume?.usd ?? 0;
     const dom  = d.market_cap_percentage?.btc ?? 0;
-    const chg  = d.market_cap_change_percentage_24h_usd ?? 0;
     set('s-mcap', fmtLarge(mcap));
     set('s-vol',  fmtLarge(vol));
     set('s-btc',  dom.toFixed(1) + '%');
-    const chEl = el('s-mcap-ch');
-    if (chEl) { chEl.textContent = fmtPct(chg); chEl.className = 'stat-sub ' + pCls(chg); }
+    renderMarketStats();
   }
   const fg = fgj.status === 'fulfilled' ? fgj.value?.data?.[0] : null;
   if (fg) {
@@ -341,7 +430,7 @@ async function fetchTrending() {
     const ch  = c.data?.price_change_percentage_24h?.usd ?? 0;
     const px  = c.data?.price ?? 0;
     const sym = c.symbol.toUpperCase() + 'USDT';
-    return `<div class="prow" onclick="selectCoin('${sym}','${c.symbol.toUpperCase()}')">
+    return `<div class="prow" >
       <div class="prow-l">
         <div class="rank-badge">${i + 1}</div>
         <img class="coin-img" src="${c.small || c.thumb}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
@@ -374,7 +463,7 @@ async function fetchCoins() {
   el('gainers').innerHTML = gainers.map(c => {
     const ch  = c.price_change_percentage_24h ?? 0;
     const sym = c.symbol.toUpperCase() + 'USDT';
-    return `<div class="prow" onclick="selectCoin('${sym}','${c.symbol.toUpperCase()}')">
+    return `<div class="prow" >
       <div class="prow-l">
         <img class="coin-img" src="${c.image}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
         <div>
@@ -392,6 +481,7 @@ async function fetchCoins() {
   renderTable();
   buildConverter(json.slice(0, 12));
   set('tbl-ts', 'Updated ' + new Date().toLocaleTimeString());
+  renderMarketStats();
 }
 
 // ─── Coins table ────────────────────────────────────────────────────────────
@@ -411,7 +501,7 @@ function renderTable() {
       const ch24 = c.price_change_percentage_24h ?? 0;
       const ch7d = c.price_change_percentage_7d_in_currency ?? 0;
       const sym  = c.symbol.toUpperCase() + 'USDT';
-      return `<tr class="coin-row" onclick="selectCoin('${sym}','${c.symbol.toUpperCase()}')">
+      return `<tr class="coin-row" >
         <td style="color:var(--text3);font-size:11px">${c.market_cap_rank}</td>
         <td>
           <div class="td-nm">
@@ -431,54 +521,6 @@ function renderTable() {
     }).join('')}</tbody>
   </table>`;
 }
-
-// ─── TradingView chart ───────────────────────────────────────────────────────
-function loadChart(sym) {
-  const container = el('tv-chart');
-  container.innerHTML = '';
-  tvWidget = new TradingView.widget({
-    container_id: 'tv-chart',
-    width: '100%',
-    height: 400,
-    symbol: 'BINANCE:' + sym,
-    interval: '60',
-    timezone: 'Etc/UTC',
-    theme: 'dark',
-    style: '1',
-    locale: 'en',
-    toolbar_bg: '#1b2429',
-    enable_publishing: false,
-    hide_side_toolbar: false,
-    allow_symbol_change: true,
-    save_image: false,
-    overrides: {
-      'paneProperties.background': '#0f1a1e',
-      'paneProperties.backgroundType': 'solid',
-      'paneProperties.vertGridProperties.color': '#1b2429',
-      'paneProperties.horzGridProperties.color': '#1b2429',
-      'scalesProperties.textColor': '#878c8f',
-      'scalesProperties.lineColor': '#273035',
-    },
-  });
-  tvReady = true;
-}
-
-// ─── Select coin → update chart header + chart ──────────────────────────────
-window.selectCoin = function(sym, label) {
-  chartSym = sym;
-  const d = tickerData[sym];
-  set('chart-sym', label + ' / USDT');
-  const pxEl = el('chart-px');
-  const chEl = el('chart-ch');
-  if (d && pxEl) { pxEl.textContent = fmtPx(d.px); }
-  if (d && chEl) {
-    chEl.textContent = fmtPct(d.ch);
-    chEl.className = 'chart-ch ' + pCls(d.ch);
-  }
-  if (typeof TradingView !== 'undefined') {
-    loadChart(sym);
-  }
-};
 
 // ─── Converter ───────────────────────────────────────────────────────────────
 function buildConverter(list) {
@@ -506,11 +548,6 @@ function buildConverter(list) {
 async function init() {
   buildTicker();
 
-  // Initial chart with BTC
-  if (typeof TradingView !== 'undefined') {
-    loadChart('BTCUSDT');
-  }
-
   // Stagger fetches to respect CoinGecko rate limits
   fetchTicker();
   await delay(200);
@@ -519,6 +556,8 @@ async function init() {
   fetchCoins();
   await delay(600);
   fetchTrending();
+  await delay(600);
+  fetchSparklines();
 
   // Refresh intervals
   setInterval(fetchTicker, 30_000);
