@@ -5,6 +5,7 @@ import {
   getCandles, openPosition, closePosition, cancelOrder,
   startPriceStream, getMetaAndAssetCtxs,
   getUserFills, getOpenOrders, getFundingHistory,
+  getL2Book, startBookStream,
 } from './trading.js';
 import { initChart, setCandles, pushTick } from './chart.js';
 import { openDepositModal, closeDepositModal } from './deposit.js';
@@ -24,6 +25,7 @@ let isBuy         = true;
 let livePrices    = {};
 let metaCtxs      = {};
 let recentTrades  = [];
+let stopBook      = null;
 
 // ── Init ──────────────────────────────────────────────────────
 async function init() {
@@ -142,6 +144,48 @@ async function loadMarket(sym) {
   if (pairEl) pairEl.textContent = sym + '-USDC';
   const xtEl = document.getElementById('xtTicker');
   if (xtEl) xtEl.textContent = sym;
+
+  // Order book — stop old stream, snapshot + live stream for new symbol
+  stopBook?.();
+  getL2Book(sym).then(book => renderOrderBook(sym, book));
+  stopBook = startBookStream(sym, renderOrderBook);
+}
+
+function renderOrderBook(sym, { asks, bids }) {
+  if (sym !== currentMarket) return;
+
+  const fmtPx = n => n.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 2 });
+  const fmtSz = n => n >= 1 ? n.toFixed(2) : n >= 0.001 ? n.toFixed(3) : n.toFixed(4);
+
+  // Build cumulative rows (asks lowest-first, bids highest-first)
+  const sortedAsks = [...asks].sort((a, b) => a.px - b.px);
+  const sortedBids = [...bids].sort((a, b) => b.px - a.px);
+  let ca = 0, cb = 0;
+  const cumAsks = sortedAsks.map(r => { ca += r.sz; return { ...r, cum: ca }; });
+  const cumBids = sortedBids.map(r => { cb += r.sz; return { ...r, cum: cb }; });
+  const maxCum  = Math.max(ca, cb) || 1;
+
+  const row = (cls, { px, sz, cum }) => {
+    const pct = (cum / maxCum * 100).toFixed(1);
+    return `<div class="ob-row ${cls}"><span class="ob-price">${fmtPx(px)}</span><span class="ob-sz">${fmtSz(sz)}</span><span class="ob-total">${fmtSz(cum)}</span><div class="ob-depth" style="width:${pct}%"></div></div>`;
+  };
+
+  // Asks displayed bottom-to-top so lowest ask sits closest to spread
+  const asksEl = document.getElementById('obAsks');
+  if (asksEl) asksEl.innerHTML = cumAsks.map(r => row('ask', r)).join('');
+
+  const bidsEl = document.getElementById('obBids');
+  if (bidsEl) bidsEl.innerHTML = cumBids.map(r => row('bid', r)).join('');
+
+  const bestAsk = sortedAsks[0]?.px ?? 0;
+  const bestBid = sortedBids[0]?.px ?? 0;
+  if (bestAsk && bestBid) {
+    const spread = bestAsk - bestBid;
+    const sv = document.getElementById('obSpreadVal');
+    const sp = document.getElementById('obSpreadPct');
+    if (sv) sv.textContent = fmtPx(spread);
+    if (sp) sp.textContent = (spread / bestBid * 100).toFixed(3) + '%';
+  }
 }
 
 // ── Intervals ──────────────────────────────────────────────────

@@ -378,6 +378,19 @@ html, body {
 .tr-sz   { text-align: right; color: var(--hl-text-soft); }
 .tr-time { text-align: right; color: var(--hl-text-muted); }
 
+/* ── ORDER BOOK (trade panel) ───────────────────────────────── */
+.ob-mini { border-top: 1px solid var(--hl-border); flex-shrink: 0; }
+.ob-mini-hdr {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 6px 8px 2px;
+}
+.ob-mini-title {
+  font-size: 10px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.3px; color: var(--hl-text-secondary);
+  white-space: nowrap; margin-right: 6px;
+}
+.ob-asks-mini { display: flex; flex-direction: column-reverse; }
+
 /* ── TRADE PANEL ────────────────────────────────────────────── */
 .tp-col {
   display: flex; flex-direction: column;

@@ -418,3 +418,30 @@ export function startPriceStream(symbols, onPrice, onBook, onTrade) {
   connect();
   return { close: () => { alive = false; ws?.close(); } };
 }
+
+// ── Dedicated order-book stream for a single symbol ────────────
+export function startBookStream(sym, onBook) {
+  let ws, alive = true;
+  function connect() {
+    ws = new WebSocket('wss://api.hyperliquid.xyz/ws');
+    ws.onopen  = () => ws.send(JSON.stringify({
+      method: 'subscribe', subscription: { type: 'l2Book', coin: sym },
+    }));
+    ws.onmessage = ({ data }) => {
+      try {
+        const msg = JSON.parse(data);
+        if (msg.channel === 'l2Book') {
+          const { coin, levels } = msg.data;
+          if (coin === sym && levels) onBook(coin, {
+            bids: (levels[0] ?? []).slice(0, 10).map(l => ({ px: +l.px, sz: +l.sz })),
+            asks: (levels[1] ?? []).slice(0, 10).map(l => ({ px: +l.px, sz: +l.sz })),
+          });
+        }
+      } catch {}
+    };
+    ws.onclose = () => { if (alive) setTimeout(connect, 2000); };
+    ws.onerror = () => ws.close();
+  }
+  connect();
+  return () => { alive = false; ws?.close(); };
+}
