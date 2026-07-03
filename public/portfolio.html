@@ -292,6 +292,8 @@
     .pv-pos-dir.short{background:rgba(237,112,136,.15);color:var(--red)}
     .pv-pos-pnl{font-weight:700;font-variant-numeric:tabular-nums}
     .perps-val-placeholder{font-size:11px;color:var(--text3);text-align:center;padding:10px 0;line-height:1.6}
+    .perps-dep-btn{width:100%;padding:10px;background:var(--accent);color:#0f1a1e;font-weight:700;font-size:12px;border-radius:var(--r);border:none;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:6px;transition:opacity .15s;margin-top:4px}
+    .perps-dep-btn:hover{opacity:.88}
   </style>
 </head>
 <body>
@@ -468,6 +470,10 @@
           <div id="pv-positions"></div>
         </div>
         <div class="perps-val-placeholder" id="pv-placeholder">Load a Hyperliquid wallet to see perps portfolio.</div>
+        <button class="perps-dep-btn" onclick="openPerpsDeposit()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v13M7 11l5 5 5-5"/><path d="M4 19h16"/></svg>
+          Deposit to Perps
+        </button>
       </div>
     </div>
 
@@ -1325,10 +1331,20 @@ function depStartTransfer(){
   el('dep-back-btn').style.display='';
   el('dep-modal-title').textContent='Bridge via LI.FI';
   let url='/lifi.html?mode=deposit';
-  if(evmAddr) url+='&toAddress='+encodeURIComponent(evmAddr);
+  const addr=evmAddr||el('hl-addr-input').value.trim();
+  if(addr) url+='&toAddress='+encodeURIComponent(addr);
   url+='&fromToken='+encodeURIComponent(depToken.mint===SOL_MINT?'SOL':depToken.mint);
   if(amt>0) url+='&fromAmount='+amt;
   el('lifi-deposit-frame').src=url;
+}
+function openPerpsDeposit(){
+  const addr=evmAddr||el('hl-addr-input').value.trim();
+  el('deposit-modal').classList.add('open');
+  el('dep-step-pick').style.display='none';
+  el('dep-step-lifi').style.display='';
+  el('dep-back-btn').style.display='';
+  el('dep-modal-title').textContent='Deposit to Perps via LI.FI';
+  el('lifi-deposit-frame').src='/lifi.html?mode=deposit'+(addr?'&toAddress='+encodeURIComponent(addr):'');
 }
 // ──────────────────────────────────────────────────────────────────────────────
 function openSwap(){el('swap-modal').classList.add('open');const f=el('lifi-swap-frame');if(!f.src)f.src='/lifi.html?mode=swap';}

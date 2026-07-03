@@ -8,10 +8,9 @@ const toAddr     = params.get('toAddress')  || undefined;
 const fromToken  = params.get('fromToken')  || undefined;
 const fromAmount = params.get('fromAmount') || undefined;
 
-// HyperEVM chain details (per build plan)
-const HYPEREUM_CHAIN_ID = 998;
-// USDC on HyperEVM — Hyperliquid's native USDC
-const USDC_HYPEREVM = '0x6d3c5a55a8e09ef0e338e398fd0ac5e5fa5db445';
+// Arbitrum is the HL deposit chain — USDC on Arbitrum bridges into HL perps
+const ARBITRUM_CHAIN_ID = 42161;
+const USDC_ARBITRUM = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831';
 
 // RDO ONE HL theme
 const THEME = {
@@ -29,10 +28,9 @@ const THEME = {
 // Per-mode widget configuration
 const CONFIGS = {
   deposit: {
-    toChain:    HYPEREUM_CHAIN_ID,
-    toToken:    USDC_HYPEREVM,
+    toChain:    ARBITRUM_CHAIN_ID,
+    toToken:    USDC_ARBITRUM,
     toAddress:  toAddr,
-    fromChain:  'SOL',
     fromToken:  fromToken || 'SOL',
     ...(fromAmount ? { fromAmount: String(fromAmount) } : {}),
     hiddenUI:   ['toChain', 'toToken'],
