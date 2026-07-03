@@ -612,18 +612,50 @@ async function generateQR(text) {
 // HYPERLIQUID TRADER PNL
 // ══════════════════════════════════════════════════════════════════════════════
 async function connectEVM() {
-  if (!window.ethereum) {
-    alert('No EVM wallet detected. Install MetaMask or Rabby.');
+  const provider = window.ethereum;
+  if (!provider) {
+    evmHint('No EVM wallet found — install MetaMask or Rabby, or enter address manually.');
     return;
   }
+
+  // Silent check first — returns already-connected accounts without any popup
   try {
-    const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-    if (accounts[0]) {
+    const silent = await provider.request({ method: 'eth_accounts' });
+    if (silent?.[0]) {
+      evmAddr = silent[0];
+      el('hl-addr-input').value = silent[0];
+      loadHLData(silent[0]);
+      return;
+    }
+  } catch {}
+
+  // If Phantom is the provider with no connected accounts, it will throw
+  // "Unsupported account" for Solana-only wallets — skip the request.
+  if (provider.isPhantom) {
+    evmHint('Phantom EVM requires an EVM-compatible account. Use MetaMask/Rabby or enter your HL address manually.');
+    return;
+  }
+
+  try {
+    const accounts = await provider.request({ method: 'eth_requestAccounts' });
+    if (accounts?.[0]) {
       evmAddr = accounts[0];
       el('hl-addr-input').value = accounts[0];
       loadHLData(accounts[0]);
     }
-  } catch {}
+  } catch (e) {
+    if (e.code !== 4001) evmHint('Connection failed — enter your Hyperliquid address manually.');
+  }
+}
+
+function evmHint(msg) {
+  const inp = el('hl-addr-input');
+  inp.placeholder = msg;
+  inp.style.borderColor = 'var(--red)';
+  setTimeout(() => {
+    inp.placeholder = 'Enter Hyperliquid wallet address (0x…)';
+    inp.style.borderColor = '';
+  }, 5000);
 }
 
 function handleHLLoad() {
