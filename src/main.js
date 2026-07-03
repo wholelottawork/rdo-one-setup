@@ -154,7 +154,7 @@ function closeDropdown() {
 async function selectMarket(sym) {
   currentMarket = sym;
   document.getElementById('mktSymbol').textContent  = sym + '-USDC';
-  document.getElementById('chartLabel').textContent = `${sym}USD · ${ivLabel(currentIv)} · Hyperliquid`;
+  document.getElementById('chartLabel').textContent = `${sym}USD · ${ivLabel(currentIv)} · RDO ONE`;
   document.getElementById('sizeUnit').textContent = sym;
   updateTradeBtn();
   await loadMarket(sym);
@@ -220,7 +220,7 @@ function bindIntervals() {
       btn.classList.add('active');
       currentIv = parseInt(btn.dataset.iv);
       document.getElementById('chartLabel').textContent =
-        `${currentMarket}USD · ${ivLabel(currentIv)} · Hyperliquid`;
+        `${currentMarket}USD · ${ivLabel(currentIv)} · RDO ONE`;
       setCandles(await getCandles(currentMarket, currentIv, 200), currentMarket);
     });
   });
