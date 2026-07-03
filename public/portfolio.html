@@ -161,31 +161,6 @@
     .trade-pnl.neg{color:var(--red)}
     .hl-placeholder{padding:40px 24px;text-align:center;color:var(--text3);font-size:12px;line-height:1.7}
 
-    /* ─── Perps Account Card ─────────────────────────────────────────────── */
-    .perps-account-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:18px 20px;margin-bottom:14px}
-    .perps-row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}
-    @media(max-width:480px){.perps-row{grid-template-columns:1fr 1fr}}
-    .perps-lbl{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px}
-    .perps-val{font-size:20px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
-    .perps-actions{display:flex;gap:8px;flex-wrap:wrap}
-
-    /* ─── Open Positions ─────────────────────────────────────────────────── */
-    .positions-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;margin-bottom:14px}
-    .positions-title{padding:10px 16px;border-bottom:1px solid var(--border);font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.07em}
-    .pos-hdr{display:grid;grid-template-columns:100px 70px 90px 90px 90px 90px;padding:8px 14px;border-bottom:1px solid var(--border);font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em}
-    .pos-hdr span:not(:first-child){text-align:right}
-    .pos-row{display:grid;grid-template-columns:100px 70px 90px 90px 90px 90px;padding:10px 14px;border-bottom:1px solid var(--border);align-items:center;transition:background .1s}
-    .pos-row:last-child{border-bottom:none}
-    .pos-row:hover{background:rgba(255,255,255,.02)}
-    .pos-coin{font-size:12px;font-weight:700}
-    .pos-side{font-size:10px;font-weight:600;padding:2px 6px;border-radius:3px;white-space:nowrap}
-    .pos-side.long{background:rgba(31,166,125,.15);color:var(--green)}
-    .pos-side.short{background:rgba(237,112,136,.15);color:var(--red)}
-    .pos-cell{font-size:11px;color:var(--text2);text-align:right;font-variant-numeric:tabular-nums}
-    .pos-pnl{font-size:12px;font-weight:700;text-align:right;font-variant-numeric:tabular-nums}
-    .pos-pnl.pos{color:var(--green)}
-    .pos-pnl.neg{color:var(--red)}
-
     /* ─── Modal ──────────────────────────────────────────────────────────── */
     .overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:2000;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(2px)}
     .overlay.open{display:flex}
@@ -289,38 +264,6 @@
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 2v20M2 12h20"/></svg>
       Connect EVM Wallet
     </button>
-  </div>
-
-  <!-- Perps Account Card -->
-  <div class="perps-account-card" id="perps-account-card" style="display:none">
-    <div class="perps-row">
-      <div>
-        <div class="perps-lbl">Account Value</div>
-        <div class="perps-val" id="hl-account-val">$0.00</div>
-      </div>
-      <div>
-        <div class="perps-lbl">Available</div>
-        <div class="perps-val" id="hl-avail">$0.00</div>
-      </div>
-      <div>
-        <div class="perps-lbl">Margin Used</div>
-        <div class="perps-val" id="hl-margin">$0.00</div>
-      </div>
-    </div>
-    <div class="perps-actions">
-      <button class="act-btn fill" onclick="openDeposit()">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v13M7 11l5 5 5-5"/><path d="M4 19h16"/></svg>
-        Add Funds
-      </button>
-      <button class="act-btn outline" onclick="openTokensPerps()">Tokens ↔ Perps</button>
-      <button class="act-btn outline" onclick="window.open('https://app.hyperliquid.xyz/portfolio','_blank')">Withdraw</button>
-    </div>
-  </div>
-
-  <!-- Open Positions -->
-  <div class="positions-card" id="positions-card" style="display:none">
-    <div class="positions-title">Open Positions</div>
-    <div id="positions-body"></div>
   </div>
 
   <!-- Stat cards (6) -->
@@ -617,8 +560,7 @@ async function connectEVM() {
     evmHint('No EVM wallet found — install MetaMask or Rabby, or enter address manually.');
     return;
   }
-
-  // Silent check first — returns already-connected accounts without any popup
+  // Silent check — no popup, returns already-connected accounts
   try {
     const silent = await provider.request({ method: 'eth_accounts' });
     if (silent?.[0]) {
@@ -628,14 +570,11 @@ async function connectEVM() {
       return;
     }
   } catch {}
-
-  // If Phantom is the provider with no connected accounts, it will throw
-  // "Unsupported account" for Solana-only wallets — skip the request.
+  // Phantom Solana-only wallets throw "Unsupported account" on eth_requestAccounts
   if (provider.isPhantom) {
     evmHint('Phantom EVM requires an EVM-compatible account. Use MetaMask/Rabby or enter your HL address manually.');
     return;
   }
-
   try {
     const accounts = await provider.request({ method: 'eth_requestAccounts' });
     if (accounts?.[0]) {
@@ -664,24 +603,20 @@ function handleHLLoad() {
   loadHLData(addr);
 }
 
-async function hlPost(body) {
-  const res = await fetch(HL_API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-  if (!res.ok) throw new Error('HTTP ' + res.status);
-  return res.json();
-}
-
 async function loadHLData(address) {
+  // Reset stats to loading
   ['s-total-pnl','s-win-rate','s-trades','s-volume','s-best','s-worst'].forEach(id => set(id, '…'));
-  el('trades-body').innerHTML = '<div class="hl-placeholder">Loading…</div>';
+  el('trades-body').innerHTML = '<div class="hl-placeholder">Loading trades…</div>';
 
   try {
-    const startTime = Date.now() - 365 * 24 * 60 * 60 * 1000;
-    const [fills, state] = await Promise.all([
-      hlPost({ type: 'userFillsByTime', user: address, startTime, endTime: Date.now() }),
-      hlPost({ type: 'clearinghouseState', user: address }),
-    ]);
-
-    renderHLAccount(state);
+    const startTime = Date.now() - 365 * 24 * 60 * 60 * 1000; // 1 year
+    const res = await fetch(HL_API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'userFillsByTime', user: address, startTime, endTime: Date.now() }),
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const fills = await res.json();
 
     if (!Array.isArray(fills) || fills.length === 0) {
       ['s-total-pnl','s-win-rate','s-trades','s-volume','s-best','s-worst'].forEach(id => set(id, '—'));
@@ -696,51 +631,6 @@ async function loadHLData(address) {
     el('trades-body').innerHTML = `<div class="hl-placeholder">Error: ${e.message}</div>`;
     ['s-total-pnl','s-win-rate','s-trades','s-volume','s-best','s-worst'].forEach(id => set(id, '—'));
   }
-}
-
-function renderHLAccount(state) {
-  if (!state) return;
-  const ms = state.marginSummary || {};
-  const accountVal  = parseFloat(ms.accountValue   || 0);
-  const marginUsed  = parseFloat(ms.totalMarginUsed || 0);
-  const withdrawable = parseFloat(state.withdrawable || 0);
-
-  set('hl-account-val', '$' + fmt(accountVal));
-  set('hl-avail',       '$' + fmt(withdrawable));
-  set('hl-margin',      '$' + fmt(marginUsed));
-  el('perps-account-card').style.display = '';
-
-  const openPos = (state.assetPositions || []).filter(p => parseFloat(p.position?.szi ?? 0) !== 0);
-  renderPositions(openPos);
-}
-
-function renderPositions(positions) {
-  const card = el('positions-card');
-  if (!positions.length) { card.style.display = 'none'; return; }
-  card.style.display = '';
-  const hdr = `<div class="pos-hdr"><span>Market</span><span>Side</span><span>Size</span><span>Entry</span><span>Mark</span><span>PnL</span></div>`;
-  const rows = positions.map(p => {
-    const pos     = p.position;
-    const szi     = parseFloat(pos.szi);
-    const isLong  = szi > 0;
-    const pnl     = parseFloat(pos.unrealizedPnl || 0);
-    const entryPx = parseFloat(pos.entryPx || 0);
-    const posVal  = parseFloat(pos.positionValue || 0);
-    const markPx  = Math.abs(szi) > 0 ? posVal / Math.abs(szi) : 0;
-    return `<div class="pos-row">
-      <div class="pos-coin">${pos.coin}</div>
-      <div><span class="pos-side ${isLong ? 'long' : 'short'}">${isLong ? 'Long' : 'Short'}</span></div>
-      <div class="pos-cell">${fmt(Math.abs(szi), Math.abs(szi) < 1 ? 4 : 2)}</div>
-      <div class="pos-cell">$${fmt(entryPx, entryPx < 1 ? 4 : 2)}</div>
-      <div class="pos-cell">${markPx ? '$' + fmt(markPx, markPx < 1 ? 4 : 2) : '—'}</div>
-      <div class="pos-pnl ${pCls(pnl)}">${pnl >= 0 ? '+' : ''}$${fmt(pnl)}</div>
-    </div>`;
-  }).join('');
-  el('positions-body').innerHTML = hdr + rows;
-}
-
-function openTokensPerps() {
-  window.open('https://app.hyperliquid.xyz/portfolio', '_blank');
 }
 
 function computeAndRenderHL(fills) {
