@@ -340,7 +340,7 @@
   <div class="hl-connect-bar">
     <input class="hl-addr-input" id="hl-addr-input" placeholder="Enter Hyperliquid wallet address (0x…)" />
     <button class="hl-load-btn" onclick="handleHLLoad()">Load</button>
-    <button class="hl-evm-btn" onclick="connectEVM()">
+    <button class="hl-evm-btn" id="hl-evm-btn" onclick="connectEVM()">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 2v20M2 12h20"/></svg>
       Connect EVM Wallet
     </button>
@@ -601,7 +601,8 @@ async function connectWallet() {
 
 async function disconnectWallet() {
   try { await phantom()?.disconnect(); } catch {}
-  pubkey = null; evmAddr = null;
+  pubkey = null;
+  clearEVMAddr();
   el('connect-screen').style.display = 'flex';
   el('portfolio-screen').style.display = 'none';
   const btn = el('connect-btn');
@@ -616,9 +617,60 @@ function showPortfolio() {
   el('connect-screen').style.display = 'none';
   el('portfolio-screen').style.display = 'block';
   el('addr-chip').textContent = shorten(pubkey);
-  el('dep-addr-text').textContent = pubkey;
-  generateQR(pubkey);
   loadPortfolio();
+  autoDetectEVM();
+}
+
+// ── Auto-detect EVM / HL address ──────────────────────────────────────────────
+// Priority: Phantom EVM → window.ethereum (silent) → nothing (user connects manually)
+async function autoDetectEVM() {
+  // 1. Prefer window.phantom.ethereum — Phantom's dedicated EVM account
+  const phEvm = window.phantom?.ethereum;
+  if (phEvm) {
+    try {
+      let accs = await phEvm.request({ method: 'eth_accounts' });
+      if (!accs?.[0]) {
+        // Phantom EVM is available but account not yet exposed — request it
+        accs = await phEvm.request({ method: 'eth_requestAccounts' });
+      }
+      if (accs?.[0]) { setEVMAddr(accs[0], 'Phantom'); return; }
+    } catch { /* EVM not configured in Phantom — fall through */ }
+  }
+  // 2. window.ethereum (MetaMask / Rabby / etc.) — silent check only here
+  const prov = window.ethereum;
+  if (prov && !prov.isPhantom) {
+    try {
+      const accs = await prov.request({ method: 'eth_accounts' });
+      if (accs?.[0]) { setEVMAddr(accs[0], 'Wallet'); return; }
+    } catch {}
+  }
+}
+
+function setEVMAddr(addr, source) {
+  evmAddr = addr;
+  el('hl-addr-input').value = addr;
+  loadHLData(addr);
+  // Update the connect button to show connected state
+  const btn = el('hl-evm-btn');
+  if (btn) {
+    btn.innerHTML = `<svg width="8" height="8" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4" fill="#1fa67d"/></svg> ${source}: ${shorten(addr)}`;
+    btn.style.borderColor = 'var(--green)';
+    btn.style.color = 'var(--green)';
+    btn.onclick = () => clearEVMAddr();
+    btn.title = 'Click to disconnect';
+  }
+}
+
+function clearEVMAddr() {
+  evmAddr = null;
+  el('hl-addr-input').value = '';
+  const btn = el('hl-evm-btn');
+  if (btn) {
+    btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 2v20M2 12h20"/></svg> Connect EVM Wallet`;
+    btn.style.borderColor = ''; btn.style.color = '';
+    btn.onclick = () => connectEVM();
+    btn.title = '';
+  }
 }
 
 window.addEventListener('load', async () => {
@@ -701,17 +753,23 @@ async function generateQR(text) {
 // EVM WALLET
 // ══════════════════════════════════════════════════════════════════════════════
 async function connectEVM() {
+  // Phantom users: use window.phantom.ethereum so it maps to their HL address
+  const phEvm = window.phantom?.ethereum;
+  if (phEvm) {
+    try {
+      let accs = await phEvm.request({ method: 'eth_accounts' });
+      if (!accs?.[0]) accs = await phEvm.request({ method: 'eth_requestAccounts' });
+      if (accs?.[0]) { setEVMAddr(accs[0], 'Phantom'); return; }
+    } catch(e) { if (e.code !== 4001) evmHint('Enable EVM in Phantom → Settings → Networks, then try again.'); return; }
+  }
+  // Other EVM wallets (MetaMask, Rabby, etc.) — address = HL address
   const provider = window.ethereum;
   if (!provider) { evmHint('No EVM wallet found — install MetaMask or Rabby, or enter address manually.'); return; }
   try {
-    const silent = await provider.request({method:'eth_accounts'});
-    if (silent?.[0]) { evmAddr=silent[0]; el('hl-addr-input').value=silent[0]; loadHLData(silent[0]); return; }
-  } catch {}
-  if (provider.isPhantom) { evmHint('Phantom EVM requires an EVM-compatible account. Use MetaMask/Rabby or enter your HL address manually.'); return; }
-  try {
-    const accounts = await provider.request({method:'eth_requestAccounts'});
-    if (accounts?.[0]) { evmAddr=accounts[0]; el('hl-addr-input').value=accounts[0]; loadHLData(accounts[0]); }
-  } catch(e) { if (e.code!==4001) evmHint('Connection failed — enter your Hyperliquid address manually.'); }
+    let accs = await provider.request({ method: 'eth_accounts' });
+    if (!accs?.[0]) accs = await provider.request({ method: 'eth_requestAccounts' });
+    if (accs?.[0]) setEVMAddr(accs[0], 'Wallet');
+  } catch(e) { if (e.code !== 4001) evmHint('Connection failed — enter your Hyperliquid address manually.'); }
 }
 function evmHint(msg) {
   const inp = el('hl-addr-input');
