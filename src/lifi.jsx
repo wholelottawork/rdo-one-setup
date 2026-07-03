@@ -2,11 +2,11 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { LiFiWidget } from '@lifi/widget';
 
-// Mode comes from ?mode=deposit|swap|convert in the URL
-const params  = new URLSearchParams(location.search);
-const mode    = params.get('mode') || 'swap';
-// Optional: wallet address passed from parent page
-const toAddr  = params.get('toAddress') || undefined;
+const params     = new URLSearchParams(location.search);
+const mode       = params.get('mode')       || 'swap';
+const toAddr     = params.get('toAddress')  || undefined;
+const fromToken  = params.get('fromToken')  || undefined;
+const fromAmount = params.get('fromAmount') || undefined;
 
 // HyperEVM chain details (per build plan)
 const HYPEREUM_CHAIN_ID = 998;
@@ -29,12 +29,13 @@ const THEME = {
 // Per-mode widget configuration
 const CONFIGS = {
   deposit: {
-    toChain:   HYPEREUM_CHAIN_ID,
-    toToken:   USDC_HYPEREVM,
-    toAddress: toAddr,
-    fromChain: 'SOL',  // Solana — LI.FI uses chain key or id
-    fromToken: 'SOL',
-    hiddenUI:  ['toChain', 'toToken'],
+    toChain:    HYPEREUM_CHAIN_ID,
+    toToken:    USDC_HYPEREVM,
+    toAddress:  toAddr,
+    fromChain:  'SOL',
+    fromToken:  fromToken || 'SOL',
+    ...(fromAmount ? { fromAmount: String(fromAmount) } : {}),
+    hiddenUI:   ['toChain', 'toToken'],
     subvariant: 'split',
   },
   swap: {
