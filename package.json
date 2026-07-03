@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@lifi/widget": "^4.1.0",
+    "@tanstack/react-query": "^5.101.2",
     "ethers": "^6.13.0",
     "lightweight-charts": "^5.2.0",
     "react": "^19.2.7",
