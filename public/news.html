@@ -40,10 +40,11 @@
     .filter-btn:hover{color:var(--text);background:var(--bg3)}
     .filter-btn.active{color:var(--accent);border-color:var(--accent);background:rgba(80,210,193,.08)}
 
+    .filter-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:20px}
     .source-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:44px}
     .src-btn{font-size:10px;font-weight:600;color:var(--text3);background:var(--bg2);border:1px solid var(--border);border-radius:4px;padding:3px 10px;cursor:pointer;transition:all .12s;font-family:inherit;letter-spacing:.02em}
-    .src-btn:hover{color:var(--text)}
-    .src-btn.active{color:#fff}
+    .src-btn:hover{color:#39d98a;border-color:#39d98a}
+    .src-btn.active{color:#39d98a;border-color:#39d98a;background:rgba(57,217,138,.1)}
 
     .news-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px}
     @media(max-width:480px){.news-grid{grid-template-columns:1fr}}
@@ -392,27 +393,19 @@ function buildFilters() {
 
   // Source toggle buttons
   el('src-filters').innerHTML = SOURCES.map(s =>
-    `<button class="src-btn active" data-sid="${s.id}" style="border-color:${s.color};color:${s.color};background:${s.color}22">${s.name}</button>`
+    `<button class="src-btn active" data-sid="${s.id}">${s.name}</button>`
   ).join('');
   el('src-filters').addEventListener('click', e => {
     const btn = e.target.closest('.src-btn');
     if (!btn) return;
     const sid = btn.dataset.sid;
     if (activeSrcIds.has(sid)) {
-      if (activeSrcIds.size === 1) return; // keep at least one
+      if (activeSrcIds.size === 1) return;
       activeSrcIds.delete(sid);
       btn.classList.remove('active');
-      const s = SOURCES.find(x => x.id === sid);
-      btn.style.background = 'var(--bg2)';
-      btn.style.color = 'var(--text3)';
-      btn.style.borderColor = 'var(--border)';
     } else {
       activeSrcIds.add(sid);
       btn.classList.add('active');
-      const s = SOURCES.find(x => x.id === sid);
-      btn.style.background = s.color + '22';
-      btn.style.color = s.color;
-      btn.style.borderColor = s.color;
     }
     render(applyFilters(allArticles));
   });

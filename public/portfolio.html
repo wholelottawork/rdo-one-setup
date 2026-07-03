@@ -270,6 +270,28 @@
     .cal-day.zero .cal-day-pnl{color:var(--text3)}
     .cal-footer{display:flex;justify-content:space-between;border-top:1px solid var(--border);padding-top:12px;font-size:10.5px;color:var(--text3)}
     .cal-footer strong{color:var(--text2)}
+
+    /* ─── Perps Portfolio Value card ────────────────────────────────────────── */
+    .perps-val-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:18px;margin-top:14px;display:flex;flex-direction:column;gap:10px}
+    .perps-val-hdr{display:flex;align-items:center;justify-content:space-between}
+    .perps-val-title{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.1em}
+    .perps-val-live{display:flex;align-items:center;gap:5px;font-size:9px;font-weight:700;color:var(--text3);letter-spacing:.08em}
+    .perps-val-eq{font-size:26px;font-weight:800;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+    .perps-val-sub{font-size:11px;color:var(--text3)}
+    .perps-val-sub span{font-weight:600}
+    .perps-val-rows{display:flex;flex-direction:column;gap:7px;border-top:1px solid var(--border);padding-top:10px;margin-top:2px}
+    .perps-val-row{display:flex;justify-content:space-between;font-size:11px}
+    .perps-val-row span:first-child{color:var(--text3)}
+    .perps-val-row span:last-child{font-weight:600;font-variant-numeric:tabular-nums}
+    .perps-val-pos-hdr{font-size:9px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px}
+    .pv-pos-row{display:flex;justify-content:space-between;align-items:center;font-size:10px;padding:5px 0;border-bottom:1px solid var(--border)}
+    .pv-pos-row:last-child{border-bottom:none}
+    .pv-pos-coin{font-weight:700;color:var(--text)}
+    .pv-pos-dir{font-size:9px;font-weight:600;padding:1px 5px;border-radius:3px;margin-left:5px}
+    .pv-pos-dir.long{background:rgba(31,166,125,.15);color:var(--green)}
+    .pv-pos-dir.short{background:rgba(237,112,136,.15);color:var(--red)}
+    .pv-pos-pnl{font-weight:700;font-variant-numeric:tabular-nums}
+    .perps-val-placeholder{font-size:11px;color:var(--text3);text-align:center;padding:10px 0;line-height:1.6}
   </style>
 </head>
 <body>
@@ -421,6 +443,27 @@
         <div id="share-content">
           <div class="share-placeholder">Load a Hyperliquid wallet to see your PnL card.</div>
         </div>
+      </div>
+
+      <!-- Perps Portfolio Value card -->
+      <div class="perps-val-card" id="perps-val-card">
+        <div class="perps-val-hdr">
+          <span class="perps-val-title">Perps Portfolio</span>
+          <span class="perps-val-live"><span class="share-dot" style="width:5px;height:5px"></span> LIVE</span>
+        </div>
+        <div class="perps-val-eq" id="pv-equity">—</div>
+        <div class="perps-val-sub" id="pv-upnl-row">Unrealized PnL: <span id="pv-upnl">—</span></div>
+        <div class="perps-val-rows">
+          <div class="perps-val-row"><span>Position Value</span><span id="pv-ntl">—</span></div>
+          <div class="perps-val-row"><span>Available Margin</span><span id="pv-avail">—</span></div>
+          <div class="perps-val-row"><span>Margin Used</span><span id="pv-margin-used">—</span></div>
+          <div class="perps-val-row"><span>Account Leverage</span><span id="pv-lev">—</span></div>
+        </div>
+        <div id="pv-positions-wrap" style="margin-top:12px;display:none">
+          <div class="perps-val-pos-hdr">Open Positions</div>
+          <div id="pv-positions"></div>
+        </div>
+        <div class="perps-val-placeholder" id="pv-placeholder">Load a Hyperliquid wallet to see perps portfolio.</div>
       </div>
     </div>
 
@@ -807,6 +850,7 @@ async function loadHLData(address) {
     }
     hlFills = fills;
     applyRangeAndRender(address);
+    loadPerpsPortfolio(address);
   } catch(e) {
     el('trades-body').innerHTML=`<div class="hl-placeholder">Error: ${e.message}</div>`;
     ['s-total-pnl','s-win-rate','s-trades','s-hold','s-best','s-worst'].forEach(id=>set(id,'—'));
@@ -971,6 +1015,68 @@ function renderDistribution(closing) {
     const w   = (counts[i]/maxCount*100).toFixed(1);
     return `<div class="dist-row"><div class="dist-meta"><span class="dist-label">${b.label}</span><span class="dist-count">${counts[i]} · ${pct}%</span></div><div class="dist-track"><div class="dist-bar" style="width:${w}%;background:${b.color}"></div></div></div>`;
   }).join('');
+}
+
+// ── Perps Portfolio Value ─────────────────────────────────────────────────────
+async function loadPerpsPortfolio(address) {
+  const ph = el('pv-placeholder');
+  if (ph) ph.style.display = 'none';
+  ['pv-equity','pv-upnl','pv-ntl','pv-avail','pv-margin-used','pv-lev'].forEach(id => set(id, '…'));
+  try {
+    const res = await fetch(HL_API, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'clearinghouseState', user: address }),
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    const ms   = data.crossMarginSummary || data.marginSummary || {};
+    const equity     = parseFloat(ms.accountValue   ?? 0);
+    const ntl        = parseFloat(ms.totalNtlPos    ?? 0);
+    const marginUsed = parseFloat(ms.totalMarginUsed ?? 0);
+    const rawUsd     = parseFloat(ms.totalRawUsd    ?? equity);
+    const upnl       = equity - rawUsd;
+    const avail      = Math.max(0, equity - marginUsed);
+    const lev        = marginUsed > 0 ? (ntl / equity).toFixed(2) + 'x' : '0.00x';
+
+    const eqEl = el('pv-equity');
+    if (eqEl) { eqEl.textContent = '$' + fmt(equity); eqEl.style.color = equity >= 0 ? '' : 'var(--red)'; }
+
+    const upnlEl = el('pv-upnl');
+    if (upnlEl) {
+      upnlEl.textContent = (upnl >= 0 ? '+' : '') + '$' + fmt(upnl);
+      upnlEl.style.color = upnl > 0 ? 'var(--green)' : upnl < 0 ? 'var(--red)' : 'var(--text3)';
+    }
+    set('pv-ntl',         '$' + fmt(ntl));
+    set('pv-avail',       '$' + fmt(avail));
+    set('pv-margin-used', '$' + fmt(marginUsed));
+    set('pv-lev',         lev);
+
+    // Open positions
+    const positions = (data.assetPositions || [])
+      .filter(p => parseFloat(p.position?.szi ?? 0) !== 0);
+    const wrap = el('pv-positions-wrap');
+    const posDiv = el('pv-positions');
+    if (positions.length && wrap && posDiv) {
+      wrap.style.display = 'block';
+      posDiv.innerHTML = positions.slice(0, 6).map(p => {
+        const pos   = p.position;
+        const szi   = parseFloat(pos.szi);
+        const isLong = szi > 0;
+        const upnlP = parseFloat(pos.unrealizedPnl ?? 0);
+        return `<div class="pv-pos-row">
+          <span><span class="pv-pos-coin">${pos.coin}</span><span class="pv-pos-dir ${isLong?'long':'short'}">${isLong?'LONG':'SHORT'}</span></span>
+          <span class="pv-pos-pnl ${pCls(upnlP)}">${upnlP>=0?'+':''}$${fmt(upnlP)}</span>
+        </div>`;
+      }).join('');
+    } else if (wrap) {
+      wrap.style.display = 'none';
+    }
+  } catch (e) {
+    ['pv-equity','pv-ntl','pv-avail','pv-margin-used','pv-lev'].forEach(id => set(id, '—'));
+    set('pv-upnl', '—');
+    const ph2 = el('pv-placeholder');
+    if (ph2) { ph2.style.display = 'block'; ph2.textContent = 'Failed to load perps data.'; }
+  }
 }
 
 // ── Share Card ────────────────────────────────────────────────────────────────
