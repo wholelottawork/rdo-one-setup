@@ -7,7 +7,6 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
   <style>
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
     :root{
@@ -294,6 +293,21 @@
     .perps-val-placeholder{font-size:11px;color:var(--text3);text-align:center;padding:10px 0;line-height:1.6}
     .perps-dep-btn{width:100%;padding:10px;background:var(--accent);color:#0f1a1e;font-weight:700;font-size:12px;border-radius:var(--r);border:none;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:6px;transition:opacity .15s;margin-top:4px}
     .perps-dep-btn:hover{opacity:.88}
+
+    /* ─── EVM Balance card ──────────────────────────────────────────────────── */
+    .evm-bal-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:14px 16px;margin-top:12px;display:none}
+    .evm-bal-card.visible{display:block}
+    .evm-bal-hdr{font-size:9px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between}
+    .evm-bal-chain{font-size:9px;font-weight:600;color:var(--accent);background:rgba(80,210,193,.08);padding:2px 6px;border-radius:3px}
+    .evm-bal-row{display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)}
+    .evm-bal-row:last-child{border-bottom:none}
+    .evm-bal-left{display:flex;align-items:center;gap:8px}
+    .evm-tok-dot{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0}
+    .evm-bal-sym{font-size:12px;font-weight:600}
+    .evm-bal-name{font-size:10px;color:var(--text3)}
+    .evm-bal-right{text-align:right}
+    .evm-bal-amount{font-size:12px;font-weight:600;font-variant-numeric:tabular-nums}
+    .evm-bal-usd{font-size:10px;color:var(--text3)}
   </style>
 </head>
 <body>
@@ -355,6 +369,24 @@
     <div class="assets-card">
       <div class="assets-hdr"><span>Asset</span><span>Price</span><span>Balance</span><span>Value</span></div>
       <div id="assets-body"><div class="empty-assets">Loading…</div></div>
+    </div>
+
+    <!-- EVM / Arbitrum balances -->
+    <div class="evm-bal-card" id="evm-bal-card">
+      <div class="evm-bal-hdr">
+        EVM Wallet
+        <span class="evm-bal-chain" id="evm-bal-chain-tag">Arbitrum</span>
+      </div>
+      <div id="evm-bal-body">
+        <div class="evm-bal-row">
+          <div class="evm-bal-left"><div class="evm-tok-dot" style="background:#1b2429;color:#627EEA">Ξ</div><div><div class="evm-bal-sym">ETH</div><div class="evm-bal-name">Ethereum</div></div></div>
+          <div class="evm-bal-right"><div class="evm-bal-amount" id="evm-eth-bal">—</div><div class="evm-bal-usd" id="evm-eth-usd">—</div></div>
+        </div>
+        <div class="evm-bal-row">
+          <div class="evm-bal-left"><div class="evm-tok-dot" style="background:#1b2429;color:#2775ca">$</div><div><div class="evm-bal-sym">USDC</div><div class="evm-bal-name">USD Coin</div></div></div>
+          <div class="evm-bal-right"><div class="evm-bal-amount" id="evm-usdc-bal">—</div><div class="evm-bal-usd" id="evm-usdc-usd">—</div></div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -607,11 +639,12 @@ let evmAddr   = null;
 let walletAssets = [];
 let depToken  = null;
 let depTokListOpen = false;
-let hlFills   = [];       // all fills for current address
+let hlFills   = [];
 let hlDailyPnl = {};
 let currentRange = 'ALL';
 let calYear   = new Date().getFullYear();
 let calMonth  = new Date().getMonth();
+let shareData = null;    // persisted for downloadCard()
 
 // ══════════════════════════════════════════════════════════════════════════════
 // HELPERS
@@ -703,6 +736,7 @@ function setEVMAddr(addr, source) {
   evmAddr = addr;
   el('hl-addr-input').value = addr;
   loadHLData(addr);
+  loadEVMBalance(addr);
   // Update the connect button to show connected state
   const btn = el('hl-evm-btn');
   if (btn) {
@@ -724,9 +758,59 @@ function clearEVMAddr() {
     btn.onclick = () => connectEVM();
     btn.title = '';
   }
+  el('evm-bal-card').classList.remove('visible');
+}
+
+// ── EVM / Arbitrum balance ─────────────────────────────────────────────────────
+const ARB_RPC   = 'https://arb1.arbitrum.io/rpc';
+const USDC_ARB  = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831';
+
+async function loadEVMBalance(addr) {
+  el('evm-bal-card').classList.add('visible');
+  set('evm-eth-bal', '…'); set('evm-eth-usd', '');
+  set('evm-usdc-bal', '…'); set('evm-usdc-usd', '');
+
+  try {
+    const callData = '0x70a08231' + addr.replace('0x','').padStart(64, '0');
+    const [ethRes, usdcRes, priceRes] = await Promise.all([
+      fetch(ARB_RPC, { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({jsonrpc:'2.0',id:1,method:'eth_getBalance',params:[addr,'latest']}) }),
+      fetch(ARB_RPC, { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({jsonrpc:'2.0',id:2,method:'eth_call',params:[{to:USDC_ARB,data:callData},'latest']}) }),
+      fetch('https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd').catch(()=>null),
+    ]);
+    const [ethData, usdcData] = await Promise.all([ethRes.json(), usdcRes.json()]);
+    const ethBal  = parseInt(ethData.result  || '0x0', 16) / 1e18;
+    const usdcBal = parseInt(usdcData.result || '0x0', 16) / 1e6;
+    const ethPx   = priceRes ? ((await priceRes.json())?.ethereum?.usd ?? 0) : 0;
+
+    set('evm-eth-bal',  fmt(ethBal, ethBal < 0.01 ? 4 : 3) + ' ETH');
+    set('evm-eth-usd',  ethPx ? '$' + fmt(ethBal * ethPx) : '');
+    set('evm-usdc-bal', fmt(usdcBal) + ' USDC');
+    set('evm-usdc-usd', usdcBal > 0 ? '$' + fmt(usdcBal) : '—');
+
+    // Add EVM value to total portfolio if Solana portfolio loaded
+    if (ethPx && (ethBal > 0 || usdcBal > 0)) {
+      const totalEl = el('total-val');
+      if (totalEl && totalEl.textContent !== '$—') {
+        const existing = parseFloat(totalEl.textContent.replace(/[$,]/g,'')) || 0;
+        const evmTotal = ethBal * ethPx + usdcBal;
+        if (evmTotal > 0) totalEl.textContent = '$' + fmt(existing + evmTotal);
+      }
+    }
+  } catch {
+    set('evm-eth-bal', '—'); set('evm-usdc-bal', '—');
+  }
 }
 
 window.addEventListener('load', async () => {
+  // Auto-load HL address from URL param (enables shared links)
+  const urlHL = new URLSearchParams(location.search).get('hl');
+  if (urlHL) {
+    el('hl-addr-input').value = urlHL;
+    loadHLData(urlHL);
+  }
+
   const p = phantom();
   if (!p) { el('install-hint').style.display='block'; return; }
   p.on('disconnect', () => { if (pubkey) disconnectWallet(); });
@@ -793,13 +877,6 @@ function renderAssets(assets) {
 }
 function skeleRows(n) {
   return Array.from({length:n},()=>`<div class="asset-row"><div class="asset-left"><div class="sk" style="width:30px;height:30px;border-radius:50%;flex-shrink:0"></div><div><div class="sk" style="width:76px;height:10px;margin-bottom:5px"></div><div class="sk" style="width:34px;height:9px"></div></div></div><div class="cell"><div class="sk" style="width:54px;height:10px;margin-left:auto"></div></div><div class="cell"><div class="sk" style="width:44px;height:10px;margin-left:auto"></div></div><div class="cell"><div class="sk" style="width:62px;height:10px;margin-left:auto"></div></div></div>`).join('');
-}
-
-// ══════════════════════════════════════════════════════════════════════════════
-// QR CODE
-// ══════════════════════════════════════════════════════════════════════════════
-async function generateQR(text) {
-  try { await QRCode.toCanvas(el('qr-canvas'), text, {width:180,margin:2,color:{dark:'#50d2c1',light:'#1b2429'}}); } catch {}
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -880,7 +957,7 @@ async function loadHLData(address) {
   el('dist-bars').innerHTML = '<div style="color:var(--text3);font-size:11px;text-align:center;padding:40px 0">Loading…</div>';
 
   try {
-    const startTime = Date.now() - 365*24*60*60*1000;
+    const startTime = Date.now() - 3*365*24*60*60*1000; // 3 years
     const res = await fetch(HL_API, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type:'userFillsByTime',user:address,startTime,endTime:Date.now()})});
     if (!res.ok) throw new Error('HTTP '+res.status);
     const fills = await res.json();
@@ -1125,6 +1202,7 @@ async function loadPerpsPortfolio(address) {
 
 // ── Share Card ────────────────────────────────────────────────────────────────
 function updateShareCard(data, address) {
+  if (data) shareData = { ...data, address };
   const sc = el('share-content');
   if (!data) { sc.innerHTML='<div class="share-placeholder">Load a Hyperliquid wallet to see your PnL card.</div>'; return; }
   const {totalPnl,winRate,wins,losses,bestVal,cumPts} = data;
@@ -1160,13 +1238,114 @@ function buildSparkPath(vals, W, H) {
 }
 
 function shareCard() {
-  const addr = el('hl-addr-input').value.trim();
+  const addr = el('hl-addr-input').value.trim() || pubkey || '';
   if (!addr) return;
-  navigator.clipboard.writeText(`https://app.hyperliquid.xyz/portfolio/${addr}`).catch(()=>{});
+  const url = `${location.origin}${location.pathname}?hl=${addr}`;
+  navigator.clipboard.writeText(url).catch(()=>{});
   const btn = event.target;
-  btn.textContent='COPIED!'; setTimeout(()=>btn.textContent='SHARE',1500);
+  btn.textContent = 'COPIED!'; setTimeout(() => btn.textContent = 'SHARE', 1500);
 }
-function downloadCard() { window.open('https://app.hyperliquid.xyz/portfolio/'+el('hl-addr-input').value.trim(),'_blank'); }
+
+async function downloadCard() {
+  if (!shareData) { const btn = event.target; btn.textContent='Load wallet first'; setTimeout(()=>btn.textContent='DOWNLOAD',1500); return; }
+  const { totalPnl, winRate, wins, losses, bestVal, cumPts, address } = shareData;
+  const W = 480, H = 280, DPR = 2;
+  const C = document.createElement('canvas');
+  C.width = W*DPR; C.height = H*DPR;
+  const ctx = C.getContext('2d');
+  ctx.scale(DPR, DPR);
+
+  // BG
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, '#162025'); bg.addColorStop(1, '#0f1a1e');
+  ctx.fillStyle = bg;
+  ctx.beginPath(); ctx.roundRect(0, 0, W, H, 12); ctx.fill();
+
+  // Glow
+  const glow = ctx.createRadialGradient(W-50, -20, 0, W-50, -20, 150);
+  glow.addColorStop(0, 'rgba(80,210,193,0.10)'); glow.addColorStop(1, 'rgba(80,210,193,0)');
+  ctx.fillStyle = glow;
+  ctx.beginPath(); ctx.roundRect(0, 0, W, H, 12); ctx.fill();
+
+  // Border
+  ctx.strokeStyle = 'rgba(80,210,193,0.22)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.roundRect(0.5, 0.5, W-1, H-1, 12); ctx.stroke();
+
+  // Dot + brand
+  ctx.beginPath(); ctx.arc(22, 26, 3.5, 0, Math.PI*2);
+  ctx.fillStyle = '#50d2c1'; ctx.fill();
+  ctx.font = 'bold 12px system-ui,-apple-system,sans-serif';
+  const rdoW = ctx.measureText('RDO').width;
+  ctx.fillStyle = '#f5f1ea'; ctx.fillText('RDO', 32, 31);
+  ctx.fillStyle = '#50d2c1'; ctx.fillText('ONE', 32+rdoW, 31);
+
+  // Address
+  ctx.font = '10px monospace'; ctx.fillStyle = '#555e63';
+  ctx.fillText(address.slice(0,10)+'…'+address.slice(-6), 20, 50);
+
+  // PnL value
+  const pnlColor = totalPnl >= 0 ? '#1fa67d' : '#ed7088';
+  const pnlStr = (totalPnl >= 0 ? '+' : '') + '$' + fmt(totalPnl);
+  ctx.font = 'bold 36px system-ui,-apple-system,sans-serif';
+  ctx.fillStyle = pnlColor; ctx.fillText(pnlStr, 20, 108);
+
+  // Sub label
+  ctx.font = '9px system-ui,-apple-system,sans-serif'; ctx.fillStyle = '#5a666b';
+  ctx.fillText('ALL-TIME REALIZED PNL', 20, 126);
+
+  // Divider
+  ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(20, 134); ctx.lineTo(W-20, 134); ctx.stroke();
+
+  // Sparkline
+  if (cumPts.length > 1) {
+    const vals = cumPts.map(p => p.v);
+    const minV = Math.min(...vals), maxV = Math.max(...vals), rng = maxV-minV||1;
+    const SX=20, SY=142, SW=W-40, SH=48;
+    const px = i => SX + (i/(cumPts.length-1))*SW;
+    const py = v => SY+SH - ((v-minV)/rng)*SH;
+    const aFill = ctx.createLinearGradient(0, SY, 0, SY+SH);
+    const ac0 = totalPnl>=0?'rgba(31,166,125,0.22)':'rgba(237,112,136,0.22)';
+    const ac1 = totalPnl>=0?'rgba(31,166,125,0)':'rgba(237,112,136,0)';
+    aFill.addColorStop(0, ac0); aFill.addColorStop(1, ac1);
+    ctx.beginPath(); ctx.moveTo(px(0), SY+SH);
+    cumPts.forEach((p,i) => ctx.lineTo(px(i), py(p.v)));
+    ctx.lineTo(px(cumPts.length-1), SY+SH); ctx.closePath();
+    ctx.fillStyle = aFill; ctx.fill();
+    ctx.beginPath(); ctx.moveTo(px(0), py(cumPts[0].v));
+    cumPts.forEach((p,i) => { if(i>0) ctx.lineTo(px(i), py(p.v)); });
+    ctx.strokeStyle = pnlColor; ctx.lineWidth = 1.5;
+    ctx.lineJoin='round'; ctx.lineCap='round'; ctx.stroke();
+    ctx.beginPath(); ctx.arc(px(cumPts.length-1), py(vals[vals.length-1]), 3, 0, Math.PI*2);
+    ctx.fillStyle = pnlColor; ctx.fill();
+  }
+
+  // Stats
+  ctx.strokeStyle = 'rgba(255,255,255,0.07)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(20, 206); ctx.lineTo(W-20, 206); ctx.stroke();
+  const stats = [['WIN RATE', winRate], ['TRADES', String(wins+losses)], ['BEST TRADE', '+$'+fmt(bestVal)]];
+  stats.forEach((s, i) => {
+    const cx = 20 + i*(W-40)/3 + (W-40)/6;
+    ctx.textAlign = 'center';
+    ctx.font = '8px system-ui,-apple-system,sans-serif'; ctx.fillStyle = '#5a666b';
+    ctx.fillText(s[0], cx, 220);
+    ctx.font = 'bold 14px system-ui,-apple-system,sans-serif'; ctx.fillStyle = '#e8eaed';
+    ctx.fillText(s[1], cx, 238);
+  });
+  ctx.textAlign = 'left';
+
+  // Footer
+  ctx.font = '9px system-ui,-apple-system,sans-serif'; ctx.fillStyle = '#2a3a40';
+  ctx.fillText('rdoone.com', 20, H-10);
+  ctx.textAlign='right';
+  ctx.fillText(new Date().toLocaleDateString('en-US',{year:'numeric',month:'short',day:'numeric'}), W-20, H-10);
+  ctx.textAlign='left';
+
+  const link = document.createElement('a');
+  link.download = `rdo-pnl-${address.slice(0,6)}.png`;
+  link.href = C.toDataURL('image/png');
+  link.click();
+}
 
 // ── PnL Calendar Modal ────────────────────────────────────────────────────────
 function openCalendarModal()  { el('cal-overlay').classList.add('open'); renderCalendar(); }
