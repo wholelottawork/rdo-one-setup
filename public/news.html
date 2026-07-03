@@ -17,7 +17,6 @@
     ::-webkit-scrollbar-track{background:var(--bg)}
     ::-webkit-scrollbar-thumb{background:var(--bg3);border-radius:3px}
 
-    /* ─── Nav ─────────────────────────────────────────────────────────── */
     #rdo-nav{position:fixed;top:0;left:0;right:0;height:var(--nav);background:var(--bg);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;padding:0 16px;z-index:1000}
     .nav-logo{font-size:13px;font-weight:800;letter-spacing:.5px;color:#f5f1ea;flex-shrink:0}
     .nav-logo span{color:var(--accent)}
@@ -36,10 +35,15 @@
     .refresh-btn:hover{color:var(--accent);border-color:var(--accent)}
     .refresh-btn:disabled{opacity:.4;cursor:not-allowed}
 
-    .filters{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:56px}
+    .filter-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
     .filter-btn{font-size:12px;font-weight:500;color:var(--text3);background:var(--bg2);border:1px solid var(--border);border-radius:20px;padding:5px 14px;cursor:pointer;transition:color .12s,background .12s,border-color .12s;font-family:inherit}
     .filter-btn:hover{color:var(--text);background:var(--bg3)}
     .filter-btn.active{color:var(--accent);border-color:var(--accent);background:rgba(80,210,193,.08)}
+
+    .source-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:44px}
+    .src-btn{font-size:10px;font-weight:600;color:var(--text3);background:var(--bg2);border:1px solid var(--border);border-radius:4px;padding:3px 10px;cursor:pointer;transition:all .12s;font-family:inherit;letter-spacing:.02em}
+    .src-btn:hover{color:var(--text)}
+    .src-btn.active{color:#fff}
 
     .news-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px}
     @media(max-width:480px){.news-grid{grid-template-columns:1fr}}
@@ -53,7 +57,7 @@
     .art-img-ph{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:28px;color:var(--text3)}
     .art-body{padding:12px 14px;flex:1;display:flex;flex-direction:column;gap:7px}
     .art-meta{display:flex;justify-content:space-between;align-items:center;gap:6px}
-    .art-src{font-size:10px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.05em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .art-src{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     .art-time{font-size:10px;color:var(--text3);white-space:nowrap;flex-shrink:0}
     .art-title{font-size:13px;font-weight:600;line-height:1.45;color:var(--text);transition:color .15s;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
     .art-excerpt{font-size:11px;color:var(--text3);line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
@@ -72,6 +76,9 @@
     #load-more-wrap{margin-top:20px;text-align:center;display:none}
     .load-more-btn{background:var(--bg2);border:1px solid var(--border);color:var(--text2);padding:9px 28px;border-radius:var(--r);cursor:pointer;font-size:12px;font-weight:500;font-family:inherit;transition:border-color .15s,color .15s}
     .load-more-btn:hover{border-color:var(--accent);color:var(--accent)}
+
+    .feed-status{font-size:10px;color:var(--text3);margin-bottom:8px}
+    .feed-status span{color:var(--accent)}
   </style>
 </head>
 <body>
@@ -93,36 +100,52 @@
       <button class="refresh-btn" id="refresh-btn" onclick="refresh()">Refresh</button>
     </div>
   </div>
-  <div class="filters" id="filters"></div>
+  <div class="filter-row" id="cat-filters"></div>
+  <div class="source-row" id="src-filters"></div>
+  <div class="feed-status" id="feed-status"></div>
   <div class="news-grid" id="news-grid"></div>
   <div id="load-more-wrap"><button class="load-more-btn" onclick="showMore()">Load More</button></div>
 </main>
 
 <script>
-// ─── Config: category → Cointelegraph RSS path (proxied via /ctnews) ────────
-const CATS = [
-  { id: 'all',        label: 'All',        path: '/rss' },
-  { id: 'bitcoin',    label: 'Bitcoin',    path: '/tags/bitcoin/rss' },
-  { id: 'ethereum',   label: 'Ethereum',   path: '/tags/ethereum/rss' },
-  { id: 'solana',     label: 'Solana',     path: '/tags/solana/rss' },
-  { id: 'market',     label: 'Market',     path: '/category/market-analysis/rss' },
-  { id: 'defi',       label: 'DeFi',       path: '/tags/defi/rss' },
-  { id: 'altcoins',   label: 'Altcoins',   path: '/tags/altcoin/rss' },
-  { id: 'nft',        label: 'NFT',        path: '/tags/nft/rss' },
-  { id: 'regulation', label: 'Regulation', path: '/tags/regulations/rss' },
+// ─── Sources ─────────────────────────────────────────────────────────────────
+const SOURCES = [
+  { id: 'ct',   name: 'CoinTelegraph', proxy: '/ctnews',   feed: '/rss',                    color: '#50d2c1' },
+  { id: 'cd',   name: 'CoinDesk',      proxy: '/cdnews',   feed: '/arc/outboundfeeds/rss/', color: '#f7931a' },
+  { id: 'dec',  name: 'Decrypt',       proxy: '/decnews',  feed: '/feed',                   color: '#7b68ee' },
+  { id: 'blk',  name: 'The Block',     proxy: '/blknews',  feed: '/rss',                    color: '#3498db' },
+  { id: 'bwk',  name: 'Blockworks',    proxy: '/bwknews',  feed: '/feed',                   color: '#e74c3c' },
+  { id: 'btcm', name: 'Bitcoin Mag',   proxy: '/btcmnews', feed: '/.rss/full/',              color: '#f39c12' },
+  { id: 'bein', name: 'BeInCrypto',    proxy: '/beinnews', feed: '/feed/',                  color: '#27ae60' },
+  { id: 'btci', name: 'Bitcoinist',    proxy: '/btcinews', feed: '/feed/',                  color: '#9b59b6' },
 ];
-const PAGE_SIZE = 15;
 
-// ─── State ──────────────────────────────────────────────────────────────────
-const cache = {};
-let articles = [];
-let shown = 0;
-let activeCat = CATS[0];
-let loading = false;
+// ─── Categories (keyword-based) ──────────────────────────────────────────────
+const CATS = [
+  { id: 'all',        label: 'All',        kw: [] },
+  { id: 'bitcoin',    label: 'Bitcoin',    kw: ['bitcoin', 'btc'] },
+  { id: 'ethereum',   label: 'Ethereum',   kw: ['ethereum', 'eth'] },
+  { id: 'solana',     label: 'Solana',     kw: ['solana', 'sol'] },
+  { id: 'defi',       label: 'DeFi',       kw: ['defi', 'decentralized finance', 'yield', 'amm'] },
+  { id: 'altcoins',   label: 'Altcoins',   kw: ['altcoin', 'altcoins', 'xrp', 'cardano', 'polygon', 'avalanche'] },
+  { id: 'nft',        label: 'NFT',        kw: ['nft', 'non-fungible'] },
+  { id: 'regulation', label: 'Regulation', kw: ['regulation', 'sec', 'cftc', 'legal', 'compliance', 'congress', 'ban'] },
+];
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
-const el   = id => document.getElementById(id);
-const set  = (id, v) => { const e = el(id); if (e) e.textContent = v; };
+const PAGE_SIZE = 18;
+
+// ─── State ───────────────────────────────────────────────────────────────────
+let allArticles  = [];
+let cacheLoaded  = false;
+let activeCat    = CATS[0];
+let activeSrcIds = new Set(SOURCES.map(s => s.id));
+let shown        = 0;
+let loading      = false;
+let visibleArticles = [];
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+const el  = id => document.getElementById(id);
+const set = (id, v) => { const e = el(id); if (e) e.textContent = v; };
 
 function timeAgo(dateStr) {
   const d = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
@@ -137,32 +160,25 @@ function getText(item, tagName) {
   return node?.textContent?.trim() || '';
 }
 
-// Upgrade image URL to the highest available resolution
 function upgradeImageUrl(url) {
   if (!url) return url;
-  // CoinTelegraph CDN: /images/NNN_BASE64 — swap width to 1200
-  if (url.includes('images.cointelegraph.com')) {
+  if (url.includes('images.cointelegraph.com'))
     url = url.replace(/\/images\/\d+_/, '/images/1200_');
-  }
-  // Cloudinary: w_NNN,h_NNN or standalone w_NNN
   if (url.includes('cloudinary.com')) {
     url = url.replace(/\/w_\d+,h_\d+/, '/w_1200,h_675');
     url = url.replace(/\/w_\d+(?=,|\/|$)/, '/w_1200');
   }
-  // WordPress thumbnail size suffix: filename-300x200.jpg → filename.jpg
   url = url.replace(/(-\d{2,4}x\d{2,4})(\.[a-zA-Z0-9]{2,5})(\?|$)/, '$2$3');
-  // Query-string size hints
   url = url.replace(/([?&]w=)\d+/, (_m, p) => p + '1200');
   url = url.replace(/([?&]width=)\d+/, (_m, p) => p + '1200');
   url = url.replace(/([?&]resize=)\d+,\d+/, (_m, p) => p + '1200,675');
   return url;
 }
 
-function parseRSS(xmlText) {
+function parseRSS(xmlText, source) {
   const doc   = new DOMParser().parseFromString(xmlText, 'text/xml');
   const items = doc.querySelectorAll('item');
   return Array.from(items).map(item => {
-    // Pick the largest media:content by width attribute; fall back to media:thumbnail
     let img = '';
     const allMC = Array.from(item.getElementsByTagName('media:content'))
       .filter(n => {
@@ -186,13 +202,15 @@ function parseRSS(xmlText) {
     const cats = Array.from(item.getElementsByTagName('category')).map(c => c.textContent.trim()).filter(Boolean);
     const desc = getText(item, 'description').replace(/<[^>]*>/g, '').trim();
     return {
-      title:   getText(item, 'title'),
-      link:    getText(item, 'link'),
-      pubDate: getText(item, 'pubDate'),
-      author:  getText(item, 'dc:creator') || getText(item, 'author'),
+      title:       getText(item, 'title'),
+      link:        getText(item, 'link'),
+      pubDate:     getText(item, 'pubDate'),
       desc,
       img,
-      cats: cats.slice(0, 3),
+      cats:        cats.slice(0, 3),
+      sourceId:    source.id,
+      source:      source.name,
+      sourceColor: source.color,
     };
   });
 }
@@ -221,7 +239,7 @@ function articleCard(a) {
     </div>
     <div class="art-body">
       <div class="art-meta">
-        <span class="art-src">${a.author || 'Cointelegraph'}</span>
+        <span class="art-src" style="color:${a.sourceColor}">${a.source}</span>
         <span class="art-time">${a.pubDate ? timeAgo(a.pubDate) : ''}</span>
       </div>
       <div class="art-title">${a.title}</div>
@@ -231,42 +249,86 @@ function articleCard(a) {
   </div>`;
 }
 
-// ─── Fetch ───────────────────────────────────────────────────────────────────
-async function fetchCat(cat) {
-  if (cache[cat.id]) return cache[cat.id];
-  const res = await fetch('/ctnews' + cat.path);
-  if (!res.ok) throw new Error('HTTP ' + res.status);
-  const xml  = await res.text();
-  const items = parseRSS(xml);
-  cache[cat.id] = items;
-  return items;
+// ─── Fetch all sources in parallel ───────────────────────────────────────────
+async function fetchAll() {
+  if (cacheLoaded) return allArticles;
+  const results = await Promise.allSettled(
+    SOURCES.map(s =>
+      fetch(s.proxy + s.feed)
+        .then(r => { if (!r.ok) throw new Error(r.status); return r.text(); })
+        .then(xml => parseRSS(xml, s))
+    )
+  );
+  const loaded = [], failed = [];
+  results.forEach((r, i) => {
+    if (r.status === 'fulfilled') { loaded.push(...r.value); }
+    else { failed.push(SOURCES[i].name); }
+  });
+
+  // Sort by date desc, deduplicate by normalized title
+  loaded.sort((a, b) => new Date(b.pubDate) - new Date(a.pubDate));
+  const seen = new Set();
+  allArticles = loaded.filter(a => {
+    const key = a.title.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 60);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  cacheLoaded = true;
+  const statusEl = el('feed-status');
+  if (statusEl) {
+    const ok = SOURCES.length - failed.length;
+    statusEl.innerHTML = `<span>${ok}</span>/${SOURCES.length} sources loaded · ${allArticles.length} articles` +
+      (failed.length ? ` · failed: ${failed.join(', ')}` : '');
+  }
+  return allArticles;
+}
+
+// ─── Filter ──────────────────────────────────────────────────────────────────
+function applyFilters(articles) {
+  let result = articles;
+
+  if (activeCat.kw.length) {
+    const kw = activeCat.kw;
+    result = result.filter(a => {
+      const text = (a.title + ' ' + a.desc + ' ' + a.cats.join(' ')).toLowerCase();
+      return kw.some(k => text.includes(k));
+    });
+  }
+
+  if (activeSrcIds.size < SOURCES.length) {
+    result = result.filter(a => activeSrcIds.has(a.sourceId));
+  }
+
+  return result;
 }
 
 // ─── Render ──────────────────────────────────────────────────────────────────
-function render(items) {
-  articles = items;
+function render(filtered) {
+  visibleArticles = filtered;
   shown = 0;
-  const next = Math.min(PAGE_SIZE, articles.length);
+  const next = Math.min(PAGE_SIZE, visibleArticles.length);
   const grid = el('news-grid');
-  if (!articles.length) {
+  if (!visibleArticles.length) {
     grid.innerHTML = `<div class="state-box"><div class="state-icon">📭</div><div>No articles found.</div></div>`;
     el('load-more-wrap').style.display = 'none';
     return;
   }
-  grid.innerHTML = articles.slice(0, next).map(articleCard).join('');
+  grid.innerHTML = visibleArticles.slice(0, next).map(articleCard).join('');
   shown = next;
-  el('load-more-wrap').style.display = shown < articles.length ? 'block' : 'none';
+  el('load-more-wrap').style.display = shown < visibleArticles.length ? 'block' : 'none';
 }
 
 function showMore() {
-  const next = Math.min(shown + PAGE_SIZE, articles.length);
-  el('news-grid').innerHTML = articles.slice(0, next).map(articleCard).join('');
+  const next = Math.min(shown + PAGE_SIZE, visibleArticles.length);
+  el('news-grid').innerHTML = visibleArticles.slice(0, next).map(articleCard).join('');
   shown = next;
-  el('load-more-wrap').style.display = shown < articles.length ? 'block' : 'none';
+  el('load-more-wrap').style.display = shown < visibleArticles.length ? 'block' : 'none';
 }
 
-// ─── Load category ────────────────────────────────────────────────────────────
-async function loadCat(cat) {
+// ─── Load ────────────────────────────────────────────────────────────────────
+async function load() {
   if (loading) return;
   loading = true;
   el('news-grid').innerHTML = skeletons(9);
@@ -274,9 +336,9 @@ async function loadCat(cat) {
   const btn = el('refresh-btn');
   if (btn) btn.disabled = true;
   try {
-    const items = await fetchCat(cat);
+    const all = await fetchAll();
     set('update-ts', 'Updated ' + new Date().toLocaleTimeString());
-    render(items);
+    render(applyFilters(all));
   } catch (e) {
     el('news-grid').innerHTML = `<div class="state-box"><div class="state-icon">⚠️</div><div>Failed to load: ${e.message}</div></div>`;
   }
@@ -285,28 +347,58 @@ async function loadCat(cat) {
 }
 
 async function refresh() {
-  delete cache[activeCat.id];
-  await loadCat(activeCat);
+  cacheLoaded = false;
+  allArticles = [];
+  el('feed-status').textContent = '';
+  await load();
 }
 
-// ─── Filters ─────────────────────────────────────────────────────────────────
+// ─── Build filters ───────────────────────────────────────────────────────────
 function buildFilters() {
-  el('filters').innerHTML = CATS.map(c =>
+  // Category buttons
+  el('cat-filters').innerHTML = CATS.map(c =>
     `<button class="filter-btn${c.id === activeCat.id ? ' active' : ''}" data-id="${c.id}">${c.label}</button>`
   ).join('');
-  el('filters').addEventListener('click', e => {
+  el('cat-filters').addEventListener('click', e => {
     const btn = e.target.closest('.filter-btn');
     if (!btn || loading) return;
     const cat = CATS.find(c => c.id === btn.dataset.id);
     if (!cat || cat.id === activeCat.id) return;
     activeCat = cat;
-    document.querySelectorAll('.filter-btn').forEach(b => b.classList.toggle('active', b.dataset.id === cat.id));
-    loadCat(cat);
+    document.querySelectorAll('#cat-filters .filter-btn').forEach(b => b.classList.toggle('active', b.dataset.id === cat.id));
+    render(applyFilters(allArticles));
+  });
+
+  // Source toggle buttons
+  el('src-filters').innerHTML = SOURCES.map(s =>
+    `<button class="src-btn active" data-sid="${s.id}" style="border-color:${s.color};color:${s.color};background:${s.color}22">${s.name}</button>`
+  ).join('');
+  el('src-filters').addEventListener('click', e => {
+    const btn = e.target.closest('.src-btn');
+    if (!btn) return;
+    const sid = btn.dataset.sid;
+    if (activeSrcIds.has(sid)) {
+      if (activeSrcIds.size === 1) return; // keep at least one
+      activeSrcIds.delete(sid);
+      btn.classList.remove('active');
+      const s = SOURCES.find(x => x.id === sid);
+      btn.style.background = 'var(--bg2)';
+      btn.style.color = 'var(--text3)';
+      btn.style.borderColor = 'var(--border)';
+    } else {
+      activeSrcIds.add(sid);
+      btn.classList.add('active');
+      const s = SOURCES.find(x => x.id === sid);
+      btn.style.background = s.color + '22';
+      btn.style.color = s.color;
+      btn.style.borderColor = s.color;
+    }
+    render(applyFilters(allArticles));
   });
 }
 
 buildFilters();
-loadCat(activeCat);
+load();
 </script>
 </body>
 </html>

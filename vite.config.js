@@ -29,6 +29,48 @@ export default defineConfig({
         rewrite: path => path.replace(/^\/ctnews/, ''),
         headers: { 'User-Agent': 'Mozilla/5.0 (compatible; RDO-ONE/1.0)' },
       },
+      '/cdnews': {
+        target: 'https://www.coindesk.com',
+        changeOrigin: true,
+        rewrite: path => path.replace(/^\/cdnews/, ''),
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; RDO-ONE/1.0)' },
+      },
+      '/decnews': {
+        target: 'https://decrypt.co',
+        changeOrigin: true,
+        rewrite: path => path.replace(/^\/decnews/, ''),
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; RDO-ONE/1.0)' },
+      },
+      '/blknews': {
+        target: 'https://www.theblock.co',
+        changeOrigin: true,
+        rewrite: path => path.replace(/^\/blknews/, ''),
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; RDO-ONE/1.0)' },
+      },
+      '/bwknews': {
+        target: 'https://blockworks.co',
+        changeOrigin: true,
+        rewrite: path => path.replace(/^\/bwknews/, ''),
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; RDO-ONE/1.0)' },
+      },
+      '/btcmnews': {
+        target: 'https://bitcoinmagazine.com',
+        changeOrigin: true,
+        rewrite: path => path.replace(/^\/btcmnews/, ''),
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; RDO-ONE/1.0)' },
+      },
+      '/beinnews': {
+        target: 'https://beincrypto.com',
+        changeOrigin: true,
+        rewrite: path => path.replace(/^\/beinnews/, ''),
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; RDO-ONE/1.0)' },
+      },
+      '/btcinews': {
+        target: 'https://bitcoinist.com',
+        changeOrigin: true,
+        rewrite: path => path.replace(/^\/btcinews/, ''),
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; RDO-ONE/1.0)' },
+      },
       '/hl': {
         target: 'https://api.hyperliquid.xyz',
         changeOrigin: true,
