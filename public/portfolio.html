@@ -366,6 +366,10 @@
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 2v20M2 12h20"/></svg>
       Connect EVM Wallet
     </button>
+    <button class="hl-evm-btn" id="add-network-btn" onclick="addHyperEVM()" title="Add HyperEVM network to your wallet">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg>
+      Add HyperEVM
+    </button>
   </div>
 
   <!-- PnL section header: title + controls -->
@@ -790,6 +794,40 @@ function skeleRows(n) {
 // ══════════════════════════════════════════════════════════════════════════════
 async function generateQR(text) {
   try { await QRCode.toCanvas(el('qr-canvas'), text, {width:180,margin:2,color:{dark:'#50d2c1',light:'#1b2429'}}); } catch {}
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ADD HYPEREVM NETWORK
+// ══════════════════════════════════════════════════════════════════════════════
+async function addHyperEVM() {
+  const provider = window.phantom?.ethereum ?? window.ethereum;
+  const btn = el('add-network-btn');
+  if (!provider) {
+    if (btn) { btn.textContent = 'No wallet found'; btn.style.color = 'var(--red)'; setTimeout(() => { btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg> Add HyperEVM'; btn.style.color = ''; }, 3000); }
+    return;
+  }
+  try {
+    await provider.request({
+      method: 'wallet_addEthereumChain',
+      params: [{
+        chainId:         '0x3E6',
+        chainName:       'HyperEVM',
+        nativeCurrency:  { name: 'HYPE', symbol: 'HYPE', decimals: 18 },
+        rpcUrls:         ['https://rpc.hyperliquid.xyz/evm'],
+        blockExplorerUrls: ['https://hyperevm-explorer.hyperliquid.xyz'],
+      }],
+    });
+    if (btn) {
+      btn.innerHTML = '<svg width="8" height="8" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4" fill="#1fa67d"/></svg> HyperEVM Added';
+      btn.style.borderColor = 'var(--green)'; btn.style.color = 'var(--green)';
+    }
+  } catch (e) {
+    if (e.code !== 4001 && btn) {
+      btn.textContent = 'Failed';
+      btn.style.color = 'var(--red)';
+      setTimeout(() => { btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg> Add HyperEVM'; btn.style.color = ''; }, 3000);
+    }
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
