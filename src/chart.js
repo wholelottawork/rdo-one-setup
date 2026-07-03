@@ -14,8 +14,8 @@ const THEME = {
     fontSize:   11,
   },
   grid: {
-    vertLines: { color: '#1b2429', style: LineStyle.Solid },
-    horzLines: { color: '#1b2429', style: LineStyle.Solid },
+    vertLines: { visible: false },
+    horzLines: { visible: false },
   },
   crosshair: {
     mode: CrosshairMode.Normal,
