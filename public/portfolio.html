@@ -24,7 +24,7 @@
     ::-webkit-scrollbar-track{background:var(--bg)}
     ::-webkit-scrollbar-thumb{background:var(--bg3);border-radius:3px}
 
-    /* ─── Nav ──────────────────────────────────────────────────────────────── */
+    /* ─── Nav ──────────────────────────────────────────────────────────── */
     #rdo-nav{position:fixed;top:0;left:0;right:0;height:var(--nav);background:var(--bg);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;padding:0 16px;z-index:1000}
     .nav-logo{font-size:13px;font-weight:800;letter-spacing:.5px;color:#f5f1ea;flex-shrink:0}
     .nav-logo span{color:var(--accent)}
@@ -35,92 +35,151 @@
 
     main{max-width:1100px;margin:0 auto;padding:0 16px 60px;padding-top:calc(var(--nav) + 28px)}
 
-    /* ─── Connect screen ───────────────────────────────────────────────────── */
-    #connect-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:calc(100vh - var(--nav));gap:18px;text-align:center;padding:40px}
-    .phantom-logo{width:68px;height:68px;border-radius:18px;background:linear-gradient(135deg,#534bb1,#551bf9);display:flex;align-items:center;justify-content:center}
-    .phantom-logo svg{width:44px;height:44px}
-    .connect-title{font-size:22px;font-weight:700;letter-spacing:-.02em}
-    .connect-sub{font-size:13px;color:var(--text3);max-width:310px;line-height:1.6}
-    .connect-btn{display:inline-flex;align-items:center;gap:8px;background:#ab9ff2;color:#1a1044;font-weight:700;font-size:13px;padding:11px 26px;border-radius:var(--r);cursor:pointer;border:none;font-family:inherit;transition:opacity .15s,transform .1s}
-    .connect-btn:hover{opacity:.9;transform:translateY(-1px)}
-    .connect-btn:active{transform:none}
-    .connect-btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
-    .install-hint{font-size:12px;color:var(--text3);display:none}
+    /* ─── Divider ───────────────────────────────────────────────────────── */
+    .section-divider{display:flex;align-items:center;gap:12px;margin:28px 0 20px}
+    .section-divider span{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.1em;white-space:nowrap}
+    .section-divider::before,.section-divider::after{content:'';flex:1;height:1px;background:var(--border)}
+
+    /* ─── Connect screen ─────────────────────────────────────────────────── */
+    #connect-screen{display:flex;flex-direction:column;align-items:center;gap:16px;text-align:center;padding:32px 20px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);margin-bottom:0}
+    .phantom-logo{width:56px;height:56px;border-radius:14px;background:linear-gradient(135deg,#534bb1,#551bf9);display:flex;align-items:center;justify-content:center}
+    .phantom-logo svg{width:36px;height:36px}
+    .connect-title{font-size:16px;font-weight:700}
+    .connect-sub{font-size:12px;color:var(--text3);max-width:280px}
+    .connect-btn{display:inline-flex;align-items:center;gap:7px;background:#ab9ff2;color:#1a1044;font-weight:700;font-size:12px;padding:9px 22px;border-radius:var(--r);cursor:pointer;border:none;font-family:inherit;transition:opacity .15s}
+    .connect-btn:hover{opacity:.9}
+    .connect-btn:disabled{opacity:.5;cursor:not-allowed}
+    .install-hint{font-size:11px;color:var(--text3);display:none}
     .install-hint a{color:var(--accent)}
 
-    /* ─── Portfolio screen ─────────────────────────────────────────────────── */
+    /* ─── Portfolio screen ───────────────────────────────────────────────── */
     #portfolio-screen{display:none}
-
-    .pf-topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;gap:12px;flex-wrap:wrap}
+    .pf-topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:12px;flex-wrap:wrap}
     .addr-row{display:flex;align-items:center;gap:8px}
-    .addr-chip{font-size:11px;font-weight:600;font-family:monospace;color:var(--text2);background:var(--bg2);border:1px solid var(--border);border-radius:20px;padding:4px 12px;cursor:pointer;transition:border-color .12s}
+    .addr-chip{font-size:11px;font-weight:600;font-family:monospace;color:var(--text2);background:var(--bg2);border:1px solid var(--border);border-radius:20px;padding:4px 12px;cursor:pointer;transition:border-color .12s,color .12s}
     .addr-chip:hover{border-color:var(--accent);color:var(--accent)}
-    .disc-btn{font-size:11px;color:var(--text3);background:transparent;border:none;cursor:pointer;font-family:inherit;padding:3px 6px;border-radius:3px;transition:color .12s,background .12s}
+    .disc-btn{font-size:11px;color:var(--text3);background:transparent;border:none;cursor:pointer;font-family:inherit;padding:3px 8px;border-radius:3px;transition:color .12s,background .12s}
     .disc-btn:hover{color:var(--red);background:rgba(237,112,136,.08)}
     .refresh-btn{font-size:11px;font-weight:600;color:var(--text3);background:var(--bg2);border:1px solid var(--border);border-radius:4px;padding:5px 12px;cursor:pointer;font-family:inherit;transition:color .12s,border-color .12s}
     .refresh-btn:hover{color:var(--accent);border-color:var(--accent)}
 
-    /* ─── Total value card ─────────────────────────────────────────────────── */
-    .total-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:22px 24px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
-    .total-lbl{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px}
-    .total-val{font-size:30px;font-weight:700;letter-spacing:-.03em}
-    .total-sub{font-size:11px;color:var(--text3);margin-top:3px}
-
-    /* ─── Action buttons ───────────────────────────────────────────────────── */
+    /* ─── Total value card ───────────────────────────────────────────────── */
+    .total-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:20px 22px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+    .total-lbl{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px}
+    .total-val{font-size:28px;font-weight:700;letter-spacing:-.03em}
+    .total-sub{font-size:11px;color:var(--text3);margin-top:2px}
     .action-bar{display:flex;gap:8px;flex-wrap:wrap}
-    .act-btn{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:9px 20px;border-radius:var(--r);cursor:pointer;border:1px solid transparent;font-family:inherit;transition:all .15s;white-space:nowrap}
-    .act-btn svg{flex-shrink:0}
+    .act-btn{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:8px 18px;border-radius:var(--r);cursor:pointer;border:1px solid transparent;font-family:inherit;transition:all .15s;white-space:nowrap}
     .act-btn.fill{background:var(--accent);color:#0f1a1e;border-color:var(--accent)}
     .act-btn.fill:hover{opacity:.88}
     .act-btn.outline{background:transparent;color:var(--text2);border-color:var(--border)}
     .act-btn.outline:hover{border-color:var(--accent);color:var(--accent)}
 
-    /* ─── Assets table ─────────────────────────────────────────────────────── */
+    /* ─── Assets table ───────────────────────────────────────────────────── */
     .assets-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
-    .assets-hdr{display:grid;grid-template-columns:1fr 110px 110px 110px;padding:10px 16px;border-bottom:1px solid var(--border);font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.07em}
+    .assets-hdr{display:grid;grid-template-columns:1fr 110px 110px 110px;padding:9px 16px;border-bottom:1px solid var(--border);font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.07em}
     .assets-hdr span:not(:first-child){text-align:right}
     .asset-row{display:grid;grid-template-columns:1fr 110px 110px 110px;padding:11px 16px;border-bottom:1px solid var(--border);align-items:center;transition:background .1s}
     .asset-row:last-child{border-bottom:none}
     .asset-row:hover{background:rgba(255,255,255,.025)}
     .asset-left{display:flex;align-items:center;gap:10px;min-width:0}
-    .token-icon{width:32px;height:32px;border-radius:50%;background:var(--bg3);object-fit:cover;flex-shrink:0}
-    .token-icon-ph{width:32px;height:32px;border-radius:50%;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--text2);flex-shrink:0}
-    .token-name{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .token-sym{font-size:11px;color:var(--text3);margin-top:1px}
+    .token-icon{width:30px;height:30px;border-radius:50%;background:var(--bg3);object-fit:cover;flex-shrink:0}
+    .token-icon-ph{width:30px;height:30px;border-radius:50%;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--text2);flex-shrink:0}
+    .token-name{font-size:12px;font-weight:600}
+    .token-sym{font-size:10px;color:var(--text3);margin-top:1px}
     .cell{text-align:right;font-size:12px;font-variant-numeric:tabular-nums;color:var(--text2)}
     .cell.val{color:var(--text);font-weight:600}
+    .empty-assets{padding:40px 24px;text-align:center;color:var(--text3);font-size:12px}
 
-    .empty-assets{padding:52px 24px;text-align:center;color:var(--text3);font-size:12px}
-    .loading-msg{padding:20px 16px;color:var(--text3);font-size:12px}
-
-    /* ─── Skeleton ─────────────────────────────────────────────────────────── */
+    /* ─── Skeleton ───────────────────────────────────────────────────────── */
     .sk{background:var(--bg3);border-radius:3px;animation:pulse 1.5s ease-in-out infinite}
-    .sk-circle{border-radius:50%}
     @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
 
-    /* ─── Modal ────────────────────────────────────────────────────────────── */
+    /* ─── Trader PnL section ─────────────────────────────────────────────── */
+    .hl-connect-bar{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:16px 18px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+    .hl-addr-input{flex:1;min-width:240px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:7px 12px;font-size:12px;font-family:monospace;color:var(--text);outline:none;transition:border-color .12s}
+    .hl-addr-input:focus{border-color:var(--accent)}
+    .hl-addr-input::placeholder{color:var(--text3);font-family:'Inter',sans-serif}
+    .hl-load-btn{font-size:12px;font-weight:600;color:#0f1a1e;background:var(--accent);border:none;border-radius:4px;padding:7px 16px;cursor:pointer;font-family:inherit;transition:opacity .15s;white-space:nowrap}
+    .hl-load-btn:hover{opacity:.88}
+    .hl-evm-btn{font-size:12px;font-weight:600;color:var(--text2);background:transparent;border:1px solid var(--border);border-radius:4px;padding:7px 14px;cursor:pointer;font-family:inherit;transition:all .15s;display:flex;align-items:center;gap:6px;white-space:nowrap}
+    .hl-evm-btn:hover{border-color:var(--accent);color:var(--accent)}
+
+    /* ─── Stat cards ─────────────────────────────────────────────────────── */
+    .pnl-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
+    @media(max-width:700px){.pnl-stats{grid-template-columns:repeat(2,1fr)}}
+    @media(max-width:440px){.pnl-stats{grid-template-columns:1fr}}
+    .stat-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:14px 16px}
+    .stat-lbl{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px}
+    .stat-val{font-size:20px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+    .stat-sub{font-size:10px;color:var(--text3);margin-top:3px}
+    .stat-val.pos{color:var(--green)}
+    .stat-val.neg{color:var(--red)}
+
+    /* ─── PnL Chart ──────────────────────────────────────────────────────── */
+    .chart-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:16px 18px;margin-bottom:14px}
+    .chart-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+    .chart-title{font-size:12px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em}
+    .chart-total{font-size:13px;font-weight:700}
+    #pnl-chart-svg{width:100%;height:180px;display:block}
+
+    /* ─── PnL Calendar ───────────────────────────────────────────────────── */
+    .calendar-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:16px 18px;margin-bottom:14px}
+    .calendar-hdr{font-size:12px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between}
+    .cal-nav{display:flex;align-items:center;gap:8px}
+    .cal-nav-btn{background:none;border:1px solid var(--border);color:var(--text3);width:24px;height:24px;border-radius:3px;cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;transition:all .12s}
+    .cal-nav-btn:hover{border-color:var(--accent);color:var(--accent)}
+    .cal-month-lbl{font-size:11px;font-weight:600;color:var(--text2);min-width:80px;text-align:center}
+    .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
+    .cal-day-hdr{font-size:9px;font-weight:700;color:var(--text3);text-align:center;padding:3px 0;text-transform:uppercase}
+    .cal-day{min-height:32px;border-radius:3px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:9px;gap:1px;position:relative}
+    .cal-day.empty{background:transparent}
+    .cal-day.today{border:1px solid var(--accent)}
+    .cal-day-num{font-size:9px;color:var(--text3);font-weight:500}
+    .cal-day-pnl{font-size:8px;font-weight:700}
+    .cal-day.pos{background:rgba(31,166,125,.18)}
+    .cal-day.pos .cal-day-pnl{color:var(--green)}
+    .cal-day.neg{background:rgba(237,112,136,.18)}
+    .cal-day.neg .cal-day-pnl{color:var(--red)}
+    .cal-day.zero{background:var(--bg3)}
+    .cal-day.zero .cal-day-pnl{color:var(--text3)}
+
+    /* ─── Recent trades ──────────────────────────────────────────────────── */
+    .trades-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
+    .trades-title{padding:12px 16px;border-bottom:1px solid var(--border);font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;display:flex;align-items:center;justify-content:space-between}
+    .trades-hdr{display:grid;grid-template-columns:120px 1fr 90px 90px 90px 100px;padding:8px 14px;border-bottom:1px solid var(--border);font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em}
+    .trades-hdr span:not(:first-child){text-align:right}
+    .trade-row{display:grid;grid-template-columns:120px 1fr 90px 90px 90px 100px;padding:10px 14px;border-bottom:1px solid var(--border);align-items:center;transition:background .1s}
+    .trade-row:last-child{border-bottom:none}
+    .trade-row:hover{background:rgba(255,255,255,.02)}
+    .trade-coin{font-size:12px;font-weight:600}
+    .trade-dir{font-size:10px;font-weight:600;padding:2px 6px;border-radius:3px;white-space:nowrap}
+    .trade-dir.long{background:rgba(31,166,125,.15);color:var(--green)}
+    .trade-dir.short{background:rgba(237,112,136,.15);color:var(--red)}
+    .trade-cell{font-size:11px;color:var(--text2);text-align:right;font-variant-numeric:tabular-nums}
+    .trade-pnl{font-size:12px;font-weight:700;text-align:right;font-variant-numeric:tabular-nums}
+    .trade-pnl.pos{color:var(--green)}
+    .trade-pnl.neg{color:var(--red)}
+    .hl-placeholder{padding:40px 24px;text-align:center;color:var(--text3);font-size:12px;line-height:1.7}
+
+    /* ─── Modal ──────────────────────────────────────────────────────────── */
     .overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:2000;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(2px)}
     .overlay.open{display:flex}
     .modal{background:var(--bg2);border:1px solid var(--border);border-radius:10px;width:100%;max-width:460px;display:flex;flex-direction:column;overflow:hidden;max-height:90vh}
-    .modal-hdr{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border);flex-shrink:0}
+    .modal-hdr{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--border);flex-shrink:0}
     .modal-title{font-size:14px;font-weight:700}
-    .modal-x{background:none;border:none;color:var(--text3);font-size:20px;line-height:1;cursor:pointer;padding:2px 4px;font-family:inherit;transition:color .12s}
+    .modal-x{background:none;border:none;color:var(--text3);font-size:20px;line-height:1;cursor:pointer;padding:2px 4px;transition:color .12s}
     .modal-x:hover{color:var(--text)}
     .modal-body{padding:20px;overflow-y:auto;flex:1}
-
-    /* ─── Deposit modal content ────────────────────────────────────────────── */
     .dep-label{font-size:11px;color:var(--text3);margin-bottom:14px;line-height:1.6}
     .dep-label strong{color:var(--text)}
-    .qr-wrap{display:flex;justify-content:center;padding:4px 0 16px}
+    .qr-wrap{display:flex;justify-content:center;padding:4px 0 14px}
     #qr-canvas{border-radius:8px;display:block}
-    .dep-addr{font-family:monospace;font-size:11px;word-break:break-all;background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);padding:11px 14px;color:var(--text2);line-height:1.7;margin-bottom:12px}
-    .copy-btn{width:100%;padding:10px;border-radius:var(--r);background:var(--accent);color:#0f1a1e;font-weight:700;font-size:13px;border:none;cursor:pointer;font-family:inherit;transition:opacity .15s,background .2s}
+    .dep-addr{font-family:monospace;font-size:11px;word-break:break-all;background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);padding:10px 14px;color:var(--text2);line-height:1.7;margin-bottom:12px}
+    .copy-btn{width:100%;padding:9px;border-radius:var(--r);background:var(--accent);color:#0f1a1e;font-weight:700;font-size:13px;border:none;cursor:pointer;font-family:inherit;transition:opacity .15s,background .2s}
     .copy-btn:hover{opacity:.88}
     .copy-btn.ok{background:var(--green)}
     .dep-warn{font-size:10px;color:var(--text3);margin-top:12px;line-height:1.6;text-align:center}
-
-    /* ─── Swap / Convert modal ─────────────────────────────────────────────── */
-    #swap-modal .modal, #convert-modal .modal{max-width:520px}
     .jup-wrap{border-radius:var(--r);overflow:hidden;min-height:480px;background:var(--bg)}
   </style>
 </head>
@@ -137,30 +196,27 @@
 
 <main>
 
-  <!-- ── Connect screen ─────────────────────────────────────────────────── -->
+  <!-- ══ WALLET SECTION ════════════════════════════════════════════════════ -->
+
+  <!-- Connect screen -->
   <div id="connect-screen">
     <div class="phantom-logo">
-      <svg viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M110.584 64.9142H99.142C99.142 41.8864 80.6366 23.0625 57.9584 23.0625C35.5556 23.0625 17.2065 41.508 16.8677 64.0735C16.5221 87.0972 35.3756 106 58.2219 106H63.3743C85.6702 106 116.581 88.3047 116.581 66.8896C116.581 65.6864 115.684 64.9142 110.584 64.9142Z" fill="white"/>
-      </svg>
+      <svg viewBox="0 0 128 128" fill="none"><path d="M110.584 64.9142H99.142C99.142 41.8864 80.6366 23.0625 57.9584 23.0625C35.5556 23.0625 17.2065 41.508 16.8677 64.0735C16.5221 87.0972 35.3756 106 58.2219 106H63.3743C85.6702 106 116.581 88.3047 116.581 66.8896C116.581 65.6864 115.684 64.9142 110.584 64.9142Z" fill="white"/></svg>
     </div>
-    <div class="connect-title">Connect your wallet</div>
-    <div class="connect-sub">Connect your Phantom wallet to view your portfolio and manage your assets.</div>
+    <div class="connect-title">Connect your Phantom wallet</div>
+    <div class="connect-sub">View your Solana holdings, deposit, swap, and convert assets.</div>
     <button class="connect-btn" id="connect-btn" onclick="connectWallet()">
-      <svg width="18" height="18" viewBox="0 0 128 128" fill="none"><path d="M110.584 64.9142H99.142C99.142 41.8864 80.6366 23.0625 57.9584 23.0625C35.5556 23.0625 17.2065 41.508 16.8677 64.0735C16.5221 87.0972 35.3756 106 58.2219 106H63.3743C85.6702 106 116.581 88.3047 116.581 66.8896C116.581 65.6864 115.684 64.9142 110.584 64.9142Z" fill="white"/></svg>
+      <svg width="16" height="16" viewBox="0 0 128 128" fill="none"><path d="M110.584 64.9142H99.142C99.142 41.8864 80.6366 23.0625 57.9584 23.0625C35.5556 23.0625 17.2065 41.508 16.8677 64.0735C16.5221 87.0972 35.3756 106 58.2219 106H63.3743C85.6702 106 116.581 88.3047 116.581 66.8896C116.581 65.6864 115.684 64.9142 110.584 64.9142Z" fill="white"/></svg>
       Connect Phantom
     </button>
-    <div class="install-hint" id="install-hint">
-      Phantom not detected — <a href="https://phantom.app" target="_blank" rel="noopener">install Phantom</a> then refresh.
-    </div>
+    <div class="install-hint" id="install-hint">Phantom not detected — <a href="https://phantom.app" target="_blank" rel="noopener">install Phantom</a> then refresh.</div>
   </div>
 
-  <!-- ── Portfolio screen ────────────────────────────────────────────────── -->
+  <!-- Portfolio (after connect) -->
   <div id="portfolio-screen">
-
     <div class="pf-topbar">
       <div class="addr-row">
-        <div class="addr-chip" id="addr-chip" title="Click to copy full address" onclick="copyFullAddr()">—</div>
+        <div class="addr-chip" id="addr-chip" onclick="copyFullAddr()" title="Click to copy">—</div>
         <button class="disc-btn" onclick="disconnectWallet()">Disconnect</button>
       </div>
       <button class="refresh-btn" onclick="loadPortfolio()">↺ Refresh</button>
@@ -174,15 +230,15 @@
       </div>
       <div class="action-bar">
         <button class="act-btn fill" onclick="openDeposit()">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v13M7 11l5 5 5-5"/><path d="M4 19h16"/></svg>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v13M7 11l5 5 5-5"/><path d="M4 19h16"/></svg>
           Deposit
         </button>
         <button class="act-btn outline" onclick="openSwap()">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3l4 4-4 4"/><path d="M20 7H9a4 4 0 000 8h2"/><path d="M8 21l-4-4 4-4"/><path d="M4 17h11a4 4 0 000-8H13"/></svg>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3l4 4-4 4M20 7H9a4 4 0 000 8h2"/><path d="M8 21l-4-4 4-4M4 17h11a4 4 0 000-8h-2"/></svg>
           Swap
         </button>
         <button class="act-btn outline" onclick="openConvert()">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="3"/><circle cx="16" cy="16" r="3"/><path d="M11 8h4a2 2 0 012 2v2M9 16H5a2 2 0 01-2-2v-2"/></svg>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="3"/><circle cx="16" cy="16" r="3"/><path d="M11 8h4a2 2 0 012 2v2M9 16H5a2 2 0 01-2-2v-2"/></svg>
           Convert
         </button>
       </div>
@@ -190,32 +246,86 @@
 
     <div class="assets-card">
       <div class="assets-hdr">
-        <span>Asset</span>
-        <span>Price</span>
-        <span>Balance</span>
-        <span>Value</span>
+        <span>Asset</span><span>Price</span><span>Balance</span><span>Value</span>
       </div>
-      <div id="assets-body">
-        <div class="loading-msg">Connecting…</div>
+      <div id="assets-body"><div class="empty-assets">Loading…</div></div>
+    </div>
+  </div>
+
+  <!-- ══ TRADER PNL SECTION ════════════════════════════════════════════════ -->
+  <div class="section-divider"><span>Trader PnL</span></div>
+
+  <!-- HL address connect bar -->
+  <div class="hl-connect-bar">
+    <input class="hl-addr-input" id="hl-addr-input" placeholder="Enter Hyperliquid wallet address (0x…)" />
+    <button class="hl-load-btn" onclick="handleHLLoad()">Load</button>
+    <button class="hl-evm-btn" onclick="connectEVM()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 2v20M2 12h20"/></svg>
+      Connect EVM Wallet
+    </button>
+  </div>
+
+  <!-- Stat cards (6) -->
+  <div class="pnl-stats" id="pnl-stats">
+    <div class="stat-card"><div class="stat-lbl">Total Realized PnL</div><div class="stat-val" id="s-total-pnl">—</div><div class="stat-sub" id="s-total-pnl-sub">All-time</div></div>
+    <div class="stat-card"><div class="stat-lbl">Win Rate</div><div class="stat-val" id="s-win-rate">—</div><div class="stat-sub" id="s-win-sub">wins / losses</div></div>
+    <div class="stat-card"><div class="stat-lbl">Total Trades</div><div class="stat-val" id="s-trades">—</div><div class="stat-sub" id="s-trades-sub">closed positions</div></div>
+    <div class="stat-card"><div class="stat-lbl">Total Volume</div><div class="stat-val" id="s-volume">—</div><div class="stat-sub">notional USD</div></div>
+    <div class="stat-card"><div class="stat-lbl">Best Trade</div><div class="stat-val pos" id="s-best">—</div><div class="stat-sub" id="s-best-sub"></div></div>
+    <div class="stat-card"><div class="stat-lbl">Worst Trade</div><div class="stat-val neg" id="s-worst">—</div><div class="stat-sub" id="s-worst-sub"></div></div>
+  </div>
+
+  <!-- Cumulative PnL chart -->
+  <div class="chart-card">
+    <div class="chart-hdr">
+      <div class="chart-title">Cumulative PnL</div>
+      <div class="chart-total" id="chart-total"></div>
+    </div>
+    <svg id="pnl-chart-svg" viewBox="0 0 800 180" preserveAspectRatio="none">
+      <text x="400" y="95" text-anchor="middle" font-size="11" fill="#4a5568">Load a wallet to see PnL chart</text>
+    </svg>
+  </div>
+
+  <!-- PnL Calendar -->
+  <div class="calendar-card">
+    <div class="calendar-hdr">
+      <span>PnL Calendar</span>
+      <div class="cal-nav">
+        <button class="cal-nav-btn" onclick="calPrev()">‹</button>
+        <span class="cal-month-lbl" id="cal-month-lbl">—</span>
+        <button class="cal-nav-btn" onclick="calNext()">›</button>
       </div>
     </div>
-
+    <div id="cal-grid-wrap">
+      <div class="cal-grid" id="cal-grid">
+        <div class="hl-placeholder" style="grid-column:1/-1">Load a wallet to see calendar</div>
+      </div>
+    </div>
   </div>
+
+  <!-- Recent closed trades -->
+  <div class="trades-card">
+    <div class="trades-title">
+      <span>Recent Closed Trades</span>
+      <span id="trades-count" style="font-size:11px;font-weight:500;color:var(--text3)"></span>
+    </div>
+    <div id="trades-body">
+      <div class="hl-placeholder">Enter your Hyperliquid address above to view trading history.</div>
+    </div>
+  </div>
+
 </main>
 
-<!-- ── Deposit Modal ───────────────────────────────────────────────────────── -->
+<!-- ── Deposit Modal ──────────────────────────────────────────────────────── -->
 <div class="overlay" id="deposit-modal" onclick="closeDeposit()">
   <div class="modal" onclick="event.stopPropagation()">
-    <div class="modal-hdr">
-      <div class="modal-title">Deposit</div>
-      <button class="modal-x" onclick="closeDeposit()">×</button>
-    </div>
+    <div class="modal-hdr"><div class="modal-title">Deposit</div><button class="modal-x" onclick="closeDeposit()">×</button></div>
     <div class="modal-body">
-      <div class="dep-label">Send <strong>SOL or any SPL token</strong> to your wallet address below. Only send assets on the <strong>Solana</strong> network.</div>
+      <div class="dep-label">Send <strong>SOL or any SPL token</strong> to your wallet below. Only send on the <strong>Solana</strong> network.</div>
       <div class="qr-wrap"><canvas id="qr-canvas" width="180" height="180"></canvas></div>
       <div class="dep-addr" id="dep-addr-text">—</div>
       <button class="copy-btn" id="copy-btn" onclick="copyDepAddr()">Copy Address</button>
-      <div class="dep-warn">⚠ Only send Solana (SOL) and SPL tokens. Sending assets from other chains may result in permanent loss.</div>
+      <div class="dep-warn">⚠ Only send Solana (SOL) and SPL tokens. Other assets may be permanently lost.</div>
     </div>
   </div>
 </div>
@@ -223,82 +333,84 @@
 <!-- ── Swap Modal ─────────────────────────────────────────────────────────── -->
 <div class="overlay" id="swap-modal" onclick="closeSwap()">
   <div class="modal" onclick="event.stopPropagation()" style="max-width:520px">
-    <div class="modal-hdr">
-      <div class="modal-title">Swap</div>
-      <button class="modal-x" onclick="closeSwap()">×</button>
-    </div>
-    <div class="modal-body" style="padding:0">
-      <div class="jup-wrap" id="jup-swap-wrap"></div>
-    </div>
+    <div class="modal-hdr"><div class="modal-title">Swap</div><button class="modal-x" onclick="closeSwap()">×</button></div>
+    <div class="modal-body" style="padding:0"><div class="jup-wrap" id="jup-swap-wrap"></div></div>
   </div>
 </div>
 
 <!-- ── Convert Modal ──────────────────────────────────────────────────────── -->
 <div class="overlay" id="convert-modal" onclick="closeConvert()">
   <div class="modal" onclick="event.stopPropagation()" style="max-width:520px">
-    <div class="modal-hdr">
-      <div class="modal-title">Convert to USDC</div>
-      <button class="modal-x" onclick="closeConvert()">×</button>
-    </div>
-    <div class="modal-body" style="padding:0">
-      <div class="jup-wrap" id="jup-convert-wrap"></div>
-    </div>
+    <div class="modal-hdr"><div class="modal-title">Convert to USDC</div><button class="modal-x" onclick="closeConvert()">×</button></div>
+    <div class="modal-body" style="padding:0"><div class="jup-wrap" id="jup-convert-wrap"></div></div>
   </div>
 </div>
 
 <script>
-// ─── Constants ────────────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+// CONSTANTS
+// ══════════════════════════════════════════════════════════════════════════════
 const SOL_MINT   = 'So11111111111111111111111111111111111111112';
 const USDC_MINT  = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 const TOKEN_PROG = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
 const SOL_RPC    = 'https://api.mainnet-beta.solana.com';
+const HL_API     = '/hl/info';
 
-// ─── State ────────────────────────────────────────────────────────────────────
-let pubkey     = null;
-let tokenMeta  = {};   // mint → { name, symbol, logoURI }
-let jupSwapOk  = false;
-let jupConvOk  = false;
+// ══════════════════════════════════════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════════════════════════════════════
+let pubkey       = null;
+let tokenMeta    = {};
+let jupSwapOk    = false;
+let jupConvOk    = false;
+// HL
+let hlFills      = [];
+let hlDailyPnl   = {};   // "YYYY-MM-DD" → number
+let calYear      = new Date().getFullYear();
+let calMonth     = new Date().getMonth();
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-const el  = id => document.getElementById(id);
-const fmt = (n, d = 2) => n.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+// ══════════════════════════════════════════════════════════════════════════════
+// HELPERS
+// ══════════════════════════════════════════════════════════════════════════════
+const el    = id => document.getElementById(id);
+const set   = (id, v) => { const e = el(id); if (e) e.textContent = v; };
+const fmt   = (n, d = 2) => n.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
 const fmtUSD = n => '$' + fmt(n, n >= 1 ? 2 : 6);
-const shorten = a => a.slice(0, 4) + '…' + a.slice(-4);
+const fmtK  = n => n >= 1e6 ? '$' + fmt(n/1e6, 2) + 'M' : n >= 1e3 ? '$' + fmt(n/1e3, 1) + 'K' : '$' + fmt(n);
+const shorten = a => a.slice(0, 6) + '…' + a.slice(-4);
+const pCls  = v => v > 0 ? 'pos' : v < 0 ? 'neg' : '';
 
-function provider() {
-  return window?.phantom?.solana ?? window?.solana ?? null;
-}
+// ══════════════════════════════════════════════════════════════════════════════
+// PHANTOM WALLET
+// ══════════════════════════════════════════════════════════════════════════════
+function phantom() { return window?.phantom?.solana ?? window?.solana ?? null; }
 
-// ─── Wallet ───────────────────────────────────────────────────────────────────
 async function connectWallet() {
-  const p = provider();
-  if (!p?.isPhantom) {
-    el('install-hint').style.display = 'block';
-    return;
-  }
+  const p = phantom();
+  if (!p?.isPhantom) { el('install-hint').style.display = 'block'; return; }
   const btn = el('connect-btn');
-  btn.disabled = true;
-  btn.textContent = 'Connecting…';
+  btn.disabled = true; btn.textContent = 'Connecting…';
   try {
     const resp = await p.connect();
     pubkey = resp.publicKey.toString();
     showPortfolio();
   } catch {
     btn.disabled = false;
-    btn.innerHTML = `<svg width="18" height="18" viewBox="0 0 128 128" fill="none"><path d="M110.584 64.9142H99.142C99.142 41.8864 80.6366 23.0625 57.9584 23.0625C35.5556 23.0625 17.2065 41.508 16.8677 64.0735C16.5221 87.0972 35.3756 106 58.2219 106H63.3743C85.6702 106 116.581 88.3047 116.581 66.8896C116.581 65.6864 115.684 64.9142 110.584 64.9142Z" fill="white"/></svg> Connect Phantom`;
+    btn.innerHTML = phantomBtnHTML();
   }
 }
 
 async function disconnectWallet() {
-  try { await provider()?.disconnect(); } catch {}
-  pubkey = null;
-  jupSwapOk = false;
-  jupConvOk = false;
+  try { await phantom()?.disconnect(); } catch {}
+  pubkey = null; jupSwapOk = false; jupConvOk = false;
   el('connect-screen').style.display = 'flex';
   el('portfolio-screen').style.display = 'none';
   const btn = el('connect-btn');
-  btn.disabled = false;
-  btn.innerHTML = `<svg width="18" height="18" viewBox="0 0 128 128" fill="none"><path d="M110.584 64.9142H99.142C99.142 41.8864 80.6366 23.0625 57.9584 23.0625C35.5556 23.0625 17.2065 41.508 16.8677 64.0735C16.5221 87.0972 35.3756 106 58.2219 106H63.3743C85.6702 106 116.581 88.3047 116.581 66.8896C116.581 65.6864 115.684 64.9142 110.584 64.9142Z" fill="white"/></svg> Connect Phantom`;
+  btn.disabled = false; btn.innerHTML = phantomBtnHTML();
+}
+
+function phantomBtnHTML() {
+  return `<svg width="16" height="16" viewBox="0 0 128 128" fill="none"><path d="M110.584 64.9142H99.142C99.142 41.8864 80.6366 23.0625 57.9584 23.0625C35.5556 23.0625 17.2065 41.508 16.8677 64.0735C16.5221 87.0972 35.3756 106 58.2219 106H63.3743C85.6702 106 116.581 88.3047 116.581 66.8896C116.581 65.6864 115.684 64.9142 110.584 64.9142Z" fill="white"/></svg> Connect Phantom`;
 }
 
 function showPortfolio() {
@@ -310,9 +422,8 @@ function showPortfolio() {
   loadPortfolio();
 }
 
-// ─── Auto-reconnect ───────────────────────────────────────────────────────────
 window.addEventListener('load', async () => {
-  const p = provider();
+  const p = phantom();
   if (!p) { el('install-hint').style.display = 'block'; return; }
   p.on('disconnect', () => { if (pubkey) disconnectWallet(); });
   try {
@@ -322,8 +433,10 @@ window.addEventListener('load', async () => {
   } catch {}
 });
 
-// ─── RPC ─────────────────────────────────────────────────────────────────────
-async function rpcCall(method, params) {
+// ══════════════════════════════════════════════════════════════════════════════
+// SOLANA RPC + PORTFOLIO
+// ══════════════════════════════════════════════════════════════════════════════
+async function rpc(method, params) {
   const r = await fetch(SOL_RPC, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -332,22 +445,17 @@ async function rpcCall(method, params) {
   return r.json();
 }
 
-async function getSolBalance() {
-  const { result } = await rpcCall('getBalance', [pubkey, { commitment: 'confirmed' }]);
+async function getSolBal() {
+  const { result } = await rpc('getBalance', [pubkey, { commitment: 'confirmed' }]);
   return (result?.value ?? 0) / 1e9;
 }
 
-async function getTokenAccounts() {
-  const { result } = await rpcCall('getTokenAccountsByOwner', [
-    pubkey,
-    { programId: TOKEN_PROG },
-    { encoding: 'jsonParsed', commitment: 'confirmed' },
+async function getTokenAccs() {
+  const { result } = await rpc('getTokenAccountsByOwner', [
+    pubkey, { programId: TOKEN_PROG }, { encoding: 'jsonParsed', commitment: 'confirmed' },
   ]);
   return (result?.value ?? [])
-    .map(a => ({
-      mint:    a.account.data.parsed.info.mint,
-      balance: a.account.data.parsed.info.tokenAmount.uiAmount ?? 0,
-    }))
+    .map(a => ({ mint: a.account.data.parsed.info.mint, balance: a.account.data.parsed.info.tokenAmount.uiAmount ?? 0 }))
     .filter(t => t.balance > 0);
 }
 
@@ -355,75 +463,55 @@ async function getJupPrices(mints) {
   if (!mints.length) return {};
   try {
     const r = await fetch(`https://api.jup.ag/price/v2?ids=${mints.join(',')}`);
-    const j = await r.json();
-    return j?.data ?? {};
+    return (await r.json())?.data ?? {};
   } catch { return {}; }
 }
 
 async function loadTokenMeta() {
   if (Object.keys(tokenMeta).length) return;
   try {
-    const r = await fetch('https://tokens.jup.ag/tokens?tags=strict');
-    const list = await r.json();
+    const list = await (await fetch('https://tokens.jup.ag/tokens?tags=strict')).json();
     list.forEach(t => { tokenMeta[t.address] = { name: t.name, symbol: t.symbol, logo: t.logoURI }; });
   } catch {}
-  tokenMeta[SOL_MINT] = {
-    name: 'Solana', symbol: 'SOL',
-    logo: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png',
-  };
+  tokenMeta[SOL_MINT] = { name: 'Solana', symbol: 'SOL', logo: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png' };
 }
 
-// ─── Portfolio load ───────────────────────────────────────────────────────────
 async function loadPortfolio() {
-  el('assets-body').innerHTML = skeleRows(4);
-  el('total-val').textContent = '$—';
-  el('total-sub').textContent = 'Loading…';
-
+  el('assets-body').innerHTML = skeleRows(3);
+  set('total-val', '$—'); set('total-sub', 'Loading…');
   try {
     await loadTokenMeta();
-    const [solBal, tokenAccs] = await Promise.all([getSolBalance(), getTokenAccounts()]);
+    const [solBal, tokenAccs] = await Promise.all([getSolBal(), getTokenAccs()]);
     const mints  = [SOL_MINT, ...tokenAccs.map(t => t.mint)];
     const prices = await getJupPrices(mints);
-
     const assets = [];
-
-    // SOL entry
     const solPx = parseFloat(prices[SOL_MINT]?.price ?? 0);
     assets.push({ mint: SOL_MINT, balance: solBal, price: solPx, value: solBal * solPx, ...(tokenMeta[SOL_MINT] ?? { name: 'Solana', symbol: 'SOL', logo: '' }) });
-
-    // SPL tokens
     tokenAccs.forEach(t => {
-      const px   = parseFloat(prices[t.mint]?.price ?? 0);
-      const meta = tokenMeta[t.mint] ?? { name: t.mint.slice(0,8) + '…', symbol: '???', logo: '' };
+      const px = parseFloat(prices[t.mint]?.price ?? 0);
+      const meta = tokenMeta[t.mint] ?? { name: t.mint.slice(0, 8) + '…', symbol: '???', logo: '' };
       assets.push({ mint: t.mint, balance: t.balance, price: px, value: t.balance * px, ...meta });
     });
-
     assets.sort((a, b) => b.value - a.value);
     const total = assets.reduce((s, a) => s + a.value, 0);
-    el('total-val').textContent = '$' + fmt(total);
-    el('total-sub').textContent = assets.length + ' asset' + (assets.length !== 1 ? 's' : '');
-
+    set('total-val', '$' + fmt(total));
+    set('total-sub', assets.length + ' asset' + (assets.length !== 1 ? 's' : ''));
     renderAssets(assets);
   } catch (e) {
-    el('total-sub').textContent = 'Error loading';
-    el('assets-body').innerHTML = `<div class="empty-assets">Failed to load: ${e.message}</div>`;
+    set('total-sub', 'Error'); el('assets-body').innerHTML = `<div class="empty-assets">${e.message}</div>`;
   }
 }
 
 function renderAssets(assets) {
-  if (!assets.length) {
-    el('assets-body').innerHTML = '<div class="empty-assets">No assets found in this wallet.</div>';
-    return;
-  }
+  if (!assets.length) { el('assets-body').innerHTML = '<div class="empty-assets">No assets found.</div>'; return; }
   el('assets-body').innerHTML = assets.map(a => {
     const icon = a.logo
-      ? `<img class="token-icon" src="${a.logo}" alt="${a.symbol}" onerror="this.outerHTML='<div class=token-icon-ph>${(a.symbol||'?')[0]}</div>'">`
+      ? `<img class="token-icon" src="${a.logo}" alt="" onerror="this.outerHTML='<div class=token-icon-ph>${(a.symbol||'?')[0]}</div>'">`
       : `<div class="token-icon-ph">${(a.symbol||'?')[0]}</div>`;
-    const balDec = a.balance < 1 ? 4 : 2;
     return `<div class="asset-row">
       <div class="asset-left">${icon}<div><div class="token-name">${a.name}</div><div class="token-sym">${a.symbol}</div></div></div>
       <div class="cell">${a.price ? fmtUSD(a.price) : '—'}</div>
-      <div class="cell">${fmt(a.balance, balDec)}</div>
+      <div class="cell">${fmt(a.balance, a.balance < 1 ? 4 : 2)}</div>
       <div class="cell val">${a.value > 0.005 ? '$' + fmt(a.value) : '—'}</div>
     </div>`;
   }).join('');
@@ -433,91 +521,314 @@ function skeleRows(n) {
   return Array.from({ length: n }, () => `
     <div class="asset-row">
       <div class="asset-left">
-        <div class="sk sk-circle" style="width:32px;height:32px;flex-shrink:0"></div>
-        <div>
-          <div class="sk" style="width:80px;height:11px;margin-bottom:5px"></div>
-          <div class="sk" style="width:36px;height:9px"></div>
-        </div>
+        <div class="sk" style="width:30px;height:30px;border-radius:50%;flex-shrink:0"></div>
+        <div><div class="sk" style="width:76px;height:10px;margin-bottom:5px"></div><div class="sk" style="width:34px;height:9px"></div></div>
       </div>
-      <div class="cell"><div class="sk" style="width:58px;height:11px;margin-left:auto"></div></div>
-      <div class="cell"><div class="sk" style="width:48px;height:11px;margin-left:auto"></div></div>
-      <div class="cell"><div class="sk" style="width:66px;height:11px;margin-left:auto"></div></div>
+      <div class="cell"><div class="sk" style="width:54px;height:10px;margin-left:auto"></div></div>
+      <div class="cell"><div class="sk" style="width:44px;height:10px;margin-left:auto"></div></div>
+      <div class="cell"><div class="sk" style="width:62px;height:10px;margin-left:auto"></div></div>
     </div>`).join('');
 }
 
-// ─── QR Code ─────────────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+// QR CODE
+// ══════════════════════════════════════════════════════════════════════════════
 async function generateQR(text) {
   try {
-    await QRCode.toCanvas(el('qr-canvas'), text, {
-      width: 180, margin: 2,
-      color: { dark: '#50d2c1', light: '#1b2429' },
-    });
+    await QRCode.toCanvas(el('qr-canvas'), text, { width: 180, margin: 2, color: { dark: '#50d2c1', light: '#1b2429' } });
   } catch {}
 }
 
-// ─── Copy helpers ─────────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+// HYPERLIQUID TRADER PNL
+// ══════════════════════════════════════════════════════════════════════════════
+async function connectEVM() {
+  if (!window.ethereum) {
+    alert('No EVM wallet detected. Install MetaMask or Rabby.');
+    return;
+  }
+  try {
+    const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+    if (accounts[0]) {
+      el('hl-addr-input').value = accounts[0];
+      loadHLData(accounts[0]);
+    }
+  } catch {}
+}
+
+function handleHLLoad() {
+  const addr = el('hl-addr-input').value.trim();
+  if (!addr) return;
+  loadHLData(addr);
+}
+
+async function loadHLData(address) {
+  // Reset stats to loading
+  ['s-total-pnl','s-win-rate','s-trades','s-volume','s-best','s-worst'].forEach(id => set(id, '…'));
+  el('trades-body').innerHTML = '<div class="hl-placeholder">Loading trades…</div>';
+
+  try {
+    const startTime = Date.now() - 365 * 24 * 60 * 60 * 1000; // 1 year
+    const res = await fetch(HL_API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'userFillsByTime', user: address, startTime, endTime: Date.now() }),
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const fills = await res.json();
+
+    if (!Array.isArray(fills) || fills.length === 0) {
+      ['s-total-pnl','s-win-rate','s-trades','s-volume','s-best','s-worst'].forEach(id => set(id, '—'));
+      el('trades-body').innerHTML = '<div class="hl-placeholder">No trades found for this address.</div>';
+      renderPnLChart([]);
+      return;
+    }
+
+    hlFills = fills;
+    computeAndRenderHL(fills);
+  } catch (e) {
+    el('trades-body').innerHTML = `<div class="hl-placeholder">Error: ${e.message}</div>`;
+    ['s-total-pnl','s-win-rate','s-trades','s-volume','s-best','s-worst'].forEach(id => set(id, '—'));
+  }
+}
+
+function computeAndRenderHL(fills) {
+  // Closing fills = fills with non-zero closedPnl
+  const closing = fills.filter(f => parseFloat(f.closedPnl ?? 0) !== 0);
+
+  // ── Stats ──
+  const totalPnl  = closing.reduce((s, f) => s + parseFloat(f.closedPnl), 0);
+  const wins      = closing.filter(f => parseFloat(f.closedPnl) > 0).length;
+  const losses    = closing.filter(f => parseFloat(f.closedPnl) < 0).length;
+  const winRate   = closing.length ? ((wins / closing.length) * 100).toFixed(1) + '%' : '—';
+  const totalVol  = fills.reduce((s, f) => s + (parseFloat(f.px) * parseFloat(f.sz)), 0);
+
+  const pnlVals   = closing.map(f => parseFloat(f.closedPnl));
+  const bestVal   = closing.length ? Math.max(...pnlVals) : 0;
+  const worstVal  = closing.length ? Math.min(...pnlVals) : 0;
+  const bestFill  = closing.find(f => parseFloat(f.closedPnl) === bestVal);
+  const worstFill = closing.find(f => parseFloat(f.closedPnl) === worstVal);
+
+  // Render stats
+  const totalEl = el('s-total-pnl');
+  totalEl.textContent = (totalPnl >= 0 ? '+' : '') + '$' + fmt(totalPnl);
+  totalEl.className = 'stat-val ' + pCls(totalPnl);
+  set('s-win-rate', winRate);
+  set('s-win-sub', `${wins}W / ${losses}L`);
+  set('s-trades', closing.length.toLocaleString());
+  set('s-trades-sub', fills.length.toLocaleString() + ' total fills');
+  set('s-volume', fmtK(totalVol));
+  set('s-best', bestVal ? '+$' + fmt(bestVal) : '—');
+  if (bestFill) set('s-best-sub', bestFill.coin + ' · ' + fmtDate(bestFill.time));
+  set('s-worst', worstVal ? '-$' + fmt(Math.abs(worstVal)) : '—');
+  if (worstFill) set('s-worst-sub', worstFill.coin + ' · ' + fmtDate(worstFill.time));
+
+  // ── Cumulative PnL chart ──
+  const sorted = [...closing].sort((a, b) => a.time - b.time);
+  let cum = 0;
+  const cumPts = sorted.map(f => { cum += parseFloat(f.closedPnl); return { t: f.time, v: cum }; });
+  renderPnLChart(cumPts, totalPnl);
+
+  // ── Daily PnL for calendar ──
+  hlDailyPnl = {};
+  closing.forEach(f => {
+    const d = new Date(f.time);
+    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    hlDailyPnl[key] = (hlDailyPnl[key] ?? 0) + parseFloat(f.closedPnl);
+  });
+  // Set calendar to latest month with trades
+  if (sorted.length) {
+    const last = new Date(sorted[sorted.length - 1].time);
+    calYear  = last.getFullYear();
+    calMonth = last.getMonth();
+  }
+  renderCalendar();
+
+  // ── Recent closed trades table ──
+  const recent = [...closing].sort((a, b) => b.time - a.time).slice(0, 50);
+  set('trades-count', recent.length + ' of ' + closing.length + ' trades');
+  renderTrades(recent);
+}
+
+// ── PnL Chart (SVG) ──────────────────────────────────────────────────────────
+function renderPnLChart(pts, totalPnl) {
+  const svg = el('pnl-chart-svg');
+  if (!pts.length) {
+    svg.innerHTML = '<text x="400" y="95" text-anchor="middle" font-size="11" fill="#4a5568">No PnL data</text>';
+    set('chart-total', '');
+    return;
+  }
+  const W = 800, H = 180, PAD = { t: 12, r: 8, b: 28, l: 56 };
+  const cw = W - PAD.l - PAD.r;
+  const ch = H - PAD.t - PAD.b;
+  const vals = pts.map(p => p.v);
+  const minV = Math.min(0, ...vals), maxV = Math.max(0, ...vals);
+  const rng  = maxV - minV || 1;
+  const px   = i  => PAD.l + (i / (pts.length - 1 || 1)) * cw;
+  const py   = v  => PAD.t + (1 - (v - minV) / rng) * ch;
+  const zeroY = py(0);
+
+  // Build polyline points
+  const points = pts.map((p, i) => `${px(i).toFixed(1)},${py(p.v).toFixed(1)}`).join(' ');
+  const color  = (totalPnl ?? vals[vals.length - 1]) >= 0 ? '#1fa67d' : '#ed7088';
+  const fillId = 'cf' + Math.random().toString(36).slice(2, 6);
+
+  // Axis labels
+  const yLabels = [];
+  const step = rng / 4;
+  for (let i = 0; i <= 4; i++) {
+    const v = minV + step * i;
+    const y = py(v);
+    yLabels.push(`<text x="${PAD.l - 6}" y="${y + 3}" text-anchor="end" font-size="9" fill="#878c8f">${v >= 0 ? '+' : ''}${fmtK(v).replace('$','')}${v !== 0 ? '' : ''}</text>`);
+    yLabels.push(`<line x1="${PAD.l}" y1="${y}" x2="${W - PAD.r}" y2="${y}" stroke="#1d2c32" stroke-width="1"/>`);
+  }
+
+  // X-axis date labels
+  const xLabels = [];
+  const labelCount = Math.min(6, pts.length);
+  for (let i = 0; i < labelCount; i++) {
+    const idx = Math.floor((i / (labelCount - 1 || 1)) * (pts.length - 1));
+    const x = px(idx);
+    const d = new Date(pts[idx].t);
+    xLabels.push(`<text x="${x}" y="${H - PAD.b + 10}" text-anchor="middle" font-size="9" fill="#878c8f">${d.toLocaleDateString('en-US',{month:'short',day:'numeric'})}</text>`);
+  }
+
+  // Area fill path
+  const areaPath = `M${px(0)},${zeroY} ` + pts.map((p, i) => `L${px(i).toFixed(1)},${py(p.v).toFixed(1)}`).join(' ') + ` L${px(pts.length-1)},${zeroY} Z`;
+
+  svg.innerHTML = `
+    <defs>
+      <linearGradient id="${fillId}" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="${color}" stop-opacity="0.25"/>
+        <stop offset="100%" stop-color="${color}" stop-opacity="0.02"/>
+      </linearGradient>
+    </defs>
+    ${yLabels.join('')}
+    ${xLabels.join('')}
+    <line x1="${PAD.l}" y1="${zeroY}" x2="${W-PAD.r}" y2="${zeroY}" stroke="#273035" stroke-width="1" stroke-dasharray="3,3"/>
+    <path d="${areaPath}" fill="url(#${fillId})"/>
+    <polyline points="${points}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+    <circle cx="${px(pts.length-1)}" cy="${py(vals[vals.length-1])}" r="3" fill="${color}"/>
+  `;
+
+  const finalPnl = vals[vals.length - 1];
+  const chartTotalEl = el('chart-total');
+  chartTotalEl.textContent = (finalPnl >= 0 ? '+' : '') + '$' + fmt(finalPnl);
+  chartTotalEl.className = 'chart-total ' + pCls(finalPnl);
+}
+
+// ── PnL Calendar ─────────────────────────────────────────────────────────────
+function renderCalendar() {
+  const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  set('cal-month-lbl', months[calMonth] + ' ' + calYear);
+
+  const today = new Date();
+  const firstDay = new Date(calYear, calMonth, 1).getDay();
+  const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+
+  let html = DAYS.map(d => `<div class="cal-day-hdr">${d}</div>`).join('');
+
+  // Empty cells before first day
+  for (let i = 0; i < firstDay; i++) html += '<div class="cal-day empty"></div>';
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const key = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const pnl = hlDailyPnl[key];
+    const isToday = today.getDate() === d && today.getMonth() === calMonth && today.getFullYear() === calYear;
+    let cls = 'cal-day';
+    let pnlHtml = '';
+    if (pnl !== undefined) {
+      cls += ' ' + (pnl > 0 ? 'pos' : pnl < 0 ? 'neg' : 'zero');
+      const sign = pnl > 0 ? '+' : '';
+      pnlHtml = `<span class="cal-day-pnl">${sign}${pnl >= 1000 ? fmtK(pnl).replace('$','') + '' : '$' + fmt(Math.abs(pnl),0)}</span>`;
+    }
+    if (isToday) cls += ' today';
+    html += `<div class="${cls}"><span class="cal-day-num">${d}</span>${pnlHtml}</div>`;
+  }
+
+  el('cal-grid').innerHTML = html;
+}
+
+function calPrev() {
+  calMonth--;
+  if (calMonth < 0) { calMonth = 11; calYear--; }
+  renderCalendar();
+}
+
+function calNext() {
+  calMonth++;
+  if (calMonth > 11) { calMonth = 0; calYear++; }
+  renderCalendar();
+}
+
+// ── Recent trades table ───────────────────────────────────────────────────────
+function renderTrades(fills) {
+  if (!fills.length) { el('trades-body').innerHTML = '<div class="hl-placeholder">No closed trades found.</div>'; return; }
+  const hdr = `<div class="trades-hdr"><span>Token</span><span>Direction</span><span>Size</span><span>Price</span><span>Closed</span><span>PnL</span></div>`;
+  const rows = fills.map(f => {
+    const pnl    = parseFloat(f.closedPnl);
+    const isLong = (f.dir ?? '').toLowerCase().includes('long') || f.side === 'B';
+    const dirCls = isLong ? 'long' : 'short';
+    const dirLbl = isLong ? 'Long' : 'Short';
+    const px     = parseFloat(f.px);
+    const sz     = parseFloat(f.sz);
+    return `<div class="trade-row">
+      <div class="trade-coin">${f.coin ?? '—'}</div>
+      <div class="cell"><span class="trade-dir ${dirCls}">${dirLbl}</span></div>
+      <div class="trade-cell">${fmt(sz, sz < 1 ? 4 : 2)}</div>
+      <div class="trade-cell">${px >= 1 ? '$' + fmt(px) : '$' + fmt(px, 4)}</div>
+      <div class="trade-cell">${fmtDate(f.time)}</div>
+      <div class="trade-pnl ${pCls(pnl)}">${pnl >= 0 ? '+' : ''}$${fmt(pnl)}</div>
+    </div>`;
+  }).join('');
+  el('trades-body').innerHTML = hdr + rows;
+}
+
+function fmtDate(ts) {
+  return new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' });
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// MODALS
+// ══════════════════════════════════════════════════════════════════════════════
+function openDeposit()  { el('deposit-modal').classList.add('open'); }
+function closeDeposit() { el('deposit-modal').classList.remove('open'); }
+
+function openSwap() {
+  el('swap-modal').classList.add('open');
+  if (!jupSwapOk && window.Jupiter) {
+    jupSwapOk = true;
+    window.Jupiter.init({ displayMode: 'integrated', integratedTargetId: 'jup-swap-wrap', endpoint: SOL_RPC, defaultExplorer: 'SolanaFM', passThroughWallet: pubkey ? phantom() : undefined, onSuccess: () => setTimeout(loadPortfolio, 4000) });
+  }
+}
+function closeSwap() { el('swap-modal').classList.remove('open'); }
+
+function openConvert() {
+  el('convert-modal').classList.add('open');
+  if (!jupConvOk && window.Jupiter) {
+    jupConvOk = true;
+    window.Jupiter.init({ displayMode: 'integrated', integratedTargetId: 'jup-convert-wrap', endpoint: SOL_RPC, defaultExplorer: 'SolanaFM', passThroughWallet: pubkey ? phantom() : undefined, formProps: { fixedOutputMint: true, initialOutputMint: USDC_MINT }, onSuccess: () => setTimeout(loadPortfolio, 4000) });
+  }
+}
+function closeConvert() { el('convert-modal').classList.remove('open'); }
+
 async function copyDepAddr() {
   await navigator.clipboard.writeText(pubkey).catch(() => {});
   const btn = el('copy-btn');
-  btn.textContent = '✓ Copied!';
-  btn.classList.add('ok');
+  btn.textContent = '✓ Copied!'; btn.classList.add('ok');
   setTimeout(() => { btn.textContent = 'Copy Address'; btn.classList.remove('ok'); }, 2000);
 }
 
 async function copyFullAddr() {
   await navigator.clipboard.writeText(pubkey).catch(() => {});
-  const chip = el('addr-chip');
-  const orig = chip.textContent;
+  const chip = el('addr-chip'), orig = chip.textContent;
   chip.textContent = '✓ Copied';
   setTimeout(() => { chip.textContent = orig; }, 1500);
 }
 
-// ─── Deposit modal ────────────────────────────────────────────────────────────
-function openDeposit() { el('deposit-modal').classList.add('open'); }
-function closeDeposit() { el('deposit-modal').classList.remove('open'); }
-
-// ─── Swap modal ───────────────────────────────────────────────────────────────
-function openSwap() {
-  el('swap-modal').classList.add('open');
-  if (!jupSwapOk && window.Jupiter) {
-    jupSwapOk = true;
-    window.Jupiter.init({
-      displayMode: 'integrated',
-      integratedTargetId: 'jup-swap-wrap',
-      endpoint: SOL_RPC,
-      defaultExplorer: 'SolanaFM',
-      passThroughWallet: pubkey ? provider() : undefined,
-      onSuccess: () => { setTimeout(loadPortfolio, 4000); },
-    });
-  }
-}
-function closeSwap() { el('swap-modal').classList.remove('open'); }
-
-// ─── Convert modal ────────────────────────────────────────────────────────────
-function openConvert() {
-  el('convert-modal').classList.add('open');
-  if (!jupConvOk && window.Jupiter) {
-    jupConvOk = true;
-    window.Jupiter.init({
-      displayMode: 'integrated',
-      integratedTargetId: 'jup-convert-wrap',
-      endpoint: SOL_RPC,
-      defaultExplorer: 'SolanaFM',
-      passThroughWallet: pubkey ? provider() : undefined,
-      formProps: {
-        fixedOutputMint: true,
-        initialOutputMint: USDC_MINT,
-      },
-      onSuccess: () => { setTimeout(loadPortfolio, 4000); },
-    });
-  }
-}
-function closeConvert() { el('convert-modal').classList.remove('open'); }
-
-// ─── Keyboard close ───────────────────────────────────────────────────────────
 document.addEventListener('keydown', e => {
-  if (e.key !== 'Escape') return;
-  closeDeposit(); closeSwap(); closeConvert();
+  if (e.key === 'Escape') { closeDeposit(); closeSwap(); closeConvert(); }
 });
 </script>
 </body>

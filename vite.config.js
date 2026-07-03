@@ -26,6 +26,11 @@ export default defineConfig({
         rewrite: path => path.replace(/^\/ctnews/, ''),
         headers: { 'User-Agent': 'Mozilla/5.0 (compatible; RDO-ONE/1.0)' },
       },
+      '/hl': {
+        target: 'https://api.hyperliquid.xyz',
+        changeOrigin: true,
+        rewrite: path => path.replace(/^\/hl/, ''),
+      },
     },
   },
   build: { outDir: 'dist' },
