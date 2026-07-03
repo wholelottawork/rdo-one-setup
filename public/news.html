@@ -109,15 +109,16 @@
 
 <script>
 // ─── Sources ─────────────────────────────────────────────────────────────────
+const R2J = 'https://api.rss2json.com/v1/api.json?rss_url=';
 const SOURCES = [
-  { id: 'ct',   name: 'CoinTelegraph', proxy: '/ctnews',   feed: '/rss',                    color: '#50d2c1' },
-  { id: 'cd',   name: 'CoinDesk',      proxy: '/cdnews',   feed: '/arc/outboundfeeds/rss/', color: '#f7931a' },
-  { id: 'dec',  name: 'Decrypt',       proxy: '/decnews',  feed: '/feed',                   color: '#7b68ee' },
-  { id: 'blk',  name: 'The Block',     proxy: '/blknews',  feed: '/rss',                    color: '#3498db' },
-  { id: 'bwk',  name: 'Blockworks',    proxy: '/bwknews',  feed: '/feed',                   color: '#e74c3c' },
-  { id: 'btcm', name: 'Bitcoin Mag',   proxy: '/btcmnews', feed: '/.rss/full/',              color: '#f39c12' },
-  { id: 'bein', name: 'BeInCrypto',    proxy: '/beinnews', feed: '/feed/',                  color: '#27ae60' },
-  { id: 'btci', name: 'Bitcoinist',    proxy: '/btcinews', feed: '/feed/',                  color: '#9b59b6' },
+  { id: 'ct',   name: 'CoinTelegraph', type: 'proxy', url: '/ctnews/rss',                                                              color: '#50d2c1' },
+  { id: 'cd',   name: 'CoinDesk',      type: 'proxy', url: '/cdnews/arc/outboundfeeds/rss/',                                           color: '#f7931a' },
+  { id: 'dec',  name: 'Decrypt',       type: 'proxy', url: '/decnews/feed',                                                            color: '#7b68ee' },
+  { id: 'blk',  name: 'CryptoSlate',    type: 'r2j',   url: R2J + encodeURIComponent('https://cryptoslate.com/feed/'),               color: '#3498db' },
+  { id: 'bwk',  name: 'Blockworks',    type: 'r2j',   url: R2J + encodeURIComponent('https://blockworks.co/feed'),                    color: '#e74c3c' },
+  { id: 'btcm', name: 'Bitcoin Mag',   type: 'r2j',   url: R2J + encodeURIComponent('https://bitcoinmagazine.com/.rss/full/'),        color: '#f39c12' },
+  { id: 'bein', name: 'BeInCrypto',    type: 'proxy', url: '/beinnews/feed/',                                                         color: '#27ae60' },
+  { id: 'btci', name: 'Bitcoinist',    type: 'proxy', url: '/btcinews/feed/',                                                         color: '#9b59b6' },
 ];
 
 // ─── Categories (keyword-based) ──────────────────────────────────────────────
@@ -249,15 +250,35 @@ function articleCard(a) {
   </div>`;
 }
 
+// ─── rss2json parser ─────────────────────────────────────────────────────────
+function parseR2J(data, source) {
+  return (data.items || []).map(item => ({
+    title:       item.title || '',
+    link:        item.link  || '',
+    pubDate:     item.pubDate || '',
+    desc:        (item.description || '').replace(/<[^>]*>/g, '').trim(),
+    img:         upgradeImageUrl(item.thumbnail || ''),
+    cats:        (item.categories || []).slice(0, 3),
+    sourceId:    source.id,
+    source:      source.name,
+    sourceColor: source.color,
+  }));
+}
+
 // ─── Fetch all sources in parallel ───────────────────────────────────────────
 async function fetchAll() {
   if (cacheLoaded) return allArticles;
   const results = await Promise.allSettled(
-    SOURCES.map(s =>
-      fetch(s.proxy + s.feed)
+    SOURCES.map(s => {
+      if (s.type === 'r2j') {
+        return fetch(s.url)
+          .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+          .then(data => { if (data.status !== 'ok') throw new Error(data.message); return parseR2J(data, s); });
+      }
+      return fetch(s.url)
         .then(r => { if (!r.ok) throw new Error(r.status); return r.text(); })
-        .then(xml => parseRSS(xml, s))
-    )
+        .then(xml => parseRSS(xml, s));
+    })
   );
   const loaded = [], failed = [];
   results.forEach((r, i) => {
