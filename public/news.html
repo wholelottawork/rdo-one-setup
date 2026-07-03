@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RDO ONE — News</title>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --bg:#0f1a1e;--bg2:#1b2429;--bg3:#273035;
+      --border:#273035;--accent:#50d2c1;
+      --text:#ffffff;--text2:#c8d2d6;--text3:#878c8f;
+      --r:6px;--nav:40px;
+    }
+    body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:13px;line-height:1.5;min-height:100vh}
+    ::-webkit-scrollbar{width:6px;height:6px}
+    ::-webkit-scrollbar-track{background:var(--bg)}
+    ::-webkit-scrollbar-thumb{background:var(--bg3);border-radius:3px}
+
+    /* ─── Nav ─────────────────────────────────────────────────────────── */
+    #rdo-nav{position:fixed;top:0;left:0;right:0;height:var(--nav);background:var(--bg);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;padding:0 16px;z-index:1000}
+    .nav-logo{font-size:13px;font-weight:800;letter-spacing:.5px;color:#f5f1ea;flex-shrink:0}
+    .nav-logo span{color:var(--accent)}
+    .nav-div{width:1px;height:18px;background:var(--border);margin:0 4px;flex-shrink:0}
+    #rdo-nav a{font-size:12px;font-weight:500;color:var(--text3);padding:4px 10px;border-radius:4px;transition:color .12s,background .12s;flex-shrink:0;text-decoration:none}
+    #rdo-nav a:hover{color:var(--text);background:var(--bg2)}
+    #rdo-nav a.active{color:var(--accent)}
+
+    main{max-width:1200px;margin:0 auto;padding:0 16px 40px;padding-top:calc(var(--nav) + 20px)}
+
+    .page-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px}
+    h1{font-size:18px;font-weight:700;letter-spacing:-.03em}
+    .hdr-right{display:flex;align-items:center;gap:10px}
+    #update-ts{font-size:11px;color:var(--text3)}
+    .refresh-btn{font-size:11px;font-weight:600;color:var(--text3);background:var(--bg2);border:1px solid var(--border);border-radius:4px;padding:5px 12px;cursor:pointer;transition:color .12s,border-color .12s;font-family:inherit}
+    .refresh-btn:hover{color:var(--accent);border-color:var(--accent)}
+    .refresh-btn:disabled{opacity:.4;cursor:not-allowed}
+
+    .filters{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:20px}
+    .filter-btn{font-size:12px;font-weight:500;color:var(--text3);background:var(--bg2);border:1px solid var(--border);border-radius:20px;padding:5px 14px;cursor:pointer;transition:color .12s,background .12s,border-color .12s;font-family:inherit}
+    .filter-btn:hover{color:var(--text);background:var(--bg3)}
+    .filter-btn.active{color:var(--accent);border-color:var(--accent);background:rgba(80,210,193,.08)}
+
+    .news-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px}
+    @media(max-width:480px){.news-grid{grid-template-columns:1fr}}
+
+    .article{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;display:flex;flex-direction:column;cursor:pointer;transition:border-color .15s}
+    .article:hover{border-color:var(--accent)}
+    .article:hover .art-title{color:var(--accent)}
+    .art-img-wrap{width:100%;aspect-ratio:16/7;overflow:hidden;background:var(--bg3);flex-shrink:0}
+    .art-img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .3s}
+    .article:hover .art-img{transform:scale(1.03)}
+    .art-img-ph{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:28px;color:var(--text3)}
+    .art-body{padding:12px 14px;flex:1;display:flex;flex-direction:column;gap:7px}
+    .art-meta{display:flex;justify-content:space-between;align-items:center;gap:6px}
+    .art-src{font-size:10px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.05em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .art-time{font-size:10px;color:var(--text3);white-space:nowrap;flex-shrink:0}
+    .art-title{font-size:13px;font-weight:600;line-height:1.45;color:var(--text);transition:color .15s;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+    .art-excerpt{font-size:11px;color:var(--text3);line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+    .art-tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:2px}
+    .art-tag{font-size:9px;font-weight:600;padding:2px 6px;border-radius:3px;background:var(--bg3);color:var(--text3);text-transform:uppercase;letter-spacing:.04em}
+
+    .state-box{grid-column:1/-1;padding:60px 20px;text-align:center;color:var(--text3);font-size:12px}
+    .state-icon{font-size:32px;margin-bottom:10px}
+
+    .sk-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
+    .sk-img{width:100%;aspect-ratio:16/7;background:var(--bg3);animation:pulse 1.5s ease-in-out infinite}
+    .sk-body{padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+    .sk-line{border-radius:3px;background:var(--bg3);animation:pulse 1.5s ease-in-out infinite}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+
+    #load-more-wrap{margin-top:20px;text-align:center;display:none}
+    .load-more-btn{background:var(--bg2);border:1px solid var(--border);color:var(--text2);padding:9px 28px;border-radius:var(--r);cursor:pointer;font-size:12px;font-weight:500;font-family:inherit;transition:border-color .15s,color .15s}
+    .load-more-btn:hover{border-color:var(--accent);color:var(--accent)}
+  </style>
+</head>
+<body>
+
+<nav id="rdo-nav">
+  <div class="nav-logo">RDO<span>ONE</span></div>
+  <div class="nav-div"></div>
+  <a href="/">Trade</a>
+  <a href="/markets.html">Markets</a>
+  <a href="/news.html" class="active">News</a>
+  <a href="/portfolio.html">Portfolio</a>
+</nav>
+
+<main>
+  <div class="page-hdr">
+    <h1>Crypto News</h1>
+    <div class="hdr-right">
+      <span id="update-ts"></span>
+      <button class="refresh-btn" id="refresh-btn" onclick="refresh()">Refresh</button>
+    </div>
+  </div>
+  <div class="filters" id="filters"></div>
+  <div class="news-grid" id="news-grid"></div>
+  <div id="load-more-wrap"><button class="load-more-btn" onclick="showMore()">Load More</button></div>
+</main>
+
+<script>
+// ─── Config: category → Cointelegraph RSS path (proxied via /ctnews) ────────
+const CATS = [
+  { id: 'all',        label: 'All',        path: '/rss' },
+  { id: 'bitcoin',    label: 'Bitcoin',    path: '/tags/bitcoin/rss' },
+  { id: 'ethereum',   label: 'Ethereum',   path: '/tags/ethereum/rss' },
+  { id: 'solana',     label: 'Solana',     path: '/tags/solana/rss' },
+  { id: 'market',     label: 'Market',     path: '/category/market-analysis/rss' },
+  { id: 'defi',       label: 'DeFi',       path: '/tags/defi/rss' },
+  { id: 'altcoins',   label: 'Altcoins',   path: '/tags/altcoin/rss' },
+  { id: 'nft',        label: 'NFT',        path: '/tags/nft/rss' },
+  { id: 'regulation', label: 'Regulation', path: '/tags/regulations/rss' },
+];
+const PAGE_SIZE = 15;
+
+// ─── State ──────────────────────────────────────────────────────────────────
+const cache = {};
+let articles = [];
+let shown = 0;
+let activeCat = CATS[0];
+let loading = false;
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+const el   = id => document.getElementById(id);
+const set  = (id, v) => { const e = el(id); if (e) e.textContent = v; };
+
+function timeAgo(dateStr) {
+  const d = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
+  if (d < 60)    return d + 's ago';
+  if (d < 3600)  return Math.floor(d / 60) + 'm ago';
+  if (d < 86400) return Math.floor(d / 3600) + 'h ago';
+  return Math.floor(d / 86400) + 'd ago';
+}
+
+function getText(item, tagName) {
+  const node = item.getElementsByTagName(tagName)[0];
+  return node?.textContent?.trim() || '';
+}
+
+function parseRSS(xmlText) {
+  const doc   = new DOMParser().parseFromString(xmlText, 'text/xml');
+  const items = doc.querySelectorAll('item');
+  return Array.from(items).map(item => {
+    // Image: try media:content → media:thumbnail → enclosure → og:image in description
+    let img = '';
+    const mc = item.getElementsByTagName('media:content')[0]
+            || item.getElementsByTagName('media:thumbnail')[0];
+    if (mc) img = mc.getAttribute('url') || mc.getAttribute('href') || '';
+    if (!img) {
+      const enc = item.getElementsByTagName('enclosure')[0];
+      if (enc && /image/i.test(enc.getAttribute('type') || '')) img = enc.getAttribute('url') || '';
+    }
+    if (!img) {
+      const desc = getText(item, 'description');
+      const m = desc.match(/<img[^>]+src=["']([^"']+)/i);
+      if (m) img = m[1];
+    }
+    const cats = Array.from(item.getElementsByTagName('category')).map(c => c.textContent.trim()).filter(Boolean);
+    const desc = getText(item, 'description').replace(/<[^>]*>/g, '').trim();
+    return {
+      title:   getText(item, 'title'),
+      link:    getText(item, 'link'),
+      pubDate: getText(item, 'pubDate'),
+      author:  getText(item, 'dc:creator') || getText(item, 'author'),
+      desc,
+      img,
+      cats: cats.slice(0, 3),
+    };
+  });
+}
+
+function skeletons(n) {
+  return Array.from({ length: n }, () => `
+    <div class="sk-card">
+      <div class="sk-img"></div>
+      <div class="sk-body">
+        <div class="sk-line" style="width:50%;height:8px"></div>
+        <div class="sk-line" style="width:100%;height:11px;margin-top:2px"></div>
+        <div class="sk-line" style="width:85%;height:11px"></div>
+        <div class="sk-line" style="width:60%;height:11px"></div>
+        <div class="sk-line" style="width:40%;height:8px;margin-top:4px"></div>
+      </div>
+    </div>`).join('');
+}
+
+function articleCard(a) {
+  const link = a.link.replace(/'/g, "&#39;");
+  return `<div class="article" onclick="window.open('${link}','_blank','noopener')">
+    <div class="art-img-wrap">
+      ${a.img
+        ? `<img class="art-img" src="${a.img}" alt="" loading="lazy" onerror="this.parentElement.innerHTML='<div class=art-img-ph>📰</div>'">`
+        : '<div class="art-img-ph">📰</div>'}
+    </div>
+    <div class="art-body">
+      <div class="art-meta">
+        <span class="art-src">${a.author || 'Cointelegraph'}</span>
+        <span class="art-time">${a.pubDate ? timeAgo(a.pubDate) : ''}</span>
+      </div>
+      <div class="art-title">${a.title}</div>
+      ${a.desc ? `<div class="art-excerpt">${a.desc.slice(0, 200)}</div>` : ''}
+      ${a.cats.length ? `<div class="art-tags">${a.cats.map(c => `<span class="art-tag">${c}</span>`).join('')}</div>` : ''}
+    </div>
+  </div>`;
+}
+
+// ─── Fetch ───────────────────────────────────────────────────────────────────
+async function fetchCat(cat) {
+  if (cache[cat.id]) return cache[cat.id];
+  const res = await fetch('/ctnews' + cat.path);
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const xml  = await res.text();
+  const items = parseRSS(xml);
+  cache[cat.id] = items;
+  return items;
+}
+
+// ─── Render ──────────────────────────────────────────────────────────────────
+function render(items) {
+  articles = items;
+  shown = 0;
+  const next = Math.min(PAGE_SIZE, articles.length);
+  const grid = el('news-grid');
+  if (!articles.length) {
+    grid.innerHTML = `<div class="state-box"><div class="state-icon">📭</div><div>No articles found.</div></div>`;
+    el('load-more-wrap').style.display = 'none';
+    return;
+  }
+  grid.innerHTML = articles.slice(0, next).map(articleCard).join('');
+  shown = next;
+  el('load-more-wrap').style.display = shown < articles.length ? 'block' : 'none';
+}
+
+function showMore() {
+  const next = Math.min(shown + PAGE_SIZE, articles.length);
+  el('news-grid').innerHTML = articles.slice(0, next).map(articleCard).join('');
+  shown = next;
+  el('load-more-wrap').style.display = shown < articles.length ? 'block' : 'none';
+}
+
+// ─── Load category ────────────────────────────────────────────────────────────
+async function loadCat(cat) {
+  if (loading) return;
+  loading = true;
+  el('news-grid').innerHTML = skeletons(9);
+  el('load-more-wrap').style.display = 'none';
+  const btn = el('refresh-btn');
+  if (btn) btn.disabled = true;
+  try {
+    const items = await fetchCat(cat);
+    set('update-ts', 'Updated ' + new Date().toLocaleTimeString());
+    render(items);
+  } catch (e) {
+    el('news-grid').innerHTML = `<div class="state-box"><div class="state-icon">⚠️</div><div>Failed to load: ${e.message}</div></div>`;
+  }
+  if (btn) btn.disabled = false;
+  loading = false;
+}
+
+async function refresh() {
+  delete cache[activeCat.id];
+  await loadCat(activeCat);
+}
+
+// ─── Filters ─────────────────────────────────────────────────────────────────
+function buildFilters() {
+  el('filters').innerHTML = CATS.map(c =>
+    `<button class="filter-btn${c.id === activeCat.id ? ' active' : ''}" data-id="${c.id}">${c.label}</button>`
+  ).join('');
+  el('filters').addEventListener('click', e => {
+    const btn = e.target.closest('.filter-btn');
+    if (!btn || loading) return;
+    const cat = CATS.find(c => c.id === btn.dataset.id);
+    if (!cat || cat.id === activeCat.id) return;
+    activeCat = cat;
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.toggle('active', b.dataset.id === cat.id));
+    loadCat(cat);
+  });
+}
+
+buildFilters();
+loadCat(activeCat);
+</script>
+</body>
+</html>

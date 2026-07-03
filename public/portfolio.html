@@ -133,7 +133,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     if (bodyOpen2) {
       const bi2 = bodyOpen2.index + bodyOpen2[0].length;
       const rdoStyle = "<style>#hl-nav{position:fixed;top:0;left:0;right:0;height:40px;background:#0f1a1e;border-bottom:1px solid #273035;display:flex;align-items:center;gap:8px;padding:0 16px;z-index:99999;font-family:Inter,system-ui,sans-serif;}#hl-nav .nl{font-size:13px;font-weight:800;letter-spacing:.5px;color:#f5f1ea;}#hl-nav .nl span{color:#50d2c1;}#hl-nav .nd{width:1px;height:18px;background:#273035;margin:0 4px;}#hl-nav a{font-size:12px;font-weight:500;color:#878c8f;text-decoration:none;padding:4px 10px;border-radius:4px;}#hl-nav a:hover{color:#fff;background:#1b2429;}#hl-nav a.act{color:#50d2c1;}body{padding-top:40px!important;}</style>";
-      const rdoNav = "<div id=\"hl-nav\"><div class=\"nl\">RDO<span>ONE</span></div><div class=\"nd\"></div><a href=\"/\">Trade</a><a href=\"/portfolio.html\" class=\"act\">Portfolio</a></div>";
+      const rdoNav = "<div id=\"hl-nav\"><div class=\"nl\">RDO<span>ONE</span></div><div class=\"nd\"></div><a href=\"/\">Trade</a><a href=\"/markets.html\">Markets</a><a href=\"/news.html\">News</a><a href=\"/portfolio.html\" class=\"act\">Portfolio</a></div>";
       template = template.slice(0, bi2) + rdoStyle + rdoNav + template.slice(bi2);
     }
 
