@@ -534,7 +534,7 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
   padding: 6px 0 2px; border-top: 1px solid var(--hl-border); margin-top: 4px;
 }
 
-.tp-link { color: var(--hl-text-secondary); text-decoration: underline; text-underline-offset: 2px; }
+.tp-link { color: var(--hl-text-secondary); text-decoration: none; font-weight: 600; }
 .tp-link:hover { color: var(--hl-accent); }
 
 /* ── BOTTOM PANEL ───────────────────────────────────────────── */
