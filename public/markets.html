@@ -103,6 +103,28 @@
     .badge.up{background:rgba(31,166,125,.15);color:var(--green)}
     .badge.dn{background:rgba(237,112,136,.15);color:var(--red)}
 
+    /* ─── HL Perps Table ───────────────────────────────────────────────── */
+    .hl-wrap{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;margin-bottom:16px}
+    .hl-top{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border)}
+    .hl-search-box{display:flex;align-items:center;gap:8px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);padding:6px 10px;flex:1;max-width:320px}
+    .hl-search-box svg{flex-shrink:0;opacity:.5}
+    .hl-search{background:none;border:none;outline:none;color:var(--text);font-size:12px;font-family:inherit;width:100%}
+    .hl-search::placeholder{color:var(--text3)}
+    .hl-tbl{width:100%;border-collapse:collapse}
+    .hl-tbl th{padding:8px 12px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--text3);white-space:nowrap;border-bottom:1px solid var(--border);text-align:right;cursor:pointer;user-select:none}
+    .hl-tbl th:first-child{text-align:left}
+    .hl-tbl th:hover{color:var(--text)}
+    .hl-tbl th.sort-active{color:var(--accent)}
+    .hl-tbl td{padding:9px 12px;border-top:1px solid rgba(255,255,255,.04);font-size:12px;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+    .hl-tbl tr{cursor:pointer;transition:background .1s}
+    .hl-tbl tr:hover{background:var(--bg3)}
+    .hl-market{display:flex;align-items:center;gap:8px;text-align:left}
+    .hl-star{color:var(--text3);font-size:13px;cursor:pointer;flex-shrink:0}
+    .hl-star:hover{color:#f5c518}
+    .hl-sym{font-size:12px;font-weight:600;color:var(--text)}
+    .hl-lev{font-size:10px;font-weight:600;color:var(--text3);background:var(--bg3);padding:1px 4px;border-radius:3px;flex-shrink:0}
+    .hl-ch-val{font-weight:600}
+
     /* ─── Converter ────────────────────────────────────────────────────── */
     .conv-wrap{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;margin-bottom:16px}
     .conv-body{padding:16px;display:grid;grid-template-columns:1fr auto 1fr;gap:12px;align-items:center}
@@ -205,6 +227,29 @@
     </div>
   </div>
 
+  <!-- Hyperliquid Perps -->
+  <div class="hl-wrap">
+    <div class="hl-top">
+      <div class="hl-search-box">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input class="hl-search" id="hl-search" placeholder="Search" />
+      </div>
+    </div>
+    <table class="hl-tbl">
+      <thead>
+        <tr>
+          <th class="l" data-col="name">Market</th>
+          <th data-col="px">Last Price</th>
+          <th data-col="chg">24h Change</th>
+          <th data-col="fund">8h Funding</th>
+          <th data-col="vol" class="sort-active">Volume ↓</th>
+          <th data-col="oi">Open Interest</th>
+        </tr>
+      </thead>
+      <tbody id="hl-tbody"><tr><td colspan="6" style="text-align:center;padding:20px;color:var(--text3)">Loading…</td></tr></tbody>
+    </table>
+  </div>
+
   <!-- Top 20 table -->
   <div class="tbl-wrap">
     <div class="tbl-hdr">
@@ -263,6 +308,31 @@ function fgColor(v) {
   if (n <= 55) return '#eab308';
   if (n <= 75) return '#50d2c1';
   return '#1fa67d';
+}
+
+function renderFGGauge(value, label) {
+  const cx = 100, cy = 100, r = 76, sw = 13;
+  function pt(v) {
+    const a = Math.PI - (v / 100) * Math.PI;
+    return [cx + r * Math.cos(a), cy - r * Math.sin(a)];
+  }
+  function arc(v1, v2, color) {
+    const [x1,y1] = pt(v1), [x2,y2] = pt(v2);
+    return `<path d="M${x1.toFixed(2)} ${y1.toFixed(2)} A${r} ${r} 0 0 0 ${x2.toFixed(2)} ${y2.toFixed(2)}" fill="none" stroke="${color}" stroke-width="${sw}" stroke-linecap="butt"/>`;
+  }
+  const na = Math.PI - (value / 100) * Math.PI;
+  const nl = r - 10;
+  const nx = (cx + nl * Math.cos(na)).toFixed(2);
+  const ny = (cy - nl * Math.sin(na)).toFixed(2);
+  const col = fgColor(value);
+  return `<svg viewBox="0 0 200 115" xmlns="http://www.w3.org/2000/svg" style="width:100%;display:block">
+    <path d="M${cx-r} ${cy} A${r} ${r} 0 0 0 ${cx+r} ${cy}" fill="none" stroke="#1a2a30" stroke-width="${sw}" stroke-linecap="round"/>
+    ${arc(0,25,'#ed7088')}${arc(25,45,'#f97316')}${arc(45,55,'#eab308')}${arc(55,75,'#50d2c1')}${arc(75,100,'#1fa67d')}
+    <line x1="${cx}" y1="${cy}" x2="${nx}" y2="${ny}" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/>
+    <circle cx="${cx}" cy="${cy}" r="5" fill="#fff"/>
+    <text x="${cx}" y="88" text-anchor="middle" font-size="28" font-weight="700" fill="${col}" font-family="Inter,system-ui,sans-serif">${value}</text>
+    <text x="${cx}" y="110" text-anchor="middle" font-size="11" fill="#878c8f" font-family="Inter,system-ui,sans-serif">${label}</text>
+  </svg>`;
 }
 
 // ─── CoinGecko fetch w/ cache ───────────────────────────────────────────────
@@ -545,8 +615,100 @@ function buildConverter(list) {
 }
 
 // ─── Init ────────────────────────────────────────────────────────────────────
+// ─── Hyperliquid Perps Table ────────────────────────────────────────────────
+let hlData = [];
+let hlSort = { col: 'vol', dir: -1 };
+let hlQuery = '';
+
+function fmtHL(n) {
+  if (!isFinite(n) || n == null) return '—';
+  if (n >= 1e9)  return '$' + (n/1e9).toFixed(2) + 'B';
+  if (n >= 1e6)  return '$' + (n/1e6).toFixed(2) + 'M';
+  if (n >= 1e3)  return '$' + (n/1e3).toFixed(2) + 'K';
+  return '$' + n.toFixed(2);
+}
+
+function fmtHLPx(n) {
+  if (!isFinite(n) || n == null) return '—';
+  if (n >= 10000) return n.toLocaleString('en-US', {maximumFractionDigits:0});
+  if (n >= 100)   return n.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+  if (n >= 1)     return n.toFixed(4);
+  return n.toPrecision(4);
+}
+
+async function fetchHLPerps() {
+  try {
+    const r = await fetch('https://api.hyperliquid.xyz/info', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({type:'metaAndAssetCtxs'})
+    });
+    const [meta, ctxs] = await r.json();
+    hlData = meta.universe.map((coin, i) => {
+      const ctx = ctxs[i] || {};
+      const px   = parseFloat(ctx.markPx) || 0;
+      const prev = parseFloat(ctx.prevDayPx) || 0;
+      const chgAbs = px - prev;
+      const chgPct = prev ? (chgAbs / prev * 100) : 0;
+      const fund8h = (parseFloat(ctx.funding) || 0) * 8 * 100;
+      const vol   = parseFloat(ctx.dayNtlVlm) || 0;
+      const oi    = parseFloat(ctx.openInterest) * px || 0;
+      return { name: coin.name, maxLev: coin.maxLeverage, px, chgAbs, chgPct, fund8h, vol, oi };
+    });
+    renderHLTable();
+  } catch(e) { console.error('HL perps:', e); }
+}
+
+function renderHLTable() {
+  let rows = hlData.filter(d => !hlQuery || d.name.toLowerCase().includes(hlQuery.toLowerCase()));
+  rows = rows.slice().sort((a,b) => {
+    const av = hlSort.col === 'name' ? a.name : (a[hlSort.col] ?? 0);
+    const bv = hlSort.col === 'name' ? b.name : (b[hlSort.col] ?? 0);
+    if (hlSort.col === 'name') return hlSort.dir * av.localeCompare(bv);
+    return hlSort.dir * (av - bv);
+  });
+
+  const tbody = el('hl-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = rows.map(d => {
+    const chgCls = d.chgPct >= 0 ? 'up' : 'dn';
+    const fundCls = d.fund8h >= 0 ? 'up' : 'dn';
+    const chgSign = d.chgPct >= 0 ? '+' : '';
+    return `<tr onclick="location.href='/?sym=${encodeURIComponent(d.name)}'">
+      <td><div class="hl-market">
+        <span class="hl-star">☆</span>
+        <span class="hl-sym">${d.name}-USDC</span>
+        <span class="hl-lev">${d.maxLev}x</span>
+      </div></td>
+      <td>${fmtHLPx(d.px)}</td>
+      <td class="hl-ch-val ${chgCls}">${chgSign}${d.chgAbs.toFixed(d.px >= 100 ? 2 : 4)} / ${chgSign}${d.chgPct.toFixed(2)}%</td>
+      <td class="${fundCls}">${d.fund8h >= 0 ? '+' : ''}${d.fund8h.toFixed(4)}%</td>
+      <td>${fmtHL(d.vol)}</td>
+      <td>${fmtHL(d.oi)}</td>
+    </tr>`;
+  }).join('');
+}
+
+function initHLTable() {
+  document.querySelectorAll('.hl-tbl th[data-col]').forEach(th => {
+    th.addEventListener('click', () => {
+      const col = th.dataset.col;
+      if (hlSort.col === col) hlSort.dir *= -1;
+      else { hlSort.col = col; hlSort.dir = col === 'name' ? 1 : -1; }
+      document.querySelectorAll('.hl-tbl th').forEach(t => {
+        t.classList.toggle('sort-active', t.dataset.col === col);
+        if (t.dataset.col === col) t.textContent = {name:'Market',px:'Last Price',chg:'24h Change',fund:'8h Funding',vol:'Volume',oi:'Open Interest'}[col] + (hlSort.dir < 0 ? ' ↓' : ' ↑');
+        else t.textContent = {name:'Market',px:'Last Price',chg:'24h Change',fund:'8h Funding',vol:'Volume',oi:'Open Interest'}[t.dataset.col] || t.textContent.replace(/ [↑↓]/,'');
+      });
+      renderHLTable();
+    });
+  });
+  el('hl-search').addEventListener('input', e => { hlQuery = e.target.value; renderHLTable(); });
+}
+
 async function init() {
   buildTicker();
+  initHLTable();
+  fetchHLPerps();
 
   // Stagger fetches to respect CoinGecko rate limits
   fetchTicker();
@@ -562,6 +724,7 @@ async function init() {
   // Refresh intervals
   setInterval(fetchTicker, 30_000);
   setInterval(fetchGlobal, 120_000);
+  setInterval(fetchHLPerps, 30_000);
   setInterval(async () => { await delay(300); fetchCoins(); }, 90_000);
   setInterval(async () => { await delay(600); fetchTrending(); }, 120_000);
 }

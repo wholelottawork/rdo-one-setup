@@ -117,6 +117,8 @@ html, body {
   transition: background 0.1s;
 }
 .mkt-item:hover { background: var(--hl-bg-overlay); color: var(--hl-text-primary); }
+.mkt-item-name { display: flex; align-items: center; gap: 6px; }
+.mkt-item-lev { font-size: 10px; color: var(--hl-text-muted); background: rgba(255,255,255,0.07); border-radius: 3px; padding: 1px 4px; }
 .mkt-item-price { color: var(--hl-text-muted); }
 
 /* header stats */
@@ -161,6 +163,15 @@ html, body {
   display: flex; flex-direction: column;
   border-right: 1px solid var(--hl-border);
   background: var(--hl-bg-base); overflow: hidden;
+  position: relative;
+}
+.xt-resize-handle {
+  position: absolute; top: 0; right: -3px;
+  width: 6px; height: 100%; z-index: 10;
+  cursor: col-resize;
+}
+.xt-resize-handle:hover, .xt-resize-handle.dragging {
+  background: var(--hl-accent); opacity: 0.5;
 }
 .xt-hdr {
   display: flex; align-items: center; justify-content: space-between;
@@ -361,7 +372,7 @@ html, body {
 .ob-spread-row {
   display: flex; align-items: center; gap: 6px; padding: 4px 8px;
   border-top: 1px solid var(--hl-border); border-bottom: 1px solid var(--hl-border);
-  flex-shrink: 0;
+  flex-shrink: 0; margin: 8px 0;
 }
 .ob-spread-label { font-size: 9px; color: var(--hl-text-secondary); flex: 1; text-transform: uppercase; letter-spacing: 0.4px; }
 .ob-spread-val   { font-size: 11px; color: var(--hl-text-primary); }
@@ -379,10 +390,10 @@ html, body {
 .tr-time { text-align: right; color: var(--hl-text-muted); }
 
 /* ── ORDER BOOK (trade panel) ───────────────────────────────── */
-.ob-mini { border-top: 1px solid var(--hl-border); flex-shrink: 0; }
+.ob-mini { border-top: 1px solid var(--hl-border); flex-shrink: 0; margin-top: 8px; }
 .ob-mini-hdr {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 6px 8px 2px;
+  padding: 6px 8px 10px;
 }
 .ob-mini-title {
   font-size: 10px; font-weight: 600; text-transform: uppercase;
@@ -544,29 +555,32 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
 }
 
 .btm-tabs {
-  display: flex; border-bottom: 1px solid var(--hl-border);
-  flex-shrink: 0; overflow-x: auto;
+  display: flex;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--hl-border);
+  overflow-x: auto; flex-shrink: 0;
 }
 .btm-tab {
-  font-family: var(--hl-font); font-size: 11px; padding: 7px 14px; white-space: nowrap;
-  background: transparent; border: none; border-bottom: 2px solid transparent;
-  border-right: 1px solid var(--hl-border);
+  font-family: var(--hl-font); font-size: 11px; padding: 10px 16px 10px 0; white-space: nowrap;
+  background: transparent; border: none;
   color: var(--hl-text-secondary); cursor: pointer; transition: all 0.12s;
+  margin-right: 8px;
 }
-.btm-tab:last-child { border-right: none; }
-.btm-tab.active { color: var(--hl-text-primary); border-bottom-color: var(--hl-accent); }
+.btm-tab.active { color: var(--hl-text-primary); font-weight: 600; }
 .btm-tab:hover:not(.active) { color: var(--hl-text-primary); }
 
 .btm-content { flex: 1; overflow: hidden; }
 .btm-pane    { height: 100%; overflow-y: auto; }
 
 .btm-col-hdr {
-  display: grid;
-  grid-template-columns: 80px 70px 100px 90px 90px 120px 90px 80px 80px 60px 60px;
-  padding: 5px 12px; border-bottom: 1px solid var(--hl-border);
+  display: flex;
+  padding: 8px 16px; border-bottom: 1px solid var(--hl-border);
   position: sticky; top: 0; background: var(--hl-bg-base);
 }
-.btm-col-hdr span { font-size: 9px; color: var(--hl-text-light); letter-spacing: 0.3px; text-transform: uppercase; }
+.btm-col-hdr span {
+  flex: 1; min-width: 0;
+  font-size: 11px; color: var(--hl-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 
 .btm-rows { padding: 0; }
 .btm-empty {
@@ -575,11 +589,11 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
 
 /* position row */
 .pos-row {
-  display: grid;
-  grid-template-columns: 80px 70px 100px 90px 90px 120px 90px 80px 80px 60px 60px;
-  padding: 6px 12px; border-bottom: 1px solid rgba(255,255,255,0.03);
+  display: flex;
+  padding: 6px 16px; border-bottom: 1px solid rgba(255,255,255,0.03);
   align-items: center;
 }
+.pos-row span { flex: 1; min-width: 0; }
 .pos-row:hover { background: var(--hl-bg-overlay); }
 .pos-row span { font-size: 11px; color: var(--hl-text-soft); }
 .pos-row .pos-sym  { color: var(--hl-text-primary); font-weight: 600; }

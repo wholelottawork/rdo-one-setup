@@ -24,6 +24,7 @@ let currentIv     = 1;
 let isBuy         = true;
 let livePrices    = {};
 let metaCtxs      = {};
+let marketLev     = {};
 let recentTrades  = [];
 let stopBook      = null;
 
@@ -86,13 +87,36 @@ function countdown() {
 // ── Market dropdown ────────────────────────────────────────────
 function buildMarketDropdown() {
   renderMarketList(MARKETS, document.getElementById('mktList'));
+  fetchAllMids();
+}
+
+async function fetchAllMids() {
+  try {
+    const r = await fetch('https://api.hyperliquid.xyz/info', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'metaAndAssetCtxs' }),
+    });
+    const [meta, ctxs] = await r.json();
+    meta.universe.forEach((asset, i) => {
+      const sym   = asset.name;
+      const price = parseFloat(ctxs[i]?.markPx ?? 0);
+      if (asset.maxLeverage) marketLev[sym] = asset.maxLeverage;
+      if (!price) return;
+      livePrices[sym] = price;
+      const priceEl = document.getElementById(`mprice-${sym}`);
+      if (priceEl) priceEl.textContent = fmt(price, sym);
+      const levEl = document.getElementById(`mlev-${sym}`);
+      if (levEl) levEl.textContent = asset.maxLeverage + 'x';
+    });
+  } catch {}
+  setTimeout(fetchAllMids, 5000);
 }
 
 function renderMarketList(markets, list) {
   list.innerHTML = markets.map(sym =>
     `<div class="mkt-item" data-sym="${sym}">
-      <span>${sym}-USDC</span>
-      <span class="mkt-item-price" id="mprice-${sym}">—</span>
+      <span class="mkt-item-name">${sym}-USDC${marketLev[sym] ? `<span class="mkt-item-lev">${marketLev[sym]}x</span>` : ''}</span>
+      <span class="mkt-item-price" id="mprice-${sym}">${livePrices[sym] ? fmt(livePrices[sym], sym) : '—'}</span>
     </div>`
   ).join('');
   list.querySelectorAll('.mkt-item').forEach(el =>
@@ -577,5 +601,38 @@ window.rdo = {
     if (feed) feed.innerHTML = '<div class="xt-empty">X integration coming soon — connect your API key in settings.</div>';
   },
 };
+
+// ── X Tracker resize ───────────────────────────────────────────
+(function initXtResize() {
+  const handle = document.getElementById('xtResizeHandle');
+  if (!handle) return;
+  const root = document.documentElement;
+  const MIN = 120, MAX = 520;
+  let dragging = false, startX = 0, startW = 0;
+
+  handle.addEventListener('mousedown', e => {
+    dragging = true;
+    startX = e.clientX;
+    startW = parseInt(getComputedStyle(root).getPropertyValue('--xt')) || 240;
+    handle.classList.add('dragging');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    const w = Math.min(MAX, Math.max(MIN, startW + (e.clientX - startX)));
+    root.style.setProperty('--xt', w + 'px');
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    handle.classList.remove('dragging');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  });
+})();
 
 init();
