@@ -143,6 +143,12 @@ body.mode-aster { --hl-accent: #a78bfa; --hl-accent-dark: rgba(139,92,246,0.15);
   box-shadow: 0 8px 24px rgba(0,0,0,0.4);
 }
 .mode-popup.hidden { display: none; }
+.mode-backdrop {
+  position: fixed; inset: 0; z-index: 998;
+  backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+  background: rgba(0,0,0,0.25);
+}
+.mode-backdrop.hidden { display: none; }
 .mode-popup-row { display: flex; gap: 10px; align-items: flex-start; }
 .mode-popup-tag {
   font-size: 10px; font-weight: 700; letter-spacing: 0.5px;

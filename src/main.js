@@ -810,13 +810,20 @@ window.rdo = {
     if (feed) feed.innerHTML = '<div class="xt-empty">X integration coming soon — connect your API key in settings.</div>';
   },
   toggleModeHelp() {
-    const popup = document.getElementById('modePopup');
+    const popup    = document.getElementById('modePopup');
+    const backdrop = document.getElementById('modeBackdrop');
     if (!popup) return;
-    // Close market dropdown first
     closeDropdown();
-    popup.classList.toggle('hidden');
-    if (!popup.classList.contains('hidden')) {
-      const close = e => { if (!popup.contains(e.target) && e.target.id !== 'modeHelpBtn') { popup.classList.add('hidden'); document.removeEventListener('click', close); } };
+    const opening = popup.classList.contains('hidden');
+    popup.classList.toggle('hidden', !opening);
+    if (backdrop) backdrop.classList.toggle('hidden', !opening);
+    if (opening) {
+      const close = e => {
+        if (!popup.contains(e.target) && e.target.id !== 'modeHelpBtn' && e.target.id !== 'modeBackdrop') return;
+        popup.classList.add('hidden');
+        if (backdrop) backdrop.classList.add('hidden');
+        document.removeEventListener('click', close);
+      };
       setTimeout(() => document.addEventListener('click', close), 0);
     }
   },
