@@ -34,7 +34,6 @@
     #rdo-nav a:hover{color:var(--text);background:var(--bg2)}
     #rdo-nav a.active{color:var(--accent)}
 
-    /* ── Layout ──────────────────────────────────────────── */
     main{max-width:600px;margin:0 auto;padding:0 20px 60px;padding-top:calc(var(--nav) + 28px)}
     .page-hdr{margin-bottom:24px}
     .page-title{font-size:20px;font-weight:800;letter-spacing:.5px;margin-bottom:3px}
@@ -49,16 +48,23 @@
     .card{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:20px}
     .card+.card{margin-top:12px}
 
-    /* ── Source selector buttons ──────────────────────────── */
+    /* ── Source selector ──────────────────────────────────── */
     .src-tabs{display:flex;gap:6px;margin-bottom:18px}
     .src-tab{padding:6px 16px;font-size:11px;font-weight:700;border-radius:5px;border:1px solid var(--border);background:transparent;color:var(--text3);cursor:pointer;transition:all .15s;white-space:nowrap}
     .src-tab.hl.active{border-color:var(--accent);color:var(--accent);background:rgba(80,210,193,.07)}
     .src-tab.as.active{border-color:var(--aster);color:var(--aster);background:rgba(245,158,11,.07)}
 
+    /* ── Direction tabs ───────────────────────────────────── */
+    .dir-tabs{display:flex;gap:6px;margin-bottom:18px}
+    .dir-tab{flex:1;padding:9px 8px;font-size:11px;font-weight:700;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text3);cursor:pointer;transition:all .15s;text-align:center;line-height:1.4}
+    .dir-tab .dt-from{font-size:10px;color:inherit;opacity:.7;display:block;margin-bottom:1px}
+    .dir-tab.aHL{border-color:var(--accent);color:var(--accent);background:rgba(80,210,193,.07)}
+    .dir-tab.aAS{border-color:var(--aster);color:var(--aster);background:rgba(245,158,11,.07)}
+
     /* ── Field label ──────────────────────────────────────── */
     .field-lbl{font-size:9px;font-weight:700;letter-spacing:.1em;color:var(--text3);text-transform:uppercase;margin-bottom:8px}
 
-    /* ── Amount input row ─────────────────────────────────── */
+    /* ── Amount row ───────────────────────────────────────── */
     .amt-wrap{background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:12px 14px;display:flex;align-items:center;gap:10px;transition:border-color .12s;margin-bottom:6px}
     .amt-wrap:focus-within{border-color:var(--accent)}
     .amt-wrap.af:focus-within{border-color:var(--aster)}
@@ -75,7 +81,7 @@
     .txt-input.af:focus{border-color:var(--aster)}
     .txt-input::placeholder{color:var(--text3)}
 
-    /* ── Chain + Token selectors ──────────────────────────── */
+    /* ── Chain/Token selectors ────────────────────────────── */
     .pair-row{display:flex;gap:8px;margin-bottom:14px}
     .sel-wrap{position:relative;flex:1}
     .sel-wrap select{width:100%;-webkit-appearance:none;appearance:none;background:var(--bg3);border:1px solid var(--border);border-radius:7px;padding:9px 30px 9px 12px;font-size:12px;font-weight:600;color:var(--text);outline:none;cursor:pointer;transition:border-color .12s}
@@ -126,23 +132,22 @@
     .status.err{background:rgba(237,112,136,.08);border:1px solid rgba(237,112,136,.2);color:var(--red)}
     .status.inf{background:rgba(80,210,193,.06);border:1px solid rgba(80,210,193,.16);color:var(--accent)}
 
-    /* ── Between accounts ─────────────────────────────────── */
-    .dir-wrap{display:flex;align-items:center;gap:10px;margin-bottom:20px}
-    .dir-acct{flex:1;background:var(--bg3);border-radius:8px;padding:14px;text-align:center}
-    .dir-tag{font-size:9px;font-weight:700;letter-spacing:.1em;color:var(--text3);text-transform:uppercase;margin-bottom:6px}
-    .dir-name{font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:6px}
-    .dir-dot{width:6px;height:6px;border-radius:50%}
-    .flip-btn{width:32px;height:32px;border-radius:50%;background:var(--bg3);border:1px solid var(--border);color:var(--text3);font-size:16px;display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:pointer;transition:all .15s}
-    .flip-btn:hover{border-color:var(--accent);color:var(--accent)}
-    .step-list{display:flex;flex-direction:column;gap:8px;margin-bottom:18px}
-    .step-row{display:flex;align-items:flex-start;gap:10px;font-size:12px;color:var(--text2)}
-    .step-num{width:20px;height:20px;border-radius:50%;background:var(--bg3);border:1px solid var(--border);color:var(--text3);font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px}
-    .step-body{flex:1}
-    .step-body strong{color:var(--text);font-weight:600}
-    .link-btn{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:var(--accent);background:transparent;border:1px solid rgba(80,210,193,.25);border-radius:4px;padding:3px 9px;cursor:pointer;margin-top:4px;transition:all .15s}
-    .link-btn:hover{background:rgba(80,210,193,.08)}
-    .link-btn.al{color:var(--aster);border-color:rgba(245,158,11,.25)}
-    .link-btn.al:hover{background:rgba(245,158,11,.08)}
+    /* ── Progress tracker ─────────────────────────────────── */
+    .prog-list{display:flex;flex-direction:column;margin-top:4px}
+    .prog-item{display:flex;gap:12px;position:relative;padding-bottom:16px}
+    .prog-item:last-child{padding-bottom:0}
+    .prog-item:not(:last-child)::before{content:'';position:absolute;left:9px;top:21px;bottom:0;width:1px;background:var(--border)}
+    .prog-dot{width:20px;height:20px;border-radius:50%;border:2px solid var(--border);background:var(--bg3);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;color:var(--text3);position:relative;z-index:1;transition:border-color .25s,background .25s}
+    .prog-dot.spin{border-color:var(--accent);border-top-color:transparent;animation:pdot-spin .7s linear infinite}
+    .prog-dot.ok{border-color:var(--green);background:rgba(31,166,125,.15);color:var(--green)}
+    .prog-dot.fail{border-color:var(--red);background:rgba(237,112,136,.12);color:var(--red)}
+    @keyframes pdot-spin{to{transform:rotate(360deg)}}
+    .prog-body{flex:1;padding-top:2px}
+    .prog-label{font-size:12px;font-weight:600;color:var(--text2);margin-bottom:2px}
+    .prog-msg{font-size:11px;color:var(--text3);min-height:15px;transition:color .2s}
+    .prog-msg.go{color:var(--accent)}
+    .prog-msg.ok{color:var(--green)}
+    .prog-msg.fail{color:var(--red)}
   </style>
 </head>
 <body>
@@ -178,7 +183,6 @@
         <button class="src-tab as"        id="wd-btn-as" onclick="setWdSrc('aster')">EXTRA · Aster</button>
       </div>
 
-      <!-- HL -->
       <div id="wd-hl">
         <div class="info-box hl">Withdraw USDC directly from your Hyperliquid perps account. Funds arrive on Arbitrum in ~2 minutes.</div>
         <div class="field-lbl">Amount</div>
@@ -199,7 +203,6 @@
         <div class="status" id="wd-hl-st"></div>
       </div>
 
-      <!-- Aster -->
       <div id="wd-aster" style="display:none">
         <div class="info-box as">Withdraw USDT from your Aster perps account using your API credentials.</div>
         <div class="field-lbl">API credentials</div>
@@ -230,7 +233,6 @@
   <!-- ══ SEND ══════════════════════════════════════════════════════════════ -->
   <div id="tab-send" style="display:none">
     <div class="card">
-
       <div class="field-lbl">You send</div>
       <div class="pair-row">
         <div class="sel-wrap" style="flex:1.3">
@@ -262,7 +264,6 @@
         </div>
       </div>
 
-      <!-- Quote -->
       <div id="send-quote-wrap" style="display:none">
         <div class="quote-card loading" id="send-qcard">
           <div class="q-title">Estimated route</div>
@@ -290,40 +291,58 @@
   <!-- ══ BETWEEN ACCOUNTS ══════════════════════════════════════════════════ -->
   <div id="tab-between" style="display:none">
     <div class="card">
-      <div class="field-lbl" style="margin-bottom:14px">Direction</div>
-      <div class="dir-wrap">
-        <div class="dir-acct">
-          <div class="dir-tag">From</div>
-          <div class="dir-name">
-            <div class="dir-dot" id="btw-from-dot" style="background:var(--accent)"></div>
-            <span id="btw-from-name">BASIC (Hyperliquid)</span>
-          </div>
-        </div>
-        <button class="flip-btn" onclick="flipBtw()">⇄</button>
-        <div class="dir-acct">
-          <div class="dir-tag">To</div>
-          <div class="dir-name">
-            <div class="dir-dot" id="btw-to-dot" style="background:var(--aster)"></div>
-            <span id="btw-to-name">EXTRA (Aster)</span>
-          </div>
-        </div>
+      <div class="field-lbl">Direction</div>
+      <div class="dir-tabs">
+        <button class="dir-tab aHL" id="dtab-hl2as" onclick="setDir('hl-to-aster')">
+          <span class="dt-from">BASIC → EXTRA</span>
+          Hyperliquid → Aster
+        </button>
+        <button class="dir-tab" id="dtab-as2hl" onclick="setDir('aster-to-hl')">
+          <span class="dt-from">EXTRA → BASIC</span>
+          Aster → Hyperliquid
+        </button>
       </div>
 
-      <div class="divider"></div>
-      <div class="field-lbl" style="margin-bottom:12px">Steps</div>
-      <div class="step-list" id="btw-steps"></div>
+      <div class="field-lbl">Amount</div>
+      <div class="amt-wrap" id="btw-amt-wrap">
+        <input class="amt-input" type="number" id="btw-amt" placeholder="0.00" min="0">
+        <div class="amt-right">
+          <span class="cur-badge" id="btw-cur">USDC</span>
+          <button class="max-btn" onclick="btwMax()">MAX</button>
+        </div>
+      </div>
+      <div class="bal-hint" id="btw-bal">&nbsp;</div>
+
+      <div class="field-lbl">Aster API credentials</div>
+      <div class="api-row">
+        <input class="api-input" type="text"     id="btw-key" placeholder="API Key">
+        <input class="api-input" type="password" id="btw-sec" placeholder="API Secret">
+      </div>
+      <div class="api-note">Required to sign the Aster side of the transfer</div>
+
+      <button class="exec-btn hl" id="btw-btn" onclick="execBtw()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        Auto Transfer
+      </button>
+
+      <div id="btw-prog" style="display:none">
+        <div class="divider"></div>
+        <div class="field-lbl">Live progress</div>
+        <div class="prog-list" id="btw-prog-list"></div>
+      </div>
+      <div class="status" id="btw-st"></div>
     </div>
 
     <div class="card">
       <div class="info-box neu" style="margin-bottom:0">
-        <strong>How it works:</strong> Perp accounts can't be bridged directly. Withdraw from the source account to your wallet, optionally convert using <strong>Send</strong>, then deposit into the destination account.
+        <strong>Fully automated:</strong> One click executes the full sequence — HL/Aster withdrawal → on-chain swap via LI.FI → deposit to destination account. You'll sign 2–3 wallet transactions. Backend orchestration will be separated in a later release.
       </div>
     </div>
   </div>
 </main>
 
 <script>
-// ── Data ─────────────────────────────────────────────────────────────────────
+// ── Chain / token list ────────────────────────────────────────────────────────
 const CHAINS = [
   {id:'42161', name:'Arbitrum', tokens:[
     {sym:'ETH',   addr:'0x0000000000000000000000000000000000000000', dec:18},
@@ -368,10 +387,14 @@ const CHAINS = [
   ]},
 ];
 
-const HL   = '/hl';
+const USDC_ARB = '0xaf88d065e77c8cc2239327c5edb3a432268e5831';
+const USDT_ARB = '0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9';
+const HL       = '/hl';
+
 const el   = id => document.getElementById(id);
 const set  = (id,v) => { const e=el(id); if(e) e.textContent=v; };
 const fmt  = (n,d=2) => Number(n).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});
+const sleep = ms => new Promise(r=>setTimeout(r,ms));
 
 let wdSrc    = 'hl';
 let btwDir   = 'hl-to-aster';
@@ -379,6 +402,7 @@ let evmAddr  = null;
 let hlEquity = 0;
 let curQuote = null;
 let qTimer   = null;
+let curStep  = -1;
 
 // ── Tabs ──────────────────────────────────────────────────────────────────────
 function setTab(t) {
@@ -386,7 +410,6 @@ function setTab(t) {
     el('tab-'+n).style.display = n===t?'':'none';
     document.querySelectorAll('.xfr-tab')[i].classList.toggle('active', n===t);
   });
-  if(t==='between') renderBtwSteps();
 }
 
 // ── Wallet ────────────────────────────────────────────────────────────────────
@@ -394,10 +417,7 @@ function getProv() { return window.phantom?.ethereum ?? window.ethereum ?? null;
 
 async function autoConnectEVM() {
   const p = getProv(); if(!p) return;
-  try {
-    const a = await p.request({method:'eth_accounts'});
-    if(a?.[0]) onConnected(a[0]);
-  } catch{}
+  try { const a=await p.request({method:'eth_accounts'}); if(a?.[0]) onConnected(a[0]); } catch{}
 }
 
 async function requireEVM() {
@@ -420,17 +440,18 @@ function onConnected(addr) {
 
 async function loadHLEquity(addr) {
   try {
-    const r = await fetch(HL+'/info',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type:'clearinghouseState',user:addr})});
-    const d = await r.json();
-    const ms = d.crossMarginSummary || d.marginSummary || {};
-    hlEquity = parseFloat(ms.accountValue ?? 0);
-    el('wd-hl-bal').textContent = `Balance: $${fmt(hlEquity)} USDC`;
+    const r=await fetch(HL+'/info',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type:'clearinghouseState',user:addr})});
+    const d=await r.json();
+    const ms=d.crossMarginSummary||d.marginSummary||{};
+    hlEquity=parseFloat(ms.accountValue??0);
+    el('wd-hl-bal').textContent=`Balance: $${fmt(hlEquity)} USDC`;
+    if(btwDir==='hl-to-aster') el('btw-bal').textContent=`Balance: $${fmt(hlEquity)} USDC`;
   } catch{}
 }
 
-// ── Withdraw HL ───────────────────────────────────────────────────────────────
+// ── Withdraw: HL ─────────────────────────────────────────────────────────────
 function setWdSrc(src) {
-  wdSrc = src;
+  wdSrc=src;
   el('wd-btn-hl').classList.toggle('active', src==='hl');
   el('wd-btn-as').classList.toggle('active', src==='aster');
   el('wd-hl').style.display    = src==='hl'    ? '' : 'none';
@@ -438,289 +459,406 @@ function setWdSrc(src) {
 }
 
 function onWdHlInput() {
-  const a = parseFloat(el('wd-hl-amt').value)||0;
-  el('wd-hl-bal').textContent = a && hlEquity
+  const a=parseFloat(el('wd-hl-amt').value)||0;
+  el('wd-hl-bal').textContent = a&&hlEquity
     ? `Balance: $${fmt(hlEquity)} USDC  ·  After: $${fmt(Math.max(0,hlEquity-a))}`
     : evmAddr ? `Balance: $${fmt(hlEquity)} USDC` : 'Connect wallet to see balance';
 }
 
-function wdHlMax() {
-  if(hlEquity>0){ el('wd-hl-amt').value=hlEquity.toFixed(2); onWdHlInput(); }
-}
+function wdHlMax() { if(hlEquity>0){ el('wd-hl-amt').value=hlEquity.toFixed(2); onWdHlInput(); } }
 
 async function execHLWithdraw() {
-  const amt = parseFloat(el('wd-hl-amt').value)||0;
+  const amt=parseFloat(el('wd-hl-amt').value)||0;
   if(!amt) return showSt('wd-hl-st','err','Enter an amount');
-  const btn = el('wd-hl-btn');
-  btn.disabled=true; btn.textContent='Waiting for wallet…';
+  const btn=el('wd-hl-btn'); btn.disabled=true; btn.textContent='Waiting for wallet…';
   showSt('wd-hl-st','inf','Requesting signature…');
   try {
-    const user = await requireEVM();
-    const dest = el('wd-hl-dest').value.trim() || user;
+    const user=await requireEVM();
+    const dest=el('wd-hl-dest').value.trim()||user;
     if(!/^0x[0-9a-fA-F]{40}$/.test(dest)) throw new Error('Invalid destination address');
-    const ts = Date.now();
-    const td = {
-      types:{
-        EIP712Domain:[{name:'name',type:'string'},{name:'version',type:'string'},{name:'chainId',type:'uint256'},{name:'verifyingContract',type:'address'}],
-        'HyperliquidTransaction:Withdraw':[{name:'hyperliquidChain',type:'string'},{name:'destination',type:'string'},{name:'amount',type:'string'},{name:'time',type:'uint64'}],
-      },
-      primaryType:'HyperliquidTransaction:Withdraw',
-      domain:{name:'HyperliquidSignTransaction',version:'1',chainId:42161,verifyingContract:'0x0000000000000000000000000000000000000000'},
-      message:{hyperliquidChain:'Mainnet',destination:dest,amount:String(amt),time:ts},
-    };
-    const sig = await getProv().request({method:'eth_signTypedData_v4',params:[user,JSON.stringify(td)]});
-    btn.textContent='Submitting…';
-    const res = await fetch(HL+'/exchange',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-      action:{type:'withdraw3',hyperliquidChain:'Mainnet',signatureChainId:'0xa4b1',amount:String(amt),time:ts,destination:dest},
-      nonce:ts,
-      signature:{r:sig.slice(0,66),s:'0x'+sig.slice(66,130),v:parseInt(sig.slice(130,132),16)},
-    })});
-    const data = await res.json();
-    if(data?.status==='ok'||data?.response?.type==='default'){
-      showSt('wd-hl-st','ok',`✓ $${fmt(amt)} USDC withdrawal submitted — arrives on Arbitrum in ~2 min.`);
-      el('wd-hl-amt').value='';
-      hlEquity=Math.max(0,hlEquity-amt);
-      onWdHlInput();
-    } else {
-      throw new Error(data?.response?.data?.message||data?.error||JSON.stringify(data).slice(0,120));
-    }
+    await hlWithdrawRaw(getProv(), user, amt, dest);
+    showSt('wd-hl-st','ok',`✓ $${fmt(amt)} USDC withdrawal submitted — arrives on Arbitrum in ~2 min.`);
+    el('wd-hl-amt').value=''; hlEquity=Math.max(0,hlEquity-amt); onWdHlInput();
   } catch(e){ showSt('wd-hl-st','err',e.code===4001?'Rejected by wallet.':e.message); }
   finally{ btn.disabled=false; btn.innerHTML=iconDown()+'Withdraw from Hyperliquid'; }
 }
 
-// ── Withdraw Aster ────────────────────────────────────────────────────────────
+// ── Withdraw: Aster ───────────────────────────────────────────────────────────
 async function execAsterWithdraw() {
   const key=el('as-key').value.trim(), secret=el('as-secret').value.trim();
   const amt=parseFloat(el('wd-as-amt').value)||0, dest=el('wd-as-dest').value.trim();
   if(!key||!secret) return showSt('wd-as-st','err','Enter API Key and Secret');
   if(!amt)          return showSt('wd-as-st','err','Enter an amount');
   if(!dest)         return showSt('wd-as-st','err','Enter a destination address');
-  const btn=el('wd-as-btn');
-  btn.disabled=true; btn.textContent='Submitting…';
+  const btn=el('wd-as-btn'); btn.disabled=true; btn.textContent='Submitting…';
   showSt('wd-as-st','inf','Signing and submitting withdrawal…');
   try {
-    const ts=Date.now(), qs=`asset=USDT&amount=${amt}&address=${encodeURIComponent(dest)}&timestamp=${ts}`;
-    const enc=new TextEncoder();
-    const k=await crypto.subtle.importKey('raw',enc.encode(secret),{name:'HMAC',hash:'SHA-256'},false,['sign']);
-    const sb=await crypto.subtle.sign('HMAC',k,enc.encode(qs));
-    const sig=Array.from(new Uint8Array(sb)).map(b=>b.toString(16).padStart(2,'0')).join('');
-    const res=await fetch(`/aster-fapi/v1/withdraw?${qs}&signature=${sig}`,{method:'POST',headers:{'X-MBX-APIKEY':key}});
-    const d=await res.json();
-    if(res.ok&&!d.code){
-      showSt('wd-as-st','ok',`✓ ${fmt(amt)} USDT withdrawal submitted.`);
-      el('wd-as-amt').value=''; el('wd-as-dest').value='';
-    } else { throw new Error(d?.msg||d?.message||JSON.stringify(d).slice(0,120)); }
+    await asterWithdrawRaw(key, secret, amt, dest);
+    showSt('wd-as-st','ok',`✓ ${fmt(amt)} USDT withdrawal submitted.`);
+    el('wd-as-amt').value=''; el('wd-as-dest').value='';
   } catch(e){ showSt('wd-as-st','err',e.message); }
   finally{ btn.disabled=false; btn.innerHTML=iconDown()+'Withdraw from Aster'; }
 }
 
-// ── Send (LI.FI API) ──────────────────────────────────────────────────────────
+// ── Send: LI.FI ──────────────────────────────────────────────────────────────
 function chainIdx(id){ return CHAINS.findIndex(c=>c.id===id); }
 function selSym(sid){ const s=el(sid); return s?.options[s.selectedIndex]?.dataset.sym??''; }
 function selDec(sid){ const s=el(sid); return parseInt(s?.options[s.selectedIndex]?.dataset.dec??'18'); }
 
-function fillChainSel(selId){
-  el(selId).innerHTML = CHAINS.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+function fillChainSel(selId) {
+  el(selId).innerHTML=CHAINS.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
 }
-
-function fillTokenSel(selId, chainId, keepSym){
-  const idx = chainIdx(chainId);
-  const tokens = idx>=0 ? CHAINS[idx].tokens : [];
-  const prev = keepSym || selSym(selId);
-  el(selId).innerHTML = tokens.map(t=>`<option value="${t.addr}" data-sym="${t.sym}" data-dec="${t.dec}">${t.sym}</option>`).join('');
-  const match = Array.from(el(selId).options).find(o=>o.dataset.sym===prev);
+function fillTokenSel(selId, chainId, keepSym) {
+  const idx=chainIdx(chainId); const tokens=idx>=0?CHAINS[idx].tokens:[];
+  const prev=keepSym||selSym(selId);
+  el(selId).innerHTML=tokens.map(t=>`<option value="${t.addr}" data-sym="${t.sym}" data-dec="${t.dec}">${t.sym}</option>`).join('');
+  const match=Array.from(el(selId).options).find(o=>o.dataset.sym===prev);
   if(match) el(selId).value=match.value;
   set('send-cur-badge', selSym('from-token'));
 }
 
-function onFromChainChange(){
-  fillTokenSel('from-token', el('from-chain').value, selSym('from-token'));
-  set('send-cur-badge', selSym('from-token'));
-  scheduleQuote();
-}
-function onFromTokenChange(){
-  set('send-cur-badge', selSym('from-token'));
-  scheduleQuote();
-}
-function onToChainChange(){
-  fillTokenSel('to-token', el('to-chain').value, selSym('to-token'));
-  scheduleQuote();
-}
+function onFromChainChange(){ fillTokenSel('from-token',el('from-chain').value,selSym('from-token')); set('send-cur-badge',selSym('from-token')); scheduleQuote(); }
+function onFromTokenChange(){ set('send-cur-badge',selSym('from-token')); scheduleQuote(); }
+function onToChainChange(){ fillTokenSel('to-token',el('to-chain').value,selSym('to-token')); scheduleQuote(); }
 
-function scheduleQuote(){
+function scheduleQuote() {
   clearTimeout(qTimer); curQuote=null; el('send-btn').disabled=true;
-  const amt = parseFloat(el('send-amt')?.value)||0;
-  const dst = el('send-dest')?.value.trim()||'';
+  const amt=parseFloat(el('send-amt')?.value)||0, dst=el('send-dest')?.value.trim()||'';
   if(!amt||dst.length<10){ el('send-quote-wrap').style.display='none'; return; }
-  qTimer = setTimeout(fetchQuote, 650);
+  qTimer=setTimeout(fetchQuote, 650);
 }
 
-async function fetchQuote(){
-  const amt       = parseFloat(el('send-amt').value)||0;
-  const dest      = el('send-dest').value.trim();
-  const fromChain = el('from-chain').value;
-  const toChain   = el('to-chain').value;
-  const fromToken = el('from-token').value;
-  const toToken   = el('to-token').value;
-  const fromDec   = selDec('from-token');
+async function fetchQuote() {
+  const amt=parseFloat(el('send-amt').value)||0, dest=el('send-dest').value.trim();
+  const fromChain=el('from-chain').value, toChain=el('to-chain').value;
+  const fromToken=el('from-token').value, toToken=el('to-token').value;
+  const fromDec=selDec('from-token');
   if(!amt||!dest) return;
   if(!evmAddr){ showSt('send-st','err','Connect your wallet first'); return; }
-
-  el('send-quote-wrap').style.display='';
-  el('send-qcard').className='quote-card loading';
-  el('send-skel').style.display='';
-  el('send-qbody').style.display='none';
-
-  const fromAmount = BigInt(Math.round(amt*10**fromDec)).toString();
+  el('send-quote-wrap').style.display=''; el('send-qcard').className='quote-card loading';
+  el('send-skel').style.display=''; el('send-qbody').style.display='none';
+  const fromAmount=BigInt(Math.round(amt*10**fromDec)).toString();
   try {
-    const p = new URLSearchParams({fromChain,toChain,fromToken,toToken,fromAmount,fromAddress:evmAddr,toAddress:dest,slippage:'0.005'});
-    const r = await fetch(`/lifi-api/v1/quote?${p}`);
-    if(!r.ok){ const e=await r.json().catch(()=>({})); throw new Error(e?.message||'No route found for this pair'); }
-    curQuote = await r.json();
-
-    const toDec  = curQuote.action?.toToken?.decimals??18;
-    const toSym  = curQuote.action?.toToken?.symbol??selSym('to-token');
-    const toAmt  = Number(curQuote.estimate?.toAmount??0)/10**toDec;
-    const fee    = curQuote.estimate?.feeCosts?.reduce((a,f)=>a+Number(f.amountUSD||0),0)??0;
-    const gas    = curQuote.estimate?.gasCosts?.reduce((a,g)=>a+Number(g.amountUSD||0),0)??0;
-    const secs   = curQuote.estimate?.executionDuration??0;
-    const via    = curQuote.includedSteps?.map(s=>s.toolDetails?.name||s.tool||s.type).filter(Boolean).join(' + ')||'—';
-
-    set('send-recv-amt', fmt(toAmt, toAmt<1?6:3));
-    set('send-recv-sym', toSym);
-    set('q-fee', fee  ? `~$${fmt(fee)}` : '—');
-    set('q-gas', gas  ? `~$${fmt(gas)}` : '—');
-    set('q-via', via);
-    set('q-time', secs ? (secs<60?`~${secs}s`:`~${Math.ceil(secs/60)}m`) : '—');
-
-    el('send-qcard').className='quote-card';
-    el('send-skel').style.display='none';
-    el('send-qbody').style.display='';
-    el('send-btn').disabled=false;
-  } catch(e){
-    el('send-qcard').className='quote-card error';
-    el('send-skel').style.display='none';
-    el('send-qbody').style.display='';
-    set('send-recv-amt', e.message);
-    set('send-recv-sym','');
+    const p=new URLSearchParams({fromChain,toChain,fromToken,toToken,fromAmount,fromAddress:evmAddr,toAddress:dest,slippage:'0.005'});
+    const r=await fetch(`/lifi-api/v1/quote?${p}`);
+    if(!r.ok){ const e=await r.json().catch(()=>({})); throw new Error(e?.message||'No route found'); }
+    curQuote=await r.json();
+    const toDec=curQuote.action?.toToken?.decimals??18;
+    const toSym=curQuote.action?.toToken?.symbol??selSym('to-token');
+    const toAmt=Number(curQuote.estimate?.toAmount??0)/10**toDec;
+    const fee=curQuote.estimate?.feeCosts?.reduce((a,f)=>a+Number(f.amountUSD||0),0)??0;
+    const gas=curQuote.estimate?.gasCosts?.reduce((a,g)=>a+Number(g.amountUSD||0),0)??0;
+    const secs=curQuote.estimate?.executionDuration??0;
+    const via=curQuote.includedSteps?.map(s=>s.toolDetails?.name||s.tool||s.type).filter(Boolean).join(' + ')||'—';
+    set('send-recv-amt',fmt(toAmt,toAmt<1?6:3)); set('send-recv-sym',toSym);
+    set('q-fee',fee?`~$${fmt(fee)}`:'—'); set('q-gas',gas?`~$${fmt(gas)}`:'—');
+    set('q-via',via); set('q-time',secs?(secs<60?`~${secs}s`:`~${Math.ceil(secs/60)}m`):'—');
+    el('send-qcard').className='quote-card'; el('send-skel').style.display='none';
+    el('send-qbody').style.display=''; el('send-btn').disabled=false;
+  } catch(e) {
+    el('send-qcard').className='quote-card error'; el('send-skel').style.display='none';
+    el('send-qbody').style.display=''; set('send-recv-amt',e.message); set('send-recv-sym','');
     ['q-fee','q-gas','q-via','q-time'].forEach(id=>set(id,'—'));
   }
 }
 
-async function execSend(){
+async function execSend() {
   if(!curQuote) return;
-  const btn=el('send-btn');
-  btn.disabled=true; btn.textContent='Preparing…';
+  const btn=el('send-btn'); btn.disabled=true; btn.textContent='Preparing…';
   showSt('send-st','inf','Checking token allowance…');
   try {
-    const user  = await requireEVM();
-    const prov  = getProv();
-    const tx    = curQuote.transactionRequest;
-    const fAddr = curQuote.action?.fromToken?.address??'';
-    const fAmt  = curQuote.action?.fromAmount??'0';
-    const native= fAddr==='0x0000000000000000000000000000000000000000';
-
-    if(!native && tx?.to){
-      const spender=curQuote.estimate?.approvalAddress||tx.to;
-      const pad = v=>v.replace(/^0x/,'').padStart(64,'0');
-      const allowData='0xdd62ed3e'+pad(user)+pad(spender);
-      const allowHex=await prov.request({method:'eth_call',params:[{to:fAddr,data:allowData},'latest']});
-      if(BigInt(allowHex||'0x0')<BigInt(fAmt)){
-        btn.textContent='Approving…';
-        showSt('send-st','inf','Approve token spend in wallet…');
-        const appData='0x095ea7b3'+pad(spender)+BigInt(fAmt).toString(16).padStart(64,'0');
-        const appHash=await prov.request({method:'eth_sendTransaction',params:[{from:user,to:fAddr,data:appData}]});
-        showSt('send-st','inf','Waiting for approval…');
-        await pollReceipt(prov, appHash);
-      }
-    }
-
+    const user=await requireEVM(); const prov=getProv();
+    const tx=curQuote.transactionRequest;
+    const fAddr=curQuote.action?.fromToken?.address??'';
+    const fAmt=curQuote.action?.fromAmount??'0';
+    const spender=curQuote.estimate?.approvalAddress||tx.to;
+    await ensureApproval(prov, fAddr, user, spender, fAmt);
     btn.textContent='Confirm in wallet…';
     showSt('send-st','inf','Confirm the transaction in your wallet…');
     const hash=await prov.request({method:'eth_sendTransaction',params:[{
       from:user, to:tx.to, data:tx.data,
-      value: tx.value?'0x'+BigInt(tx.value).toString(16):'0x0',
+      value:tx.value?'0x'+BigInt(tx.value).toString(16):'0x0',
       ...(tx.gasLimit?{gas:'0x'+BigInt(tx.gasLimit).toString(16)}:{}),
     }]});
     showSt('send-st','ok',`✓ Sent! Tx: ${hash.slice(0,20)}…`);
     curQuote=null; el('send-amt').value=''; el('send-quote-wrap').style.display='none';
   } catch(e){ showSt('send-st','err',e.code===4001?'Rejected by wallet.':e.message); }
-  finally{
-    btn.disabled=!!curQuote===false;
-    btn.innerHTML='<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>Send';
-  }
+  finally{ btn.disabled=!curQuote; btn.innerHTML='<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>Send'; }
 }
-
-async function pollReceipt(prov, hash, ms=60000){
-  const t=Date.now();
-  while(Date.now()-t<ms){
-    const r=await prov.request({method:'eth_getTransactionReceipt',params:[hash]});
-    if(r) return r;
-    await new Promise(res=>setTimeout(res,2000));
-  }
-}
-
 function sendMax(){ el('send-bal').textContent='Enter the full amount you want to send'; }
 
-// ── Between accounts ──────────────────────────────────────────────────────────
-function flipBtw(){
-  btwDir = btwDir==='hl-to-aster'?'aster-to-hl':'hl-to-aster';
-  renderBtwSteps();
+// ── Between Accounts: automated flow ─────────────────────────────────────────
+function setDir(dir) {
+  btwDir=dir;
+  const isHL=dir==='hl-to-aster';
+  el('dtab-hl2as').className='dir-tab '+(isHL?'aHL':'');
+  el('dtab-as2hl').className='dir-tab '+(isHL?'':'aAS');
+  set('btw-cur', isHL?'USDC':'USDT');
+  el('btw-btn').className='exec-btn '+(isHL?'hl':'as');
+  el('btw-bal').textContent = isHL&&hlEquity ? `Balance: $${fmt(hlEquity)} USDC` : ' ';
+  el('btw-prog').style.display='none';
+  const st=el('btw-st'); if(st){ st.style.display='none'; }
 }
 
-function renderBtwSteps(){
-  const h2a = btwDir==='hl-to-aster';
-  el('btw-from-dot').style.background = h2a?'var(--accent)':'var(--aster)';
-  el('btw-to-dot').style.background   = h2a?'var(--aster)':'var(--accent)';
-  set('btw-from-name', h2a?'BASIC (Hyperliquid)':'EXTRA (Aster)');
-  set('btw-to-name',   h2a?'EXTRA (Aster)':'BASIC (Hyperliquid)');
-
-  const steps = h2a ? [
-    {txt:`<strong>Withdraw USDC from BASIC</strong><br>Go to the Withdraw tab and pull your USDC out of Hyperliquid. It lands on Arbitrum in ~2 min.`,
-     btn:'→ Go to Withdraw', cls:'', fn:()=>setTab('withdraw')},
-    {txt:`<strong>Swap or bridge (if needed)</strong><br>Use the Send tab to convert USDC on Arbitrum to USDT on whichever chain Aster accepts deposits on.`,
-     btn:'→ Open Send',cls:'',fn:()=>setTab('send')},
-    {txt:`<strong>Deposit to Aster</strong><br>Go to the Aster app and deposit USDT from your wallet to fund your EXTRA account.`,
-     btn:null,cls:''},
-  ] : [
-    {txt:`<strong>Withdraw USDT from EXTRA</strong><br>Go to the Withdraw tab, choose EXTRA · Aster, enter your API key and withdraw.`,
-     btn:'→ Go to Withdraw',cls:'al',fn:()=>{setTab('withdraw');setWdSrc('aster');}},
-    {txt:`<strong>Swap or bridge (if needed)</strong><br>Use the Send tab to convert USDT to USDC on Arbitrum if Hyperliquid requires USDC.`,
-     btn:'→ Open Send',cls:'',fn:()=>setTab('send')},
-    {txt:`<strong>Deposit to Hyperliquid</strong><br>Send USDC on Arbitrum to your wallet address — Hyperliquid auto-detects the deposit.`,
-     btn:null,cls:''},
-  ];
-
-  el('btw-steps').innerHTML = steps.map((s,i)=>`
-    <div class="step-row">
-      <div class="step-num">${i+1}</div>
-      <div class="step-body">${s.txt}${s.btn?`<br><button class="link-btn ${s.cls}" data-i="${i}">${s.btn}</button>`:''}</div>
-    </div>
-  `).join('');
-
-  el('btw-steps').querySelectorAll('.link-btn').forEach(b=>{
-    const fn=steps[+b.dataset.i].fn;
-    if(fn) b.addEventListener('click',fn);
-  });
+function btwMax() {
+  if(btwDir==='hl-to-aster'&&hlEquity>0) el('btw-amt').value=hlEquity.toFixed(2);
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-function showSt(id,type,msg){
+// ── Progress tracker ──────────────────────────────────────────────────────────
+function initProg(labels) {
+  curStep=-1;
+  el('btw-prog-list').innerHTML=labels.map((lbl,i)=>`
+    <div class="prog-item">
+      <div class="prog-dot" id="pd-${i}">${i+1}</div>
+      <div class="prog-body">
+        <div class="prog-label">${lbl}</div>
+        <div class="prog-msg" id="pm-${i}">Waiting…</div>
+      </div>
+    </div>`).join('');
+  el('btw-prog').style.display='';
+}
+
+function stepSet(i, state, msg) {
+  curStep=i;
+  const dot=el('pd-'+i), msgEl=el('pm-'+i);
+  if(!dot||!msgEl) return;
+  dot.className='prog-dot '+(state==='active'?'spin':state==='done'?'ok':state==='err'?'fail':'');
+  dot.textContent=state==='done'?'✓':state==='err'?'✕':(i+1);
+  msgEl.className='prog-msg '+(state==='active'?'go':state==='done'?'ok':state==='err'?'fail':'');
+  msgEl.textContent=msg;
+}
+
+function stepFail(msg) {
+  if(curStep>=0) stepSet(curStep,'err',msg);
+  showSt('btw-st','err',msg);
+}
+
+// ── On-chain helpers ──────────────────────────────────────────────────────────
+async function getERC20Bal(prov, token, owner) {
+  const data='0x70a08231'+owner.slice(2).padStart(64,'0');
+  const hex=await prov.request({method:'eth_call',params:[{to:token,data},'latest']});
+  return BigInt(hex||'0x0');
+}
+
+async function ensureApproval(prov, token, owner, spender, amount) {
+  const ZERO='0x0000000000000000000000000000000000000000';
+  if(token===ZERO||token==='0x0') return;
+  const pad=v=>v.replace(/^0x/,'').padStart(64,'0');
+  const allData='0xdd62ed3e'+pad(owner)+pad(spender);
+  const allHex=await prov.request({method:'eth_call',params:[{to:token,data:allData},'latest']});
+  if(BigInt(allHex||'0x0')>=BigInt(amount)) return;
+  const appData='0x095ea7b3'+pad(spender)+BigInt(amount).toString(16).padStart(64,'0');
+  const appHash=await prov.request({method:'eth_sendTransaction',params:[{from:owner,to:token,data:appData}]});
+  await pollReceipt(prov, appHash, 120000);
+}
+
+async function erc20Send(prov, token, from, to, amount) {
+  const pad=v=>v.replace(/^0x/,'').padStart(64,'0');
+  const data='0xa9059cbb'+pad(to)+BigInt(amount).toString(16).padStart(64,'0');
+  return prov.request({method:'eth_sendTransaction',params:[{from,to:token,data}]});
+}
+
+async function pollReceipt(prov, hash, ms=120000) {
+  const end=Date.now()+ms;
+  while(Date.now()<end) {
+    const r=await prov.request({method:'eth_getTransactionReceipt',params:[hash]});
+    if(r) { if(r.status==='0x0') throw new Error('Transaction reverted'); return r; }
+    await sleep(2500);
+  }
+  throw new Error('Transaction confirmation timeout');
+}
+
+async function pollBal(prov, token, owner, needed, baseline, timeoutMs=360000) {
+  const end=Date.now()+timeoutMs;
+  while(Date.now()<end) {
+    const bal=await getERC20Bal(prov, token, owner);
+    if(bal>=baseline+needed) return bal;
+    await sleep(12000);
+  }
+  throw new Error('Timeout — funds did not arrive. Check your account and try again.');
+}
+
+// ── LI.FI helpers ─────────────────────────────────────────────────────────────
+async function lifiQuote(fromChain, toChain, fromToken, toToken, fromAmount, fromAddr) {
+  const p=new URLSearchParams({fromChain,toChain,fromToken,toToken,fromAmount,fromAddress:fromAddr,toAddress:fromAddr,slippage:'0.005'});
+  const r=await fetch('/lifi-api/v1/quote?'+p);
+  if(!r.ok){ const e=await r.json().catch(()=>({})); throw new Error(e?.message||'LI.FI: no route'); }
+  return r.json();
+}
+
+async function lifiExec(prov, quote, user) {
+  const tx=quote.transactionRequest;
+  const fAddr=quote.action?.fromToken?.address??'';
+  const fAmt=quote.action?.fromAmount??'0';
+  const spender=quote.estimate?.approvalAddress||tx.to;
+  await ensureApproval(prov, fAddr, user, spender, fAmt);
+  return prov.request({method:'eth_sendTransaction',params:[{
+    from:user, to:tx.to, data:tx.data,
+    value:tx.value?'0x'+BigInt(tx.value).toString(16):'0x0',
+    ...(tx.gasLimit?{gas:'0x'+BigInt(tx.gasLimit).toString(16)}:{}),
+  }]});
+}
+
+// ── Raw transfer helpers (shared by Withdraw tab + Between Accounts) ───────────
+async function hlWithdrawRaw(prov, user, amt, dest) {
+  const ts=Date.now();
+  const td={
+    types:{
+      EIP712Domain:[{name:'name',type:'string'},{name:'version',type:'string'},{name:'chainId',type:'uint256'},{name:'verifyingContract',type:'address'}],
+      'HyperliquidTransaction:Withdraw':[{name:'hyperliquidChain',type:'string'},{name:'destination',type:'string'},{name:'amount',type:'string'},{name:'time',type:'uint64'}],
+    },
+    primaryType:'HyperliquidTransaction:Withdraw',
+    domain:{name:'HyperliquidSignTransaction',version:'1',chainId:42161,verifyingContract:'0x0000000000000000000000000000000000000000'},
+    message:{hyperliquidChain:'Mainnet',destination:dest,amount:String(amt),time:ts},
+  };
+  const sig=await prov.request({method:'eth_signTypedData_v4',params:[user,JSON.stringify(td)]});
+  const res=await fetch(HL+'/exchange',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+    action:{type:'withdraw3',hyperliquidChain:'Mainnet',signatureChainId:'0xa4b1',amount:String(amt),time:ts,destination:dest},
+    nonce:ts,
+    signature:{r:sig.slice(0,66),s:'0x'+sig.slice(66,130),v:parseInt(sig.slice(130,132),16)},
+  })});
+  const d=await res.json();
+  if(d?.status!=='ok'&&d?.response?.type!=='default')
+    throw new Error(d?.response?.data?.message||d?.error||JSON.stringify(d).slice(0,100));
+}
+
+async function asterWithdrawRaw(key, secret, amt, dest) {
+  const ts=Date.now();
+  const qs=`asset=USDT&amount=${amt}&address=${encodeURIComponent(dest)}&timestamp=${ts}`;
+  const enc=new TextEncoder();
+  const k=await crypto.subtle.importKey('raw',enc.encode(secret),{name:'HMAC',hash:'SHA-256'},false,['sign']);
+  const sb=await crypto.subtle.sign('HMAC',k,enc.encode(qs));
+  const sig=Array.from(new Uint8Array(sb)).map(b=>b.toString(16).padStart(2,'0')).join('');
+  const res=await fetch(`/aster-fapi/v1/withdraw?${qs}&signature=${sig}`,{method:'POST',headers:{'X-MBX-APIKEY':key}});
+  const d=await res.json();
+  if(!res.ok||d.code) throw new Error(d?.msg||d?.message||JSON.stringify(d).slice(0,100));
+}
+
+async function asterDepositAddr(key, secret) {
+  try {
+    const ts=Date.now(), qs=`coin=USDT&network=ARBITRUM&timestamp=${ts}`;
+    const enc=new TextEncoder();
+    const k=await crypto.subtle.importKey('raw',enc.encode(secret),{name:'HMAC',hash:'SHA-256'},false,['sign']);
+    const sb=await crypto.subtle.sign('HMAC',k,enc.encode(qs));
+    const sig=Array.from(new Uint8Array(sb)).map(b=>b.toString(16).padStart(2,'0')).join('');
+    const r=await fetch(`/aster-fapi/v1/capital/deposit/address?${qs}&signature=${sig}`,{headers:{'X-MBX-APIKEY':key}});
+    if(!r.ok) return null;
+    const d=await r.json();
+    return d?.address||d?.data?.address||null;
+  } catch{ return null; }
+}
+
+// ── Main automated flow ───────────────────────────────────────────────────────
+async function execBtw() {
+  const amt    = parseFloat(el('btw-amt').value)||0;
+  const key    = el('btw-key').value.trim();
+  const secret = el('btw-sec').value.trim();
+  if(!amt)          return showSt('btw-st','err','Enter an amount');
+  if(!key||!secret) return showSt('btw-st','err','Enter Aster API credentials');
+
+  const btn=el('btw-btn'); btn.disabled=true;
+  const st=el('btw-st'); if(st) st.style.display='none';
+
+  try {
+    const user=await requireEVM();
+    const prov=getProv();
+
+    if(btwDir==='hl-to-aster') {
+      // ── BASIC → EXTRA ────────────────────────────────────────────────────
+      initProg([
+        'Withdraw USDC from Hyperliquid',
+        'Wait for USDC to arrive in wallet (~2 min)',
+        'Swap USDC → USDT on Arbitrum',
+        'Send USDT to Aster',
+      ]);
+
+      stepSet(0,'active','Sign the withdrawal in your wallet…');
+      await hlWithdrawRaw(prov, user, amt, user);
+      stepSet(0,'done',`$${fmt(amt)} USDC submitted — landing on Arbitrum`);
+
+      stepSet(1,'active','Polling Arbitrum balance every 12s (up to 6 min)…');
+      const usdcBefore=await getERC20Bal(prov, USDC_ARB, user);
+      const usdcNeed=BigInt(Math.round(amt*1e6*0.97)); // 3% tolerance for fees
+      await pollBal(prov, USDC_ARB, user, usdcNeed, usdcBefore, 360000);
+      stepSet(1,'done','USDC arrived in wallet');
+
+      stepSet(2,'active','Getting best swap route…');
+      const usdcBal=await getERC20Bal(prov, USDC_ARB, user);
+      const q=await lifiQuote('42161','42161',USDC_ARB,USDT_ARB,usdcBal.toString(),user);
+      stepSet(2,'active','Approve + swap — confirm in wallet…');
+      const swapHash=await lifiExec(prov, q, user);
+      stepSet(2,'active','Confirming swap…');
+      await pollReceipt(prov, swapHash, 120000);
+      stepSet(2,'done','USDC → USDT swapped on Arbitrum');
+
+      stepSet(3,'active','Looking up Aster deposit address…');
+      let depAddr=await asterDepositAddr(key, secret);
+      if(!depAddr) { depAddr=user; } // fallback: self-deposit (some exchanges use wallet address)
+      const usdtBal=await getERC20Bal(prov, USDT_ARB, user);
+      stepSet(3,'active',`Sending ${fmt(Number(usdtBal)/1e6)} USDT — confirm in wallet…`);
+      const sendHash=await erc20Send(prov, USDT_ARB, user, depAddr, usdtBal.toString());
+      await pollReceipt(prov, sendHash, 120000);
+      stepSet(3,'done','USDT sent to Aster ✓');
+      showSt('btw-st','ok',`Transfer complete — $${fmt(amt)} moved BASIC → EXTRA`);
+
+    } else {
+      // ── EXTRA → BASIC ────────────────────────────────────────────────────
+      initProg([
+        'Withdraw USDT from Aster',
+        'Wait for USDT to arrive in wallet',
+        'Swap USDT → USDC on Arbitrum',
+        'Hyperliquid auto-credits USDC',
+      ]);
+
+      stepSet(0,'active','Signing and submitting Aster withdrawal…');
+      await asterWithdrawRaw(key, secret, amt, user);
+      stepSet(0,'done',`${fmt(amt)} USDT withdrawal submitted`);
+
+      stepSet(1,'active','Polling for USDT every 12s (up to 10 min)…');
+      const usdtBefore=await getERC20Bal(prov, USDT_ARB, user);
+      const usdtNeed=BigInt(Math.round(amt*1e6*0.97));
+      await pollBal(prov, USDT_ARB, user, usdtNeed, usdtBefore, 600000);
+      stepSet(1,'done','USDT arrived in wallet');
+
+      stepSet(2,'active','Getting best swap route…');
+      const usdtBal=await getERC20Bal(prov, USDT_ARB, user);
+      const q=await lifiQuote('42161','42161',USDT_ARB,USDC_ARB,usdtBal.toString(),user);
+      stepSet(2,'active','Approve + swap — confirm in wallet…');
+      const swapHash=await lifiExec(prov, q, user);
+      stepSet(2,'active','Confirming swap…');
+      await pollReceipt(prov, swapHash, 120000);
+      stepSet(2,'done','USDT → USDC swapped on Arbitrum');
+
+      // HL auto-deposits USDC already in the user's Arbitrum address
+      stepSet(3,'done','Hyperliquid detects USDC on Arbitrum automatically — no action needed');
+      showSt('btw-st','ok',`Transfer complete — $${fmt(amt)} moved EXTRA → BASIC`);
+    }
+
+  } catch(e) {
+    stepFail(e.code===4001 ? 'Rejected by wallet' : e.message);
+  } finally {
+    btn.disabled=false;
+  }
+}
+
+// ── Shared helpers ────────────────────────────────────────────────────────────
+function showSt(id,type,msg) {
   const e=el(id); if(!e) return;
   e.textContent=msg; e.className='status '+type; e.style.display='block';
 }
-function iconDown(){
+function iconDown() {
   return '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px"><path d="M12 3v13M7 11l5 5 5-5"/><path d="M4 19h16"/></svg>';
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
-window.addEventListener('load',()=>{
+window.addEventListener('load', ()=>{
   setTab('withdraw');
   autoConnectEVM();
   fillChainSel('from-chain'); fillChainSel('to-chain');
   fillTokenSel('from-token','42161');
   fillTokenSel('to-token','42161','ETH');
   set('send-cur-badge', selSym('from-token'));
+  setDir('hl-to-aster');
 });
 </script>
 </body>
