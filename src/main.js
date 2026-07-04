@@ -304,7 +304,11 @@ function bindMarketBtn() {
   btn.addEventListener('click', e => {
     e.stopPropagation();
     dd.classList.toggle('hidden');
-    if (!dd.classList.contains('hidden')) srch.focus();
+    if (!dd.classList.contains('hidden')) {
+      srch.focus();
+      // Close mode help popup if open
+      document.getElementById('modePopup')?.classList.add('hidden');
+    }
   });
 
   srch.addEventListener('input', () => {
@@ -804,6 +808,17 @@ window.rdo = {
     if (btn) { btn.textContent = 'Connected'; btn.disabled = true; }
     const feed = document.getElementById('xtFeed');
     if (feed) feed.innerHTML = '<div class="xt-empty">X integration coming soon — connect your API key in settings.</div>';
+  },
+  toggleModeHelp() {
+    const popup = document.getElementById('modePopup');
+    if (!popup) return;
+    // Close market dropdown first
+    closeDropdown();
+    popup.classList.toggle('hidden');
+    if (!popup.classList.contains('hidden')) {
+      const close = e => { if (!popup.contains(e.target) && e.target.id !== 'modeHelpBtn') { popup.classList.add('hidden'); document.removeEventListener('click', close); } };
+      setTimeout(() => document.addEventListener('click', close), 0);
+    }
   },
 };
 

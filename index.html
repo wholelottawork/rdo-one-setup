@@ -21,9 +21,35 @@
       <div class="hdr-div"></div>
 
       <!-- ── MODE SWITCHER ── -->
-      <div class="mode-switch" id="modeSwitch">
-        <button class="mode-btn mode-hl active" id="modeBtnHL"    onclick="window.rdo.switchMode('hl')">BASIC</button>
-        <button class="mode-btn mode-aster"     id="modeBtnAster" onclick="window.rdo.switchMode('aster')">EXTRA</button>
+      <div class="mode-switch-wrap">
+        <div class="mode-switch" id="modeSwitch">
+          <button class="mode-btn mode-hl active" id="modeBtnHL"    onclick="window.rdo.switchMode('hl')">BASIC</button>
+          <button class="mode-btn mode-aster"     id="modeBtnAster" onclick="window.rdo.switchMode('aster')">EXTRA</button>
+        </div>
+        <button class="mode-help-btn" id="modeHelpBtn" onclick="window.rdo.toggleModeHelp()">?</button>
+
+        <!-- mode info popup -->
+        <div class="mode-popup hidden" id="modePopup">
+          <div class="mode-popup-row">
+            <span class="mode-popup-tag basic">BASIC</span>
+            <div class="mode-popup-info">
+              <strong>Hyperliquid engine</strong><br>
+              Up to 50x leverage · Crypto perps only<br>
+              Non-custodial · USDC collateral<br>
+              Taker fee 0.045% / Maker 0.015%
+            </div>
+          </div>
+          <div class="mode-popup-divider"></div>
+          <div class="mode-popup-row">
+            <span class="mode-popup-tag extra">EXTRA</span>
+            <div class="mode-popup-info">
+              <strong>Aster engine</strong><br>
+              Up to 200x leverage · Crypto + Stock perps<br>
+              Stocks: NVDA, TSLA, AAPL, MSFT &amp; more<br>
+              Taker fee 0.04% / Maker 0%
+            </div>
+          </div>
+        </div>
       </div>
 
       <div class="hdr-div"></div>

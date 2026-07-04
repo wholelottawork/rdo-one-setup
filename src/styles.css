@@ -120,6 +120,44 @@ html, body {
 /* Aster mode body indicator */
 body.mode-aster { --hl-accent: #a78bfa; --hl-accent-dark: rgba(139,92,246,0.15); --hl-buy: #7c3aed; --hl-buy-bg: rgba(124,58,237,0.12); }
 
+/* ── MODE HELP BUTTON + POPUP ───────────────────────────────── */
+.mode-switch-wrap {
+  position: relative; display: flex; align-items: center; gap: 10px; flex-shrink: 0;
+}
+.mode-help-btn {
+  width: 16px; height: 16px; border-radius: 50%;
+  border: 1px solid var(--hl-border); background: var(--hl-bg-elevated);
+  color: var(--hl-text-muted); font-size: 10px; font-weight: 700;
+  font-family: var(--hl-font); cursor: pointer; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s; flex-shrink: 0;
+}
+.mode-help-btn:hover { border-color: var(--hl-accent); color: var(--hl-accent); }
+
+.mode-popup {
+  position: absolute; top: calc(100% + 8px); left: 0;
+  background: var(--hl-bg-elevated);
+  border: 1px solid var(--hl-border);
+  border-radius: 8px; padding: 12px 14px;
+  min-width: 260px; z-index: 999;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+.mode-popup.hidden { display: none; }
+.mode-popup-row { display: flex; gap: 10px; align-items: flex-start; }
+.mode-popup-tag {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.5px;
+  padding: 2px 7px; border-radius: 4px; flex-shrink: 0; margin-top: 2px;
+}
+.mode-popup-tag.basic { background: var(--hl-accent-dark); color: var(--hl-accent); }
+.mode-popup-tag.extra { background: rgba(139,92,246,0.15); color: #a78bfa; }
+.mode-popup-info {
+  font-size: 11px; line-height: 1.6; color: var(--hl-text-secondary);
+}
+.mode-popup-info strong { color: var(--hl-text-primary); font-size: 11px; }
+.mode-popup-divider {
+  height: 1px; background: var(--hl-border); margin: 10px 0;
+}
+
 .hdr-logo { display: flex; align-items: baseline; gap: 2px; padding-right: 4px; }
 .logo-rdo { font-size: 13px; font-weight: 700; color: var(--hl-accent); letter-spacing: 0.5px; }
 .logo-one { font-size: 13px; font-weight: 300; color: var(--hl-text-primary); }
