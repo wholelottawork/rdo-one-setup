@@ -400,10 +400,32 @@
     </div>
   </div>
 
+<!-- ══ ALWAYS VISIBLE: section header + mode switcher ══════════════════════ -->
+<div class="section-divider" style="margin-top:32px"><span>Trader PnL</span></div>
+<div class="pnl-header">
+  <div>
+    <div style="display:flex;align-items:center;gap:12px">
+      <div class="pnl-title" id="pf-section-title">TRADER PNL</div>
+      <div class="mode-switch" id="pfModeSwitch">
+        <button class="mode-btn mode-hl active" id="pfBtnHL" onclick="switchPortfolioMode('hl')">BASIC</button>
+        <button class="mode-btn mode-aster" id="pfBtnAster" onclick="switchPortfolioMode('aster')">EXTRA</button>
+      </div>
+    </div>
+    <div class="pnl-addr-sub" id="pnl-addr-sub"></div>
+  </div>
+  <div class="pnl-controls" id="pf-hl-controls">
+    <button class="pnl-cal-btn" onclick="openCalendarModal()">PNL CALENDAR</button>
+    <div class="range-tabs">
+      <button class="range-tab" onclick="setRange('7D')">7D</button>
+      <button class="range-tab" onclick="setRange('30D')">30D</button>
+      <button class="range-tab" onclick="setRange('90D')">90D</button>
+      <button class="range-tab active" onclick="setRange('ALL')">ALL</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══ BASIC MODE (Hyperliquid) ══════════════════════════════════════════════ -->
 <div id="pnl-section-hl">
-  <div class="section-divider" style="margin-top:32px"><span>Trader PnL</span></div>
-
   <div class="hl-connect-bar">
     <input class="hl-addr-input" id="hl-addr-input" placeholder="Enter Hyperliquid wallet address (0x…)" />
     <button class="hl-load-btn" onclick="handleHLLoad()">Load</button>
@@ -415,29 +437,6 @@
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg>
       Add HyperEVM
     </button>
-  </div>
-
-  <!-- PnL section header: title + controls -->
-  <div class="pnl-header">
-    <div>
-      <div style="display:flex;align-items:center;gap:12px">
-        <div class="pnl-title">TRADER PNL</div>
-        <div class="mode-switch" id="pfModeSwitch">
-          <button class="mode-btn mode-hl active" id="pfBtnHL" onclick="switchPortfolioMode('hl')">BASIC</button>
-          <button class="mode-btn mode-aster" id="pfBtnAster" onclick="switchPortfolioMode('aster')">EXTRA</button>
-        </div>
-      </div>
-      <div class="pnl-addr-sub" id="pnl-addr-sub"></div>
-    </div>
-    <div class="pnl-controls">
-      <button class="pnl-cal-btn" onclick="openCalendarModal()">PNL CALENDAR</button>
-      <div class="range-tabs">
-        <button class="range-tab" onclick="setRange('7D')">7D</button>
-        <button class="range-tab" onclick="setRange('30D')">30D</button>
-        <button class="range-tab" onclick="setRange('90D')">90D</button>
-        <button class="range-tab active" onclick="setRange('ALL')">ALL</button>
-      </div>
-    </div>
   </div>
 
   <!-- Two-column layout -->
@@ -531,8 +530,6 @@
 
 <!-- ══ EXTRA MODE (Aster) ════════════════════════════════════════════════════ -->
 <div id="pnl-section-aster" style="display:none">
-  <div class="section-divider" style="margin-top:32px"><span>Aster Account</span></div>
-
   <div class="hl-connect-bar">
     <input class="hl-addr-input" id="aster-addr-input" placeholder="Enter Aster / EVM wallet address (0x…)" />
     <button class="aster-load-btn" onclick="handleAsterLoad()">Load</button>
@@ -1647,6 +1644,11 @@ function switchPortfolioMode(mode) {
   el('pfBtnAster').classList.toggle('active', mode === 'aster');
   el('pnl-section-hl').style.display = mode === 'hl' ? '' : 'none';
   el('pnl-section-aster').style.display = mode === 'aster' ? '' : 'none';
+  // Update shared header
+  el('pf-section-title').textContent = mode === 'hl' ? 'TRADER PNL' : 'ASTER PNL';
+  el('pf-section-title').style.color = mode === 'aster' ? '#f59e0b' : '';
+  el('pf-hl-controls').style.display = mode === 'hl' ? '' : 'none';
+  el('pnl-addr-sub').style.display = mode === 'hl' ? '' : 'none';
   if (mode === 'aster') {
     const asterAddr = el('aster-addr-input').value.trim();
     if (asterAddr) loadAsterData(asterAddr);
