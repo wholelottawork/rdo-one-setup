@@ -76,6 +76,27 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: path => path.replace(/^\/hl/, ''),
       },
+      '/aster-fapi': {
+        target: 'https://fapi.asterdex.com',
+        changeOrigin: true,
+        rewrite: path => path.replace(/^\/aster-fapi/, ''),
+        headers: {
+          'Referer': 'https://www.asterdex.com/',
+          'Origin': 'https://www.asterdex.com',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+        },
+      },
+      '/aster-stream': {
+        target: 'https://fstream.asterdex.com',
+        changeOrigin: true,
+        rewrite: path => path.replace(/^\/aster-stream/, ''),
+        ws: true,
+        headers: {
+          'Referer': 'https://www.asterdex.com/',
+          'Origin': 'https://www.asterdex.com',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+        },
+      },
     },
   },
   build: {

@@ -2267,7 +2267,7 @@ RDO ONE supports two execution engines. Users pick their mode based on what they
 
 | | Hyperliquid Mode | Aster Mode |
 |---|---|---|
-| Max leverage | 50x | 1001x |
+| Max leverage | 50x | 200x |
 | Stock perps | No | Yes (NVDA, TSLA, etc.) |
 | Custody model | Non-custodial — user signs every order | Semi-custodial — backend signs orders |
 | Builder fee | Up to 0.1% per trade (Builder Codes) | Configurable feeRate per order |
@@ -2288,7 +2288,7 @@ RDO ONE supports two execution engines. Users pick their mode based on what they
 │  ┌─────────────────────────┐  ┌─────────────────────────────┐  │
 │  │    HYPERLIQUID MODE     │  │       ASTER MODE            │  │
 │  │                         │  │                             │  │
-│  │  • Up to 50x leverage   │  │  • Up to 1001x leverage     │  │
+│  │  • Up to 50x leverage   │  │  • Up to 200x leverage      │  │
 │  │  • User signs orders    │  │  • Backend signs orders     │  │
 │  │  • Builder Code fee     │  │  • Builder feeRate          │  │
 │  │  • USDC collateral      │  │  • USDT collateral          │  │
@@ -2469,7 +2469,7 @@ async function loadAsterAccount(address) {
     <div class="mode-card" id="aster-card">
       <div class="mode-header">
         <img src="/icons/aster.svg" /> Aster
-        <span class="mode-badge">1001x</span>
+        <span class="mode-badge">200x</span>
       </div>
       <div class="mode-balance" id="aster-balance">$—</div>
       <div class="mode-pnl"     id="aster-pnl">—</div>

@@ -11,7 +11,7 @@ import { initChart, setCandles, pushTick } from './chart.js';
 import { openDepositModal, closeDepositModal } from './deposit.js';
 
 // ── Markets ───────────────────────────────────────────────────
-const MARKETS = [
+const HL_MARKETS = [
   'BTC','ETH','SOL','BNB','XRP','ADA','AVAX','DOGE','LINK','DOT',
   'UNI','ATOM','LTC','PEPE','WIF','BONK','JUP','ARB','OP','SUI',
   'APT','INJ','SEI','TIA','GMX','PENDLE','BLUR','SHIB','FLOKI',
@@ -19,6 +19,23 @@ const MARKETS = [
   'LDO','CRV','AAVE','MKR','SNX','COMP','1INCH','IMX','FIL','AR',
 ];
 
+const ASTER_CRYPTO_MARKETS = [
+  'BTC','ETH','SOL','BNB','XRP','DOGE','AVAX','ADA','LINK','DOT',
+  'SUI','APT','INJ','ARB','OP','PEPE','WIF','NEAR','ATOM','UNI',
+];
+
+const ASTER_STOCK_MARKETS = [
+  'NVDA','TSLA','AAPL','MSFT','GOOGL','AMZN','META','COIN','MSTR','AMD',
+];
+
+// Combine — stocks shown first in Aster mode as a differentiator
+const ASTER_MARKETS = [...ASTER_STOCK_MARKETS, ...ASTER_CRYPTO_MARKETS];
+
+const MARKETS = HL_MARKETS; // alias for current mode
+
+const ASTER_API = '/aster-fapi';
+
+let currentMode   = 'hl';   // 'hl' | 'aster'
 let currentMarket = 'BTC';
 let currentIv     = 1;
 let isBuy         = true;
@@ -27,6 +44,156 @@ let metaCtxs      = {};
 let marketLev     = {};
 let recentTrades  = [];
 let stopBook      = null;
+
+// ── Mode switching ─────────────────────────────────────────────
+async function switchMode(mode) {
+  if (mode === currentMode) return;
+  currentMode = mode;
+
+  const hlBtn    = document.getElementById('modeBtnHL');
+  const asterBtn = document.getElementById('modeBtnAster');
+
+  if (mode === 'aster') {
+    hlBtn.classList.remove('active');
+    asterBtn.classList.add('active');
+    document.body.classList.add('mode-aster');
+
+    // Update leverage max to 1001
+    const levInput = document.getElementById('levInput');
+    if (levInput) { levInput.max = 200; levInput.value = Math.min(parseInt(levInput.value), 200); }
+
+    // Fee display
+    const feeEl = document.getElementById('stFee');
+    if (feeEl) feeEl.textContent = '0.0400% Taker / 0.0000% Maker';
+
+    // Switch market to first Aster market (NVDA)
+    currentMarket = 'NVDA';
+    document.getElementById('mktSymbol').textContent = 'NVDA-USDT';
+    document.getElementById('sizeUnit').textContent  = 'NVDA';
+
+    // Clear stale HL trade feed
+    recentTrades = [];
+    document.getElementById('tradesList').innerHTML =
+      '<div style="color:var(--hl-text-muted);font-size:11px;padding:8px;text-align:center">Aster live trades streaming<br>coming soon</div>';
+
+    rebuildDropdown();
+    await loadMarket(currentMarket);
+    fetchAsterMids();
+
+  } else {
+    asterBtn.classList.remove('active');
+    hlBtn.classList.add('active');
+    document.body.classList.remove('mode-aster');
+
+    // Restore leverage max
+    const levInput = document.getElementById('levInput');
+    if (levInput) { levInput.max = 50; levInput.value = Math.min(parseInt(levInput.value), 50); }
+
+    // Fee display
+    const feeEl = document.getElementById('stFee');
+    if (feeEl) feeEl.textContent = '0.0450% / 0.0150%';
+
+    currentMarket = 'BTC';
+    document.getElementById('mktSymbol').textContent = 'BTC-USDC';
+    document.getElementById('sizeUnit').textContent  = 'BTC';
+
+    rebuildDropdown();
+    await loadMarket(currentMarket);
+    loadMeta();
+  }
+
+  document.getElementById('chartLabel').textContent =
+    `${currentMarket}${mode === 'aster' ? 'USDT' : 'USD'} · ${ivLabel(currentIv)} · RDO ONE`;
+  updateTradeBtn();
+}
+
+function rebuildDropdown() {
+  const markets = currentMode === 'aster' ? ASTER_MARKETS : HL_MARKETS;
+  const list    = document.getElementById('mktList');
+  renderMarketList(markets, list);
+}
+
+// ── Aster public market data ───────────────────────────────────
+async function fetchAsterMids() {
+  if (currentMode !== 'aster') return;
+  try {
+    const res  = await fetch(`${ASTER_API}/fapi/v1/ticker/24hr`);
+    const data = await res.json();
+    if (!Array.isArray(data)) return;
+
+    data.forEach(t => {
+      const sym = t.symbol?.replace('USDT', '');
+      if (!sym) return;
+      const price = parseFloat(t.lastPrice ?? 0);
+      if (price > 0) livePrices[sym] = price;
+
+      const priceEl = document.getElementById(`mprice-${sym}`);
+      if (priceEl) priceEl.textContent = fmtAster(price, sym);
+    });
+
+    // Update header stats if current market is Aster
+    const ticker = data.find(t => t.symbol === currentMarket + 'USDT');
+    if (ticker) updateAsterHeaderStats(ticker);
+
+  } catch {}
+  setTimeout(fetchAsterMids, 5000);
+}
+
+function updateAsterHeaderStats(ticker) {
+  const px     = parseFloat(ticker.lastPrice  ?? 0);
+  const open   = parseFloat(ticker.openPrice  ?? px);
+  const chg    = px - open;
+  const pct    = open ? (chg / open) * 100 : 0;
+  const vol    = parseFloat(ticker.quoteVolume ?? 0);
+
+  document.getElementById('statMark').textContent = fmtAster(px, currentMarket);
+
+  const chgEl = document.getElementById('statChange');
+  chgEl.textContent = `${chg >= 0 ? '+' : ''}${fmtAster(chg, currentMarket)} / ${chg >= 0 ? '+' : ''}${pct.toFixed(2)}%`;
+  chgEl.className   = 'hdr-stat-val ' + (chg >= 0 ? 'up' : 'down');
+
+  document.getElementById('statVolume').textContent = '$' + fmtLarge(vol);
+  document.getElementById('statFunding').textContent = '— / —';
+}
+
+function fmtAster(n, sym) {
+  if (isNaN(n) || n === 0) return '—';
+  const stocks = ASTER_STOCK_MARKETS;
+  if (stocks.includes(sym)) {
+    return n >= 100 ? n.toFixed(2) : n.toPrecision(4);
+  }
+  if (n >= 1000) return n.toLocaleString('en-US', { maximumFractionDigits: 1 });
+  if (n >= 1)    return n.toFixed(2);
+  return n.toPrecision(4);
+}
+
+// ── Aster candles ──────────────────────────────────────────────
+async function getAsterCandles(symbol, intervalMin, count = 200) {
+  const ivMap = { 1:'1m', 3:'3m', 5:'5m', 15:'15m', 60:'1h', 240:'4h', 1440:'1d' };
+  const iv    = ivMap[intervalMin] || '1m';
+  try {
+    const res  = await fetch(
+      `${ASTER_API}/fapi/v1/klines?symbol=${symbol}USDT&interval=${iv}&limit=${count}`
+    );
+    const data = await res.json();
+    if (!Array.isArray(data)) return [];
+    return data.map(c => ({
+      t: c[0], o: +c[1], h: +c[2], l: +c[3], c: +c[4], v: +c[5],
+    }));
+  } catch { return []; }
+}
+
+// ── Aster order book ───────────────────────────────────────────
+async function getAsterBook(symbol) {
+  try {
+    const res  = await fetch(`${ASTER_API}/fapi/v1/depth?symbol=${symbol}USDT&limit=20`);
+    const data = await res.json();
+    return {
+      asks: (data.asks || []).map(([px, sz]) => ({ px: +px, sz: +sz })),
+      bids: (data.bids || []).map(([px, sz]) => ({ px: +px, sz: +sz })),
+    };
+  } catch { return { asks: [], bids: [] }; }
+}
 
 // ── Init ──────────────────────────────────────────────────────
 async function init() {
@@ -39,7 +206,7 @@ async function init() {
   await loadMarket('BTC');
   await loadMeta();
 
-  startPriceStream(MARKETS.slice(0, 20), onPrice, null, onTrade);
+  startPriceStream(HL_MARKETS.slice(0, 20), onPrice, null, onTrade);
 }
 
 // ── Market meta ────────────────────────────────────────────────
@@ -113,10 +280,15 @@ async function fetchAllMids() {
 }
 
 function renderMarketList(markets, list) {
+  const mktSuffix = currentMode === 'aster' ? '-USDT' : '-USDC';
+  const getLev    = sym => currentMode === 'aster' ? '200x' : (marketLev[sym] ? marketLev[sym] + 'x' : '');
+  const getPrice  = sym => livePrices[sym]
+    ? (currentMode === 'aster' ? fmtAster(livePrices[sym], sym) : fmt(livePrices[sym], sym))
+    : '—';
   list.innerHTML = markets.map(sym =>
     `<div class="mkt-item" data-sym="${sym}">
-      <span class="mkt-item-name">${sym}-USDC${marketLev[sym] ? `<span class="mkt-item-lev">${marketLev[sym]}x</span>` : ''}</span>
-      <span class="mkt-item-price" id="mprice-${sym}">${livePrices[sym] ? fmt(livePrices[sym], sym) : '—'}</span>
+      <span class="mkt-item-name">${sym}${mktSuffix}<span class="mkt-item-lev">${getLev(sym)}</span></span>
+      <span class="mkt-item-price" id="mprice-${sym}">${getPrice(sym)}</span>
     </div>`
   ).join('');
   list.querySelectorAll('.mkt-item').forEach(el =>
@@ -136,8 +308,9 @@ function bindMarketBtn() {
   });
 
   srch.addEventListener('input', () => {
-    const q = srch.value.toLowerCase();
-    renderMarketList(MARKETS.filter(s => s.toLowerCase().includes(q)), document.getElementById('mktList'));
+    const q       = srch.value.toLowerCase();
+    const markets = currentMode === 'aster' ? ASTER_MARKETS : HL_MARKETS;
+    renderMarketList(markets.filter(s => s.toLowerCase().includes(q)), document.getElementById('mktList'));
   });
 
   document.addEventListener('click', e => {
@@ -148,31 +321,52 @@ function bindMarketBtn() {
 function closeDropdown() {
   document.getElementById('mktDropdown').classList.add('hidden');
   document.getElementById('mktSearch').value = '';
-  renderMarketList(MARKETS, document.getElementById('mktList'));
+  rebuildDropdown();
 }
 
 async function selectMarket(sym) {
   currentMarket = sym;
-  document.getElementById('mktSymbol').textContent  = sym + '-USDC';
-  document.getElementById('chartLabel').textContent = `${sym}USD · ${ivLabel(currentIv)} · RDO ONE`;
-  document.getElementById('sizeUnit').textContent = sym;
+  const suffix  = currentMode === 'aster' ? '-USDT' : '-USDC';
+  const chartSuffix = currentMode === 'aster' ? 'USDT' : 'USD';
+  document.getElementById('mktSymbol').textContent  = sym + suffix;
+  document.getElementById('chartLabel').textContent = `${sym}${chartSuffix} · ${ivLabel(currentIv)} · RDO ONE`;
+  document.getElementById('sizeUnit').textContent   = sym;
   updateTradeBtn();
   await loadMarket(sym);
 }
 
 async function loadMarket(sym) {
-  const data = await getCandles(sym, currentIv, 200);
-  setCandles(data, sym);
-  updateHeaderStats();
+  const suffix = currentMode === 'aster' ? '-USDT' : '-USDC';
   const pairEl = document.getElementById('tradesPair');
-  if (pairEl) pairEl.textContent = sym + '-USDC';
+  if (pairEl) pairEl.textContent = sym + suffix;
   const xtEl = document.getElementById('xtTicker');
   if (xtEl) xtEl.textContent = sym;
 
-  // Order book — stop old stream, snapshot + live stream for new symbol
-  stopBook?.();
-  getL2Book(sym).then(book => renderOrderBook(sym, book));
-  stopBook = startBookStream(sym, renderOrderBook);
+  if (currentMode === 'aster') {
+    const data = await getAsterCandles(sym, currentIv, 200);
+    setCandles(data, sym);
+
+    // Order book via Aster public REST (no streaming for now)
+    stopBook?.();
+    stopBook = null;
+    getAsterBook(sym).then(book => renderOrderBook(sym, book));
+
+    // Refresh order book every 2s while in Aster mode
+    stopBook = setInterval(async () => {
+      if (currentMode !== 'aster' || currentMarket !== sym) { clearInterval(stopBook); return; }
+      const book = await getAsterBook(sym);
+      renderOrderBook(sym, book);
+    }, 2000);
+
+  } else {
+    const data = await getCandles(sym, currentIv, 200);
+    setCandles(data, sym);
+    updateHeaderStats();
+
+    stopBook?.();
+    getL2Book(sym).then(book => renderOrderBook(sym, book));
+    stopBook = startBookStream(sym, renderOrderBook);
+  }
 }
 
 function renderOrderBook(sym, { asks, bids }) {
@@ -219,9 +413,14 @@ function bindIntervals() {
       document.querySelectorAll('.iv-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       currentIv = parseInt(btn.dataset.iv);
+      const suffix = currentMode === 'aster' ? 'USDT' : 'USD';
       document.getElementById('chartLabel').textContent =
-        `${currentMarket}USD · ${ivLabel(currentIv)} · RDO ONE`;
-      setCandles(await getCandles(currentMarket, currentIv, 200), currentMarket);
+        `${currentMarket}${suffix} · ${ivLabel(currentIv)} · RDO ONE`;
+      if (currentMode === 'aster') {
+        setCandles(await getAsterCandles(currentMarket, currentIv, 200), currentMarket);
+      } else {
+        setCandles(await getCandles(currentMarket, currentIv, 200), currentMarket);
+      }
     });
   });
 }
@@ -390,9 +589,12 @@ function updateStats() {
   document.getElementById('stLiq').textContent    = liqPx   ? fmt(liqPx, currentMarket)            : 'N/A';
   document.getElementById('stVal').textContent    = notional ? '$' + fmtLarge(notional)              : 'N/A';
   document.getElementById('stMargin').textContent = margin   ? '$' + margin.toFixed(2)              : '--';
+  const feeRate = currentMode === 'aster' ? 0.0004 : 0.00045;
+  const feeLabel = currentMode === 'aster' ? '0.0400% Taker / 0.0000% Maker' : '0.0450% / 0.0150%';
+  const feePct   = currentMode === 'aster' ? '0.0400%' : '0.0450%';
   document.getElementById('stFee').textContent    = notional
-    ? '$' + (notional * 0.00045).toFixed(4) + ' (0.0450%)'
-    : '0.0450% / 0.0150%';
+    ? '$' + (notional * feeRate).toFixed(4) + ' (' + feePct + ')'
+    : feeLabel;
 }
 
 function onSlider(val) {
@@ -553,9 +755,11 @@ function startClock() {
   const el = document.getElementById('clockEl');
   const t  = () => {
     el.textContent = new Date().toUTCString().slice(5, 25) + ' UTC';
-    const ctx = metaCtxs[currentMarket];
-    if (ctx) document.getElementById('statFunding').textContent =
-      (ctx.funding * 100).toFixed(4) + '% / ' + countdown();
+    if (currentMode === 'hl') {
+      const ctx = metaCtxs[currentMarket];
+      if (ctx) document.getElementById('statFunding').textContent =
+        (ctx.funding * 100).toFixed(4) + '% / ' + countdown();
+    }
   };
   t(); setInterval(t, 1000);
 }
@@ -586,6 +790,7 @@ function fmtLarge(n) {
 // ── Public API ─────────────────────────────────────────────────
 window.rdo = {
   connectWallet: connectWalletFn,
+  switchMode,
   setSide,
   updateStats,
   onSlider,

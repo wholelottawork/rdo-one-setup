@@ -82,6 +82,44 @@ html, body {
 .hdr-nav-link:hover { color: var(--hl-text-primary); background: var(--hl-bg-elevated); }
 .hdr-nav-link.active { color: var(--hl-accent); }
 
+/* ── MODE SWITCHER ──────────────────────────────────────────── */
+.mode-switch {
+  display: flex; align-items: center;
+  background: var(--hl-bg-elevated);
+  border: 1px solid var(--hl-border);
+  border-radius: 6px;
+  padding: 2px;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.mode-btn {
+  font-family: var(--hl-font); font-size: 11px; font-weight: 700;
+  letter-spacing: 0.5px;
+  padding: 3px 10px; border-radius: 4px; border: none; cursor: pointer;
+  color: var(--hl-text-secondary); background: transparent;
+  transition: all 0.15s; display: flex; align-items: center; gap: 4px;
+}
+.mode-btn:hover { color: var(--hl-text-primary); }
+.mode-btn.active.mode-hl {
+  background: var(--hl-accent-dark);
+  color: var(--hl-accent);
+}
+.mode-btn.active.mode-aster {
+  background: rgba(139, 92, 246, 0.15);
+  color: #a78bfa;
+}
+.mode-lev-tag {
+  font-size: 9px; font-weight: 600;
+  background: rgba(139, 92, 246, 0.2);
+  color: #a78bfa; border-radius: 3px;
+  padding: 1px 4px; letter-spacing: 0;
+}
+.mode-btn.active.mode-aster .mode-lev-tag {
+  background: rgba(139, 92, 246, 0.35);
+}
+/* Aster mode body indicator */
+body.mode-aster { --hl-accent: #a78bfa; --hl-accent-dark: rgba(139,92,246,0.15); --hl-buy: #7c3aed; --hl-buy-bg: rgba(124,58,237,0.12); }
+
 .hdr-logo { display: flex; align-items: baseline; gap: 2px; padding-right: 4px; }
 .logo-rdo { font-size: 13px; font-weight: 700; color: var(--hl-accent); letter-spacing: 0.5px; }
 .logo-one { font-size: 13px; font-weight: 300; color: var(--hl-text-primary); }
