@@ -325,13 +325,6 @@
 <nav id="rdo-nav">
   <div class="nav-logo">RDO<span>ONE</span></div>
   <div class="nav-div"></div>
-  <div class="mode-switch-wrap">
-    <div class="mode-switch" id="pfModeSwitch">
-      <button class="mode-btn mode-hl active" id="pfBtnHL" onclick="switchPortfolioMode('hl')">BASIC</button>
-      <button class="mode-btn mode-aster" id="pfBtnAster" onclick="switchPortfolioMode('aster')">EXTRA</button>
-    </div>
-  </div>
-  <div class="nav-div"></div>
   <a href="/">Trade</a>
   <a href="/markets.html">Markets</a>
   <a href="/news.html">News</a>
@@ -427,7 +420,13 @@
   <!-- PnL section header: title + controls -->
   <div class="pnl-header">
     <div>
-      <div class="pnl-title">TRADER PNL</div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <div class="pnl-title">TRADER PNL</div>
+        <div class="mode-switch" id="pfModeSwitch">
+          <button class="mode-btn mode-hl active" id="pfBtnHL" onclick="switchPortfolioMode('hl')">BASIC</button>
+          <button class="mode-btn mode-aster" id="pfBtnAster" onclick="switchPortfolioMode('aster')">EXTRA</button>
+        </div>
+      </div>
       <div class="pnl-addr-sub" id="pnl-addr-sub"></div>
     </div>
     <div class="pnl-controls">
