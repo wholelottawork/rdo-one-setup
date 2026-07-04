@@ -294,6 +294,16 @@
     .perps-dep-btn{width:100%;padding:10px;background:var(--accent);color:#0f1a1e;font-weight:700;font-size:12px;border-radius:var(--r);border:none;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:6px;transition:opacity .15s;margin-top:4px}
     .perps-dep-btn:hover{opacity:.88}
 
+    /* ─── Portfolio Mode Switcher ───────────────────────────────────────── */
+    .mode-switch-wrap{position:relative;display:flex;align-items:center;gap:10px;flex-shrink:0}
+    .mode-switch{display:flex;border-radius:6px;overflow:hidden;border:1px solid var(--border);background:var(--bg2)}
+    .mode-btn{padding:4px 12px;font-size:11px;font-weight:700;letter-spacing:.04em;border:none;background:transparent;color:var(--text3);cursor:pointer;font-family:inherit;transition:all .15s}
+    .mode-btn.active{background:var(--bg3);color:var(--text)}
+    .mode-btn.mode-hl.active{color:var(--accent)}
+    .mode-btn.mode-aster.active{color:#f59e0b}
+    /* ─── Aster accent ───────────────────────────────────────────────── */
+    .aster-load-btn{font-size:12px;font-weight:600;color:#1a1044;background:#f59e0b;border:none;border-radius:4px;padding:7px 16px;cursor:pointer;font-family:inherit;transition:opacity .15s;white-space:nowrap}
+    .aster-load-btn:hover{opacity:.88}
     /* ─── EVM Balance card ──────────────────────────────────────────────────── */
     .evm-bal-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:14px 16px;margin-top:12px;display:none}
     .evm-bal-card.visible{display:block}
@@ -314,6 +324,13 @@
 
 <nav id="rdo-nav">
   <div class="nav-logo">RDO<span>ONE</span></div>
+  <div class="nav-div"></div>
+  <div class="mode-switch-wrap">
+    <div class="mode-switch" id="pfModeSwitch">
+      <button class="mode-btn mode-hl active" id="pfBtnHL" onclick="switchPortfolioMode('hl')">BASIC</button>
+      <button class="mode-btn mode-aster" id="pfBtnAster" onclick="switchPortfolioMode('aster')">EXTRA</button>
+    </div>
+  </div>
   <div class="nav-div"></div>
   <a href="/">Trade</a>
   <a href="/markets.html">Markets</a>
@@ -390,7 +407,8 @@
     </div>
   </div>
 
-  <!-- ══ TRADER PNL SECTION ════════════════════════════════════════════════ -->
+<!-- ══ BASIC MODE (Hyperliquid) ══════════════════════════════════════════════ -->
+<div id="pnl-section-hl">
   <div class="section-divider" style="margin-top:32px"><span>Trader PnL</span></div>
 
   <div class="hl-connect-bar">
@@ -510,6 +528,86 @@
     </div>
 
   </div><!-- /pnl-layout -->
+</div><!-- /pnl-section-hl -->
+
+<!-- ══ EXTRA MODE (Aster) ════════════════════════════════════════════════════ -->
+<div id="pnl-section-aster" style="display:none">
+  <div class="section-divider" style="margin-top:32px"><span>Aster Account</span></div>
+
+  <div class="hl-connect-bar">
+    <input class="hl-addr-input" id="aster-addr-input" placeholder="Enter Aster / EVM wallet address (0x…)" />
+    <button class="aster-load-btn" onclick="handleAsterLoad()">Load</button>
+    <button class="hl-evm-btn" id="aster-evm-btn" onclick="connectAsterEVM()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 2v20M2 12h20"/></svg>
+      Connect EVM Wallet
+    </button>
+  </div>
+
+  <div class="pnl-layout">
+    <div class="pnl-main">
+      <!-- Aster stat cards -->
+      <div class="pnl-stats">
+        <div class="stat-card"><div class="stat-lbl">Total Realized PnL</div><div class="stat-val" id="as-total-pnl">—</div><div class="stat-sub">All-time</div></div>
+        <div class="stat-card"><div class="stat-lbl">Win Rate</div><div class="stat-val" id="as-win-rate">—</div><div class="stat-sub" id="as-win-sub">wins / losses</div></div>
+        <div class="stat-card"><div class="stat-lbl">Total Trades</div><div class="stat-val" id="as-trades">—</div><div class="stat-sub">closed positions</div></div>
+        <div class="stat-card"><div class="stat-lbl">Avg Hold Time</div><div class="stat-val" id="as-hold">—</div><div class="stat-sub">per trade</div></div>
+        <div class="stat-card"><div class="stat-lbl">Best Trade</div><div class="stat-val pos" id="as-best">—</div><div class="stat-sub" id="as-best-sub"></div></div>
+        <div class="stat-card"><div class="stat-lbl">Worst Trade</div><div class="stat-val neg" id="as-worst">—</div><div class="stat-sub" id="as-worst-sub"></div></div>
+      </div>
+      <!-- Aster trades -->
+      <div class="trades-card">
+        <div class="trades-title">
+          <span>Aster Trade History</span>
+          <span id="aster-trades-count" style="font-size:11px;font-weight:500;color:var(--text3)"></span>
+        </div>
+        <div id="aster-trades-body">
+          <div class="hl-placeholder">Enter your Aster address above to view trading history.</div>
+        </div>
+      </div>
+    </div><!-- /pnl-main -->
+
+    <!-- Aster perps sidebar -->
+    <div class="pnl-sidebar">
+      <div class="share-card" style="border-color:rgba(245,158,11,.2)">
+        <div class="share-brand">
+          <div class="share-dot" style="background:#f59e0b"></div>
+          <div class="share-logo">RDO<span style="color:#f59e0b">ONE</span></div>
+        </div>
+        <div id="aster-share-content">
+          <div class="share-placeholder">Load an Aster wallet to see your PnL card.</div>
+        </div>
+      </div>
+
+      <!-- Aster Perps Portfolio card -->
+      <div class="perps-val-card" id="aster-perps-card" style="margin-top:14px">
+        <div class="perps-val-hdr">
+          <span class="perps-val-title" style="color:#f59e0b">Aster Perps</span>
+          <span class="perps-val-live"><span style="width:5px;height:5px;border-radius:50%;background:#f59e0b;display:inline-block;animation:pulse 2s ease-in-out infinite"></span> LIVE</span>
+        </div>
+        <div class="perps-val-eq" id="as-pv-equity">—</div>
+        <div class="perps-val-sub">Unrealized PnL: <span id="as-pv-upnl" style="font-weight:600">—</span></div>
+        <div class="perps-val-rows">
+          <div class="perps-val-row"><span>Position Value</span><span id="as-pv-ntl">—</span></div>
+          <div class="perps-val-row"><span>Available Margin</span><span id="as-pv-avail">—</span></div>
+          <div class="perps-val-row"><span>Margin Used</span><span id="as-pv-margin">—</span></div>
+          <div class="perps-val-row"><span>Account Leverage</span><span id="as-pv-lev">—</span></div>
+        </div>
+        <div id="as-pv-positions-wrap" style="margin-top:12px;display:none">
+          <div class="perps-val-pos-hdr">Open Positions</div>
+          <div id="as-pv-positions"></div>
+        </div>
+        <div class="perps-val-placeholder" id="as-pv-placeholder">
+          Enter your Aster address to see perps portfolio.<br>
+          <span style="font-size:10px;color:var(--text3);margin-top:4px;display:block">Collateral: USDT &nbsp;·&nbsp; Max leverage: 200x</span>
+        </div>
+        <button class="perps-dep-btn" style="background:#f59e0b;color:#1a1044" onclick="openAsterDeposit()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v13M7 11l5 5 5-5"/><path d="M4 19h16"/></svg>
+          Deposit to Aster Perps
+        </button>
+      </div>
+    </div><!-- /pnl-sidebar -->
+  </div><!-- /pnl-layout -->
+</div><!-- /pnl-section-aster -->
 
 </main>
 
@@ -1538,6 +1636,204 @@ async function copyFullAddr() {
 document.addEventListener('keydown', e=>{
   if(e.key==='Escape'){closeDeposit();closeSwap();closeConvert();closeCalendarModal();}
 });
+
+// ══════════════════════════════════════════════════════════════════════════════
+// PORTFOLIO MODE SWITCHER (BASIC = Hyperliquid · EXTRA = Aster)
+// ══════════════════════════════════════════════════════════════════════════════
+let portfolioMode = 'hl';
+
+function switchPortfolioMode(mode) {
+  portfolioMode = mode;
+  el('pfBtnHL').classList.toggle('active', mode === 'hl');
+  el('pfBtnAster').classList.toggle('active', mode === 'aster');
+  el('pnl-section-hl').style.display = mode === 'hl' ? '' : 'none';
+  el('pnl-section-aster').style.display = mode === 'aster' ? '' : 'none';
+  if (mode === 'aster') {
+    const asterAddr = el('aster-addr-input').value.trim();
+    if (asterAddr) loadAsterData(asterAddr);
+    else if (evmAddr) { el('aster-addr-input').value = evmAddr; loadAsterData(evmAddr); }
+  }
+}
+
+// ── Aster connect helpers ─────────────────────────────────────────────────────
+function handleAsterLoad() {
+  const addr = el('aster-addr-input').value.trim();
+  if (!addr) return;
+  loadAsterData(addr);
+}
+
+async function connectAsterEVM() {
+  const phEvm = window.phantom?.ethereum;
+  if (phEvm) {
+    try {
+      let accs = await phEvm.request({ method: 'eth_accounts' });
+      if (!accs?.[0]) accs = await phEvm.request({ method: 'eth_requestAccounts' });
+      if (accs?.[0]) { el('aster-addr-input').value = accs[0]; loadAsterData(accs[0]); return; }
+    } catch {}
+  }
+  const provider = window.ethereum;
+  if (provider) {
+    try {
+      let accs = await provider.request({ method: 'eth_accounts' });
+      if (!accs?.[0]) accs = await provider.request({ method: 'eth_requestAccounts' });
+      if (accs?.[0]) { el('aster-addr-input').value = accs[0]; loadAsterData(accs[0]); return; }
+    } catch {}
+  }
+  const inp = el('aster-addr-input');
+  inp.placeholder = 'No EVM wallet found — enter address manually'; inp.style.borderColor='var(--red)';
+  setTimeout(()=>{ inp.placeholder='Enter Aster / EVM wallet address (0x…)'; inp.style.borderColor=''; }, 4000);
+}
+
+// ── Aster data loader ─────────────────────────────────────────────────────────
+const ASTER_API = '/aster-fapi';
+
+async function loadAsterData(address) {
+  ['as-pv-equity','as-pv-upnl','as-pv-ntl','as-pv-avail','as-pv-margin','as-pv-lev'].forEach(id=>set(id,'…'));
+  el('as-pv-placeholder').style.display = 'none';
+  el('as-pv-positions-wrap').style.display = 'none';
+  el('aster-trades-body').innerHTML = '<div class="hl-placeholder">Loading…</div>';
+  ['as-total-pnl','as-win-rate','as-trades','as-hold','as-best','as-worst'].forEach(id=>set(id,'…'));
+
+  // Fetch open positions (public) + trade history (public endpoint by address)
+  const [posRes, tradesRes] = await Promise.allSettled([
+    fetchAsterPositions(address),
+    fetchAsterTrades(address),
+  ]);
+
+  // Render perps portfolio from open positions
+  if (posRes.status === 'fulfilled') {
+    renderAsterPortfolio(posRes.value, address);
+  } else {
+    ['as-pv-equity','as-pv-upnl','as-pv-ntl','as-pv-avail','as-pv-margin','as-pv-lev'].forEach(id=>set(id,'—'));
+    el('as-pv-placeholder').style.display = 'block';
+    el('as-pv-placeholder').innerHTML = 'Could not load Aster portfolio.<br><span style="font-size:10px;color:var(--text3)">Collateral: USDT · Max leverage: 200x</span>';
+  }
+
+  // Render trade history
+  if (tradesRes.status === 'fulfilled' && tradesRes.value.length) {
+    renderAsterTrades(tradesRes.value);
+    computeAsterStats(tradesRes.value);
+  } else {
+    ['as-total-pnl','as-win-rate','as-trades','as-hold','as-best','as-worst'].forEach(id=>set(id,'—'));
+    el('aster-trades-body').innerHTML = '<div class="hl-placeholder">No trade history found for this address.</div>';
+  }
+}
+
+async function fetchAsterPositions(address) {
+  // Aster public endpoint: open interest / positions by symbol — no auth needed for account overview
+  // Uses allOpenOrders (public) — account-specific calls require API key signing
+  // We show a summary using what's available publicly
+  const r = await fetch(`${ASTER_API}/v2/account?address=${encodeURIComponent(address)}`);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return r.json();
+}
+
+async function fetchAsterTrades(address) {
+  const r = await fetch(`${ASTER_API}/v1/userTrades?address=${encodeURIComponent(address)}&limit=500`);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  const data = await r.json();
+  return Array.isArray(data) ? data : [];
+}
+
+function renderAsterPortfolio(data, address) {
+  // Parse Binance Futures-style account response
+  const totalWalletBalance = parseFloat(data.totalWalletBalance ?? data.totalMarginBalance ?? 0);
+  const totalUnrealizedProfit = parseFloat(data.totalUnrealizedProfit ?? 0);
+  const totalPositionInitialMargin = parseFloat(data.totalPositionInitialMargin ?? 0);
+  const totalOpenOrderInitialMargin = parseFloat(data.totalOpenOrderInitialMargin ?? 0);
+  const availableBalance = parseFloat(data.availableBalance ?? totalWalletBalance - totalPositionInitialMargin);
+  const totalCrossUnPnl = parseFloat(data.totalCrossUnPnl ?? totalUnrealizedProfit);
+  const equity = totalWalletBalance + totalCrossUnPnl;
+  const ntl = totalPositionInitialMargin;
+  const lev = ntl > 0 ? (ntl / Math.max(equity, 0.01)).toFixed(2) + 'x' : '0.00x';
+
+  const eqEl = el('as-pv-equity');
+  if (eqEl) { eqEl.textContent = '$' + fmt(equity); }
+
+  const upnlEl = el('as-pv-upnl');
+  if (upnlEl) {
+    upnlEl.textContent = (totalCrossUnPnl >= 0 ? '+' : '') + '$' + fmt(totalCrossUnPnl);
+    upnlEl.style.color = totalCrossUnPnl > 0 ? 'var(--green)' : totalCrossUnPnl < 0 ? 'var(--red)' : 'var(--text3)';
+  }
+
+  set('as-pv-ntl', '$' + fmt(ntl));
+  set('as-pv-avail', '$' + fmt(availableBalance));
+  set('as-pv-margin', '$' + fmt(totalPositionInitialMargin + totalOpenOrderInitialMargin));
+  set('as-pv-lev', lev);
+
+  // Open positions
+  const positions = (data.positions || []).filter(p => parseFloat(p.positionAmt ?? p.initialMargin ?? 0) !== 0);
+  const wrap = el('as-pv-positions-wrap');
+  const posDiv = el('as-pv-positions');
+  if (positions.length && wrap && posDiv) {
+    wrap.style.display = 'block';
+    posDiv.innerHTML = positions.slice(0, 6).map(p => {
+      const amt = parseFloat(p.positionAmt ?? 0);
+      const isLong = amt > 0;
+      const upnl = parseFloat(p.unrealizedProfit ?? 0);
+      return `<div class="pv-pos-row">
+        <span><span class="pv-pos-coin">${p.symbol?.replace('USDT','') ?? '—'}</span><span class="pv-pos-dir ${isLong?'long':'short'}">${isLong?'LONG':'SHORT'}</span></span>
+        <span class="pv-pos-pnl ${pCls(upnl)}">${upnl>=0?'+':''}$${fmt(upnl)}</span>
+      </div>`;
+    }).join('');
+  }
+}
+
+function renderAsterTrades(trades) {
+  // Binance Futures trade format: symbol, side, price, qty, realizedPnl, time
+  const closing = trades.filter(t => parseFloat(t.realizedPnl ?? 0) !== 0);
+  const recent = [...closing].sort((a,b) => b.time - a.time).slice(0, 50);
+  set('aster-trades-count', recent.length + ' of ' + closing.length + ' trades');
+  if (!recent.length) {
+    el('aster-trades-body').innerHTML = '<div class="hl-placeholder">No closed trades found.</div>';
+    return;
+  }
+  const hdr = `<div class="trades-grid trades-hdr" style="grid-template-columns:1fr 64px 88px 70px 88px"><span>Token</span><span>Side</span><span>Price</span><span>Size</span><span>PnL</span></div>`;
+  const rows = recent.map(t => {
+    const pnl = parseFloat(t.realizedPnl ?? 0);
+    const px = parseFloat(t.price ?? 0);
+    const qty = parseFloat(t.qty ?? t.quoteQty ?? 0);
+    const isLong = (t.side ?? '').toUpperCase() === 'BUY';
+    const sym = (t.symbol ?? '').replace('USDT','').replace('PERP','');
+    return `<div class="trades-grid trade-row" style="grid-template-columns:1fr 64px 88px 70px 88px">
+      <div class="trade-coin">${sym}</div>
+      <div><span class="trade-dir ${isLong?'long':'short'}">${isLong?'Long':'Short'}</span></div>
+      <div class="trade-cell">$${fmt(px, px<1?4:2)}</div>
+      <div class="trade-cell">${fmt(qty, qty<1?4:2)}</div>
+      <div class="trade-pnl ${pCls(pnl)}">${pnl>=0?'+':''}$${fmt(pnl)}</div>
+    </div>`;
+  }).join('');
+  el('aster-trades-body').innerHTML = hdr + rows;
+}
+
+function computeAsterStats(trades) {
+  const closing = trades.filter(t => parseFloat(t.realizedPnl ?? 0) !== 0);
+  if (!closing.length) { ['as-total-pnl','as-win-rate','as-trades','as-hold','as-best','as-worst'].forEach(id=>set(id,'—')); return; }
+  const totalPnl = closing.reduce((s,t) => s + parseFloat(t.realizedPnl), 0);
+  const wins = closing.filter(t => parseFloat(t.realizedPnl) > 0).length;
+  const losses = closing.filter(t => parseFloat(t.realizedPnl) < 0).length;
+  const pnlVals = closing.map(t => parseFloat(t.realizedPnl));
+  const bestVal = Math.max(...pnlVals);
+  const worstVal = Math.min(...pnlVals);
+  const bestT = closing.find(t => parseFloat(t.realizedPnl) === bestVal);
+  const worstT = closing.find(t => parseFloat(t.realizedPnl) === worstVal);
+
+  const totalEl = el('as-total-pnl');
+  totalEl.textContent = (totalPnl>=0?'+':'')+'$'+fmt(totalPnl);
+  totalEl.className = 'stat-val ' + pCls(totalPnl);
+  set('as-win-rate', closing.length ? ((wins/closing.length)*100).toFixed(1)+'%' : '—');
+  set('as-win-sub', `${wins}W / ${losses}L`);
+  set('as-trades', closing.length.toLocaleString());
+  set('as-hold', '—');
+  set('as-best', bestVal ? '+$'+fmt(bestVal) : '—');
+  if (bestT) set('as-best-sub', (bestT.symbol??'').replace('USDT','') + ' · ' + fmtDate(bestT.time));
+  set('as-worst', worstVal ? '-$'+fmt(Math.abs(worstVal)) : '—');
+  if (worstT) set('as-worst-sub', (worstT.symbol??'').replace('USDT','') + ' · ' + fmtDate(worstT.time));
+}
+
+function openAsterDeposit() {
+  window.open('https://www.asterdex.com', '_blank', 'noopener');
+}
 </script>
 </body>
 </html>
