@@ -388,7 +388,7 @@ body.mode-aster { --hl-accent: #a78bfa; --hl-accent-dark: rgba(139,92,246,0.15);
 .ob-colhdr span:nth-child(2) { text-align: right; }
 
 .ob-asks { overflow: hidden; display: flex; flex-direction: column; }
-.ob-bids { overflow: hidden; }
+.ob-bids { overflow: hidden; padding-bottom: 8px; }
 
 .ob-row {
   display: grid; grid-template-columns: 1fr 1fr 1fr;
