@@ -840,4 +840,38 @@ window.rdo = {
   });
 })();
 
+// ── Bottom panel vertical resize ───────────────────────────────
+(function initBtmResize() {
+  const handle = document.getElementById('btmResizeHandle');
+  if (!handle) return;
+  const root = document.documentElement;
+  const MIN = 60, MAX = 480;
+  let dragging = false, startY = 0, startH = 0;
+
+  handle.addEventListener('mousedown', e => {
+    dragging = true;
+    startY = e.clientY;
+    startH = parseInt(getComputedStyle(root).getPropertyValue('--btm')) || 175;
+    handle.classList.add('dragging');
+    document.body.style.cursor = 'ns-resize';
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    // drag up → bigger bottom panel (startY - e.clientY adds height)
+    const h = Math.min(MAX, Math.max(MIN, startH + (startY - e.clientY)));
+    root.style.setProperty('--btm', h + 'px');
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    handle.classList.remove('dragging');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  });
+})();
+
 init();
