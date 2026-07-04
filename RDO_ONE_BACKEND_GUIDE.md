@@ -2256,3 +2256,528 @@ npm install \
 ```
 
 No backend packages needed — wallet connection is entirely client-side.
+
+---
+
+## 17. Two-Mode Terminal — Hyperliquid + Aster
+
+### Overview
+
+RDO ONE supports two execution engines. Users pick their mode based on what they need:
+
+| | Hyperliquid Mode | Aster Mode |
+|---|---|---|
+| Max leverage | 50x | 1001x |
+| Stock perps | No | Yes (NVDA, TSLA, etc.) |
+| Custody model | Non-custodial — user signs every order | Semi-custodial — backend signs orders |
+| Builder fee | Up to 0.1% per trade (Builder Codes) | Configurable feeRate per order |
+| Base taker fee | 0.04% | 0.04% (USDT-perps) |
+| Collateral | USDC | USDT / USD1 |
+| Settlement chain | HyperCore (HL L1) | Aster L1 / BNB Chain |
+
+**Key point for UX:** Funds live on different chains. Switching modes requires a cross-chain bridge transfer (~10–20 minutes). Users pick a mode and stay there — the two modes serve different user types, not the same user switching back and forth constantly.
+
+---
+
+### Architecture — Two-Mode Structure
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    RDO ONE Terminal                             │
+│                                                                 │
+│  ┌─────────────────────────┐  ┌─────────────────────────────┐  │
+│  │    HYPERLIQUID MODE     │  │       ASTER MODE            │  │
+│  │                         │  │                             │  │
+│  │  • Up to 50x leverage   │  │  • Up to 1001x leverage     │  │
+│  │  • User signs orders    │  │  • Backend signs orders     │  │
+│  │  • Builder Code fee     │  │  • Builder feeRate          │  │
+│  │  • USDC collateral      │  │  • USDT collateral          │  │
+│  │  • Non-custodial        │  │  • Semi-custodial           │  │
+│  └────────────┬────────────┘  └──────────────┬──────────────┘  │
+│               │                              │                 │
+│               └──────────┬───────────────────┘                 │
+│                          │                                     │
+│               ┌──────────▼───────────┐                         │
+│               │   Portfolio Page      │                         │
+│               │  (shows both modes)   │                         │
+│               └──────────────────────┘                         │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### Builder Fees — Both Modes
+
+#### Hyperliquid Builder Codes
+
+Add `builder` field to every order. No extra user approval flow needed beyond the one-time `ApproveBuilderFee`.
+
+**Setup (one time — your builder wallet):**
+- Deposit 100 USDC into your HL perps account at app.hyperliquid.xyz
+- Your builder wallet address is what you put in the `b` field
+
+**Every order includes:**
+```javascript
+const order = {
+  coin:    'BTC',
+  is_buy:  true,
+  sz:      0.01,
+  limit_px: 65000,
+  order_type: { limit: { tif: 'Gtc' } },
+  reduce_only: false,
+  // Builder fee — 0.05% on this order (50 = 5 bps = 0.05%)
+  builder: {
+    b: '0xYourBuilderWalletAddress',
+    f: 50,  // tenths of a basis point. Max: 100 = 0.1%
+  }
+};
+```
+
+**Fee calculation:** `trade_size_usd × (f / 100000)`
+- $10,000 trade with `f: 50` = $10,000 × 0.0005 = **$5 earned**
+
+**User one-time approval** (gasless signature, done once on first trade):
+```javascript
+const approveAction = {
+  type: 'approveBuilderFee',
+  hyperliquidChain: 'Mainnet',
+  signatureChainId: '0xa4b1',  // Arbitrum
+  maxFeeRate: '0.1%',          // max you're allowed to charge this user
+  builder: '0xYourBuilderAddress',
+  nonce: Date.now(),
+};
+// User signs this with their wallet — no gas, instant
+```
+
+#### Aster Builder Fees
+
+Set via `feeRate` field on every order. Capped by user-approved `maxFeeRate`.
+
+```javascript
+await fetch('https://fapi.asterdex.com/fapi/v3/order', {
+  method: 'POST',
+  body: JSON.stringify({
+    symbol:    'BTCUSDT',
+    side:      'BUY',
+    type:      'LIMIT',
+    quantity:  0.01,
+    price:     65000,
+    builder:   '0xYourBuilderAddress',
+    feeRate:   '0.0005',   // 0.05% — must be <= user's approved maxFeeRate
+    // signed by your backend signer key for this user
+  })
+});
+```
+
+---
+
+### Portfolio Page — Dual Mode Display
+
+The portfolio page reads from both APIs simultaneously and shows combined stats.
+
+**`client/src/lib/portfolio-dual.js`:**
+
+```javascript
+import { getEVMAddress } from './wallet.js';
+
+const HL_API   = 'https://api.hyperliquid.xyz/info';
+const ASTER_API = 'https://fapi.asterdex.com';
+
+// Fetch both accounts in parallel
+export async function loadDualPortfolio(address) {
+  const [hlResult, asterResult] = await Promise.allSettled([
+    loadHLAccount(address),
+    loadAsterAccount(address),
+  ]);
+
+  return {
+    hl:    hlResult.status    === 'fulfilled' ? hlResult.value    : null,
+    aster: asterResult.status === 'fulfilled' ? asterResult.value : null,
+  };
+}
+
+async function loadHLAccount(address) {
+  const res = await fetch(HL_API, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type: 'clearinghouseState', user: address }),
+  });
+  const data = await res.json();
+
+  const balance    = parseFloat(data.marginSummary?.accountValue || 0);
+  const unrealPnl  = parseFloat(data.marginSummary?.totalUnrealizedPnl || 0);
+  const positions  = (data.assetPositions || [])
+    .filter(p => parseFloat(p.position?.szi) !== 0)
+    .map(p => ({
+      coin:   p.position.coin,
+      size:   parseFloat(p.position.szi),
+      pnl:    parseFloat(p.position.unrealizedPnl),
+      entry:  parseFloat(p.position.entryPx),
+      liqPx:  parseFloat(p.position.liquidationPx || 0),
+    }));
+
+  return { balance, unrealPnl, positions, mode: 'hyperliquid' };
+}
+
+async function loadAsterAccount(address) {
+  // Aster requires agent auth — use your backend proxy to protect signer key
+  const res = await fetch(`/api/aster/account?user=${address}`);
+  const data = await res.json();
+
+  const balance   = parseFloat(data.totalWalletBalance || 0);
+  const unrealPnl = parseFloat(data.totalUnrealizedProfit || 0);
+  const positions = (data.positions || [])
+    .filter(p => parseFloat(p.positionAmt) !== 0)
+    .map(p => ({
+      coin:  p.symbol.replace('USDT', ''),
+      size:  parseFloat(p.positionAmt),
+      pnl:   parseFloat(p.unrealizedProfit),
+      entry: parseFloat(p.entryPrice),
+      liqPx: parseFloat(p.liquidationPrice || 0),
+    }));
+
+  return { balance, unrealPnl, positions, mode: 'aster' };
+}
+```
+
+**Portfolio HTML structure:**
+
+```html
+<div class="dual-portfolio">
+
+  <!-- Combined header -->
+  <div class="portfolio-total">
+    <span class="total-label">Total Portfolio</span>
+    <span class="total-value" id="combined-balance">$—</span>
+    <span class="total-pnl"  id="combined-pnl">—</span>
+  </div>
+
+  <!-- Two mode cards side by side -->
+  <div class="mode-cards">
+
+    <div class="mode-card" id="hl-card">
+      <div class="mode-header">
+        <img src="/icons/hyperliquid.svg" /> Hyperliquid
+        <span class="mode-badge">50x</span>
+      </div>
+      <div class="mode-balance" id="hl-balance">$—</div>
+      <div class="mode-pnl"     id="hl-pnl">—</div>
+      <div class="mode-positions" id="hl-positions"><!-- positions list --></div>
+      <button onclick="openTransfer('hl-to-aster')">Transfer to Aster →</button>
+    </div>
+
+    <div class="mode-card" id="aster-card">
+      <div class="mode-header">
+        <img src="/icons/aster.svg" /> Aster
+        <span class="mode-badge">1001x</span>
+      </div>
+      <div class="mode-balance" id="aster-balance">$—</div>
+      <div class="mode-pnl"     id="aster-pnl">—</div>
+      <div class="mode-positions" id="aster-positions"><!-- positions list --></div>
+      <button onclick="openTransfer('aster-to-hl')">Transfer to Hyperliquid →</button>
+    </div>
+
+  </div>
+</div>
+```
+
+---
+
+### Transfer Between Modes
+
+There is no direct bridge between HyperCore (HL) and Aster's chain. Funds must travel through the EVM bridge. Total time: **10–20 minutes**.
+
+#### HL → Aster Flow
+
+```
+Step 1: withdraw3 (HL API)           → USDC lands on Arbitrum   (~5 min, $1 fee)
+Step 2: Li.Fi bridge                 → USDC lands on BNB/Aster   (~5 min, gas)
+Step 3: Aster deposit API            → balance in Aster perps    (instant)
+```
+
+**`client/src/lib/transfer.js`:**
+
+```javascript
+import { getWalletClient, getPublicClient } from '@wagmi/core';
+import { wagmiConfig, getEVMAddress } from './wallet.js';
+import { arbitrum } from 'viem/chains';
+
+const HL_CHAIN_ID  = '0xa4b1';  // Arbitrum (42161) — HL withdrawal destination
+const HL_API       = 'https://api.hyperliquid.xyz/exchange';
+
+// ── Step 1: Withdraw USDC from HL perps to Arbitrum ──────────────────────────
+export async function withdrawFromHL(amountUsdc, onStatus) {
+  const address      = getEVMAddress();
+  const walletClient = await getWalletClient(wagmiConfig, { chainId: arbitrum.id });
+
+  onStatus('Withdrawing from Hyperliquid...');
+
+  const action = {
+    type:            'withdraw3',
+    hyperliquidChain: 'Mainnet',
+    signatureChainId: HL_CHAIN_ID,
+    amount:           String(amountUsdc),
+    time:             Date.now(),
+    destination:      address,
+  };
+
+  // EIP-712 sign the withdrawal action
+  const signature = await walletClient.signTypedData({
+    domain: {
+      name:              'Exchange',
+      version:           '1',
+      chainId:           42161,
+      verifyingContract: '0x0000000000000000000000000000000000000000',
+    },
+    types: {
+      'HyperliquidTransaction:Withdraw': [
+        { name: 'hyperliquidChain', type: 'string' },
+        { name: 'destination',       type: 'string' },
+        { name: 'amount',            type: 'string' },
+        { name: 'time',              type: 'uint64'  },
+      ],
+    },
+    primaryType: 'HyperliquidTransaction:Withdraw',
+    message: {
+      hyperliquidChain: 'Mainnet',
+      destination:      address,
+      amount:           String(amountUsdc),
+      time:             BigInt(action.time),
+    },
+  });
+
+  await fetch(HL_API, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, nonce: action.time, signature }),
+  });
+
+  onStatus('Withdrawal submitted. USDC arriving on Arbitrum in ~5 minutes...');
+
+  // Poll Arbitrum USDC balance until it increases
+  await waitForArbUSDC(address, amountUsdc * 0.98, onStatus); // 98% = accounting for $1 HL fee
+}
+
+// ── Step 2: Bridge Arbitrum USDC → Aster chain via Li.Fi ─────────────────────
+export async function bridgeToAster(amountUsdc, onStatus) {
+  onStatus('Opening bridge to Aster...');
+  // Reuse existing Li.Fi iframe — point it to Aster destination chain
+  // Or call Li.Fi SDK directly for programmatic bridging
+  const ASTER_CHAIN_ID = 56; // BNB Chain (or Aster L1 chain ID when confirmed)
+  const USDC_ARB = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831';
+
+  // Open Li.Fi widget pre-filled for this exact bridge
+  window.open(
+    `/lifi.html?mode=deposit&fromToken=${USDC_ARB}&fromChain=42161&toChain=${ASTER_CHAIN_ID}&amount=${amountUsdc}`,
+    '_blank'
+  );
+  // Alternative: integrate Li.Fi SDK directly and skip the iframe
+}
+
+// ── Step 3: Deposit into Aster perps (via your backend proxy) ─────────────────
+export async function depositToAster(amountUsdt, onStatus) {
+  onStatus('Depositing into Aster perps...');
+  const res = await fetch('/api/aster/deposit', {
+    method: 'POST',
+    body: JSON.stringify({ amount: amountUsdt }),
+  });
+  const data = await res.json();
+  if (!data.success) throw new Error(data.error);
+  onStatus('Done! Balance updated in Aster perps.');
+}
+
+// ── Full HL → Aster transfer ───────────────────────────────────────────────────
+export async function transferHLtoAster(amountUsdc, onStatus) {
+  await withdrawFromHL(amountUsdc, onStatus);
+  await bridgeToAster(amountUsdc, onStatus);
+  // Step 3 (Aster deposit) triggered after bridge completes
+}
+
+// ── Poll Arbitrum USDC balance until funds arrive ─────────────────────────────
+async function waitForArbUSDC(address, minAmount, onStatus) {
+  const ARB_RPC  = 'https://arb1.arbitrum.io/rpc';
+  const USDC_ARB = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831';
+  const callData = '0x70a08231' + address.replace('0x', '').padStart(64, '0');
+
+  for (let i = 0; i < 60; i++) {  // poll for up to 10 minutes
+    await new Promise(r => setTimeout(r, 10_000)); // wait 10s
+    const res  = await fetch(ARB_RPC, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_call',
+        params: [{ to: USDC_ARB, data: callData }, 'latest'] }),
+    });
+    const data = await res.json();
+    const bal  = parseInt(data.result || '0x0', 16) / 1e6;
+    onStatus(`Waiting for USDC on Arbitrum... (${bal.toFixed(2)} USDC)`);
+    if (bal >= minAmount) return bal;
+  }
+  throw new Error('Timeout waiting for USDC on Arbitrum');
+}
+```
+
+---
+
+### Transfer UI — Step Progress Modal
+
+```html
+<div class="transfer-modal" id="transfer-modal">
+  <div class="transfer-header">
+    <span id="transfer-title">Transfer HL → Aster</span>
+    <button onclick="closeTransfer()">✕</button>
+  </div>
+
+  <div class="transfer-amount">
+    <input type="number" id="transfer-amount" placeholder="Amount USDC" />
+    <span class="transfer-bal">Available: <span id="transfer-avail">—</span></span>
+  </div>
+
+  <div class="transfer-steps">
+    <div class="step" id="step-1">
+      <span class="step-icon">○</span>
+      <span class="step-label">Withdraw from Hyperliquid</span>
+      <span class="step-detail">~5 min · $1 fee</span>
+    </div>
+    <div class="step" id="step-2">
+      <span class="step-icon">○</span>
+      <span class="step-label">Bridge to Aster chain</span>
+      <span class="step-detail">~5 min · gas fee</span>
+    </div>
+    <div class="step" id="step-3">
+      <span class="step-icon">○</span>
+      <span class="step-label">Deposit to Aster Perps</span>
+      <span class="step-detail">Instant</span>
+    </div>
+  </div>
+
+  <div class="transfer-warning">
+    ⚠ Total time ~10–20 min. Do not close this page during transfer.
+  </div>
+
+  <div class="transfer-status" id="transfer-status"></div>
+
+  <button class="transfer-btn" id="transfer-confirm-btn" onclick="startTransfer()">
+    Confirm Transfer
+  </button>
+</div>
+```
+
+**Step icon states during transfer:**
+- `○` — pending
+- `⏳` — in progress
+- `✓` — complete
+- `✕` — failed
+
+---
+
+### Backend Routes Needed for Aster Mode
+
+Add these to `server/routes/proxy.js`:
+
+```javascript
+// Proxy Aster account data (hides signer auth from frontend)
+fastify.get('/aster/account', async (req, reply) => {
+  const { user } = req.query;
+  // Fetch user's Aster account using their registered agent signer
+  // (signer key looked up from your secure key store by user address)
+  const signerKey = await getSignerKey(user);  // your key management function
+  const headers   = buildAsterAuthHeaders(signerKey, user);
+
+  const res  = await fetch(`${ASTER_BASE}/fapi/v1/account`, { headers });
+  return res.json();
+});
+
+// Proxy Aster positions
+fastify.get('/aster/positions', async (req, reply) => {
+  const { user } = req.query;
+  const signerKey = await getSignerKey(user);
+  const headers   = buildAsterAuthHeaders(signerKey, user);
+
+  const res  = await fetch(`${ASTER_BASE}/fapi/v1/positionRisk`, { headers });
+  return res.json();
+});
+```
+
+---
+
+### First-Time Setup Flow — Both Modes
+
+When a user connects their wallet for the first time, check which modes they've approved and prompt for any missing approvals:
+
+```javascript
+async function checkAndSetupModes(address) {
+  const [hlApproved, asterApproved] = await Promise.all([
+    checkHLBuilderApproval(address),
+    checkAsterAgentApproval(address),
+  ]);
+
+  if (!hlApproved) {
+    showSetupStep('Activate Hyperliquid trading (1 signature, no gas)');
+    await approveHLBuilderFee(address);
+  }
+
+  if (!asterApproved) {
+    showSetupStep('Activate Aster trading (2 signatures, no gas)');
+    await approveAsterAgent(address);
+    await approveAsterBuilder(address);
+  }
+}
+
+async function checkHLBuilderApproval(address) {
+  const res = await fetch('https://api.hyperliquid.xyz/info', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      type:    'maxBuilderFee',
+      user:    address,
+      builder: YOUR_BUILDER_ADDRESS,
+    }),
+  });
+  const data = await res.json();
+  return data > 0; // returns approved maxFeeRate or 0 if not approved
+}
+```
+
+---
+
+### User Experience Summary
+
+```
+First visit:
+  1. Connect wallet (AppKit — any wallet)
+  2. One-time setup screen:
+     • Sign 1 message → Hyperliquid mode active
+     • Sign 2 messages → Aster mode active
+     (All gasless, takes ~30 seconds total)
+
+Trading:
+  • Pick mode from top nav: [HYPERLIQUID] [ASTER]
+  • Trade normally — you earn builder fees on every fill
+
+Portfolio page:
+  • See both mode balances side by side
+  • Combined PnL across both accounts
+  • Positions from both modes in one list
+
+Transfer between modes:
+  • Click [Transfer HL → Aster] or [Transfer Aster → HL]
+  • Enter amount
+  • ~10–20 min, walk-through step progress UI
+  • No manual bridge site needed — all inside the terminal
+```
+
+---
+
+### Development Phases for Two-Mode System
+
+| Phase | Task | Time |
+|---|---|---|
+| 1 | HL Builder Codes — add `builder` field to every order, `ApproveBuilderFee` on first trade | 2 days |
+| 2 | Portfolio dual display — fetch both APIs, combined totals UI | 3 days |
+| 3 | Aster agent setup — backend key management, agent/builder approval flow | 1 week |
+| 4 | Aster order routing — backend signs orders with signer key, feeRate included | 1 week |
+| 5 | HL → Aster transfer — withdraw3 + Li.Fi bridge + Aster deposit | 1 week |
+| 6 | Aster → HL transfer — Aster withdrawal + Li.Fi bridge + HL deposit contract | 1 week |
+| 7 | Transfer progress UI — step tracking, recovery for interrupted transfers | 3 days |
+
+**Total: ~5–6 weeks** to have both modes fully operational with transfers.
