@@ -8,6 +8,28 @@ export default defineConfig({
     port: 5176,
     host: '0.0.0.0',
     proxy: {
+      // ── /api/* routes — match production backend paths ───────────────────────
+      '/api/hl': {
+        target: 'https://api.hyperliquid.xyz',
+        changeOrigin: true,
+        rewrite: path => path.replace(/^\/api\/hl/, ''),
+      },
+      '/api/binance': {
+        target: 'https://api.binance.com',
+        changeOrigin: true,
+        rewrite: path => path.replace(/^\/api\/binance/, ''),
+      },
+      '/api/coingecko': {
+        target: 'https://api.coingecko.com',
+        changeOrigin: true,
+        rewrite: path => path.replace(/^\/api\/coingecko/, ''),
+      },
+      '/api/feargreed': {
+        target: 'https://api.alternative.me',
+        changeOrigin: true,
+        rewrite: path => path.replace(/^\/api\/feargreed/, ''),
+      },
+      // ── Legacy paths (keep for backwards compat during migration) ────────────
       '/coingecko': {
         target: 'https://api.coingecko.com',
         changeOrigin: true,

@@ -301,7 +301,7 @@ function buildMarketDropdown() {
 
 async function fetchAllMids() {
   try {
-    const r = await fetch('https://api.hyperliquid.xyz/info', {
+    const r = await fetch('/api/hl/info', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ type: 'metaAndAssetCtxs' }),
     });

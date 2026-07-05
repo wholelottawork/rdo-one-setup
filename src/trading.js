@@ -1,4 +1,6 @@
-const HL_API          = 'https://api.hyperliquid.xyz';
+// In dev: Vite proxies /api/hl → https://api.hyperliquid.xyz
+// In prod: backend server handles /api/hl → https://api.hyperliquid.xyz (with Redis cache)
+const HL_API          = '/api/hl';
 const BUILDER_ADDRESS = '0x0000000000000000000000000000000000000000'; // ← replace with your treasury wallet
 const BUILDER_FEE     = 1000; // tenths of bps → 0.10%
 
@@ -363,12 +365,21 @@ export async function cancelOrder({ oid, symbol, signer }) {
   return res.json();
 }
 
+// In prod: use backend WS relay. In dev: connect direct (no CORS on WS).
+function hlWsUrl() {
+  if (import.meta.env.PROD) {
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${proto}//${location.host}/ws`;
+  }
+  return 'wss://api.hyperliquid.xyz/ws';
+}
+
 // ── WebSocket stream ───────────────────────────────────────────
 export function startPriceStream(symbols, onPrice, onBook, onTrade) {
   let ws, alive = true;
 
   function connect() {
-    ws = new WebSocket('wss://api.hyperliquid.xyz/ws');
+    ws = new WebSocket(hlWsUrl());
 
     ws.onopen = () => {
       document.getElementById('wsDot').className      = 'ws-dot live';
@@ -423,7 +434,7 @@ export function startPriceStream(symbols, onPrice, onBook, onTrade) {
 export function startBookStream(sym, onBook) {
   let ws, alive = true;
   function connect() {
-    ws = new WebSocket('wss://api.hyperliquid.xyz/ws');
+    ws = new WebSocket(hlWsUrl());
     ws.onopen  = () => ws.send(JSON.stringify({
       method: 'subscribe', subscription: { type: 'l2Book', coin: sym },
     }));

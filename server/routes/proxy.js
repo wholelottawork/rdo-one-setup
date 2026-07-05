@@ -3,11 +3,27 @@ import { fetchJSON, fetchText } from '../lib/fetcher.js';
 
 export default async function proxyRoutes(fastify) {
 
-  // ── Hyperliquid (POST) ─────────────────────────────────────────────────────
-  fastify.post('/hl/*', async (req, reply) => {
+  // ── Hyperliquid REST API (POST) ────────────────────────────────────────────
+  // /exchange is a state-changing endpoint (order placement, cancels) — never cache
+  fastify.post('/hl/exchange', async (req) => {
+    return fetchJSON('https://api.hyperliquid.xyz/exchange', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req.body || {}),
+    });
+  });
+
+  // All other HL info endpoints — cacheable
+  fastify.post('/hl/*', async (req) => {
     const path     = req.params['*'];
     const body     = req.body || {};
-    const ttl      = body.type === 'metaAndAssetCtxs' ? 5 : 2;
+    const ttl      = body.type === 'metaAndAssetCtxs' ? 5
+                   : body.type === 'candleSnapshot'   ? 10
+                   : body.type === 'clearinghouseState' ? 3
+                   : body.type === 'userFills'          ? 30
+                   : body.type === 'userFundingHistory' ? 30
+                   : body.type === 'openOrders'         ? 3
+                   : 2;
     const cacheKey = `hl:${path}:${JSON.stringify(body)}`;
 
     return withCache(fastify.redis, cacheKey, ttl, () =>
