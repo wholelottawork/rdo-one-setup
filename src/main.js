@@ -45,7 +45,6 @@ let recentTrades  = [];
 let stopBook      = null;
 const asterStats  = {}; // { [sym]: { chgPct, vol, fund8h, oi } }
 const hlStats     = {}; // { [sym]: { chgPct, vol, fund8h, oi } }
-const asterLev    = {}; // { [sym]: maxLeverage }
 
 // ── Mode switching ─────────────────────────────────────────────
 async function switchMode(mode) {
@@ -83,7 +82,6 @@ async function switchMode(mode) {
     fetchAsterMids();
     fetchAsterFunding();
     fetchAsterOI();
-    fetchAsterLeverage();
 
   } else {
     asterBtn.classList.remove('active');
@@ -180,19 +178,6 @@ async function fetchAsterOI() {
   setTimeout(fetchAsterOI, 30000);
 }
 
-async function fetchAsterLeverage() {
-  try {
-    const res  = await fetch(`${ASTER_API}/fapi/v1/leverageBracket`);
-    const data = await res.json();
-    if (!Array.isArray(data)) return;
-    data.forEach(item => {
-      const sym = item.symbol?.replace('USDT', '');
-      if (!sym) return;
-      asterLev[sym] = item.brackets?.[0]?.maxLeverage ?? 200;
-    });
-    rebuildDropdown();
-  } catch {}
-}
 
 function updateAsterHeaderStats(ticker) {
   const px     = parseFloat(ticker.lastPrice  ?? 0);
@@ -347,7 +332,7 @@ function renderMarketList(markets, list) {
   const isAster   = currentMode === 'aster';
   const mktSuffix = isAster ? '-USDT' : '-USDC';
   const getLev    = sym => isAster
-    ? ((asterLev[sym] ?? 200) + 'x')
+    ? '200x'
     : (marketLev[sym] ? marketLev[sym] + 'x' : '');
   const getPrice  = sym => livePrices[sym]
     ? (isAster ? fmtAster(livePrices[sym], sym) : fmt(livePrices[sym], sym))
