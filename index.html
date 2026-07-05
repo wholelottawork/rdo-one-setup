@@ -319,20 +319,23 @@
       </div>
 
       <!-- ─ ORDER BOOK ──────────────────────────────────────────── -->
-      <div class="ob-mini">
-        <div class="ob-mini-hdr">
+      <div class="ob-mini" id="obMini">
+        <div class="ob-mini-hdr" onclick="window.rdo.toggleOrderBook()" style="cursor:pointer">
           <span class="ob-mini-title">Order Book</span>
-          <div class="ob-colhdr" style="flex:1">
+          <button class="ob-toggle-btn" id="obToggleBtn" aria-label="Toggle order book">▼</button>
+          <div class="ob-colhdr" id="obColHdr" style="flex:1">
             <span>Price</span><span>Size</span><span>Total</span>
           </div>
         </div>
-        <div id="obAsks" class="ob-asks ob-asks-mini"></div>
-        <div class="ob-spread-row">
-          <span class="ob-spread-label">Spread</span>
-          <span id="obSpreadVal" class="ob-spread-val">—</span>
-          <span id="obSpreadPct" class="ob-spread-pct"></span>
+        <div id="obBody">
+          <div id="obAsks" class="ob-asks ob-asks-mini"></div>
+          <div class="ob-spread-row">
+            <span class="ob-spread-label">Spread</span>
+            <span id="obSpreadVal" class="ob-spread-val">—</span>
+            <span id="obSpreadPct" class="ob-spread-pct"></span>
+          </div>
+          <div id="obBids" class="ob-bids"></div>
         </div>
-        <div id="obBids" class="ob-bids"></div>
       </div>
     </aside>
   </div>

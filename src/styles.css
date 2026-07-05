@@ -493,6 +493,15 @@ body.mode-aster { --hl-accent: #a78bfa; --hl-accent-dark: rgba(139,92,246,0.15);
   display: flex; align-items: center; justify-content: space-between;
   padding: 6px 8px 10px;
 }
+.ob-toggle-btn {
+  background: none; border: none; color: var(--hl-text-muted);
+  font-size: 8px; cursor: pointer; padding: 0 6px 0 0;
+  transition: transform 0.2s; line-height: 1;
+}
+.ob-mini.collapsed .ob-toggle-btn { transform: rotate(-90deg); }
+.ob-mini.collapsed #obBody { display: none; }
+.ob-mini.collapsed .ob-colhdr { display: none; }
+.ob-mini.collapsed .ob-mini-hdr { padding-bottom: 6px; }
 .ob-mini-title {
   font-size: 10px; font-weight: 600; text-transform: uppercase;
   letter-spacing: 0.3px; color: var(--hl-text-secondary);

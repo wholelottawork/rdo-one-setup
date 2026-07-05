@@ -879,6 +879,9 @@ window.rdo = {
     const feed = document.getElementById('xtFeed');
     if (feed) feed.innerHTML = '<div class="xt-empty">X integration coming soon — connect your API key in settings.</div>';
   },
+  toggleOrderBook() {
+    document.getElementById('obMini')?.classList.toggle('collapsed');
+  },
   toggleModeHelp() {
     const popup    = document.getElementById('modePopup');
     const backdrop = document.getElementById('modeBackdrop');
