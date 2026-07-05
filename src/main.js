@@ -44,6 +44,8 @@ let marketLev     = {};
 let recentTrades  = [];
 let stopBook      = null;
 const asterStats  = {}; // { [sym]: { chgPct, vol, fund8h, oi } }
+const hlStats     = {}; // { [sym]: { chgPct, vol, fund8h, oi } }
+const asterLev    = {}; // { [sym]: maxLeverage }
 
 // ── Mode switching ─────────────────────────────────────────────
 async function switchMode(mode) {
@@ -81,6 +83,7 @@ async function switchMode(mode) {
     fetchAsterMids();
     fetchAsterFunding();
     fetchAsterOI();
+    fetchAsterLeverage();
 
   } else {
     asterBtn.classList.remove('active');
@@ -175,6 +178,20 @@ async function fetchAsterOI() {
     rebuildDropdown();
   } catch {}
   setTimeout(fetchAsterOI, 30000);
+}
+
+async function fetchAsterLeverage() {
+  try {
+    const res  = await fetch(`${ASTER_API}/fapi/v1/leverageBracket`);
+    const data = await res.json();
+    if (!Array.isArray(data)) return;
+    data.forEach(item => {
+      const sym = item.symbol?.replace('USDT', '');
+      if (!sym) return;
+      asterLev[sym] = item.brackets?.[0]?.maxLeverage ?? 200;
+    });
+    rebuildDropdown();
+  } catch {}
 }
 
 function updateAsterHeaderStats(ticker) {
@@ -304,10 +321,18 @@ async function fetchAllMids() {
     const [meta, ctxs] = await r.json();
     meta.universe.forEach((asset, i) => {
       const sym   = asset.name;
-      const price = parseFloat(ctxs[i]?.markPx ?? 0);
+      const ctx   = ctxs[i] ?? {};
+      const price = parseFloat(ctx.markPx ?? 0);
       if (asset.maxLeverage) marketLev[sym] = asset.maxLeverage;
       if (!price) return;
       livePrices[sym] = price;
+      const prev = parseFloat(ctx.prevDayPx ?? price);
+      hlStats[sym] = {
+        chgPct: prev ? (price - prev) / prev * 100 : 0,
+        vol:    parseFloat(ctx.dayNtlVlm  ?? 0),
+        fund8h: parseFloat(ctx.funding    ?? 0) * 100,
+        oi:     parseFloat(ctx.openInterest ?? 0) * price,
+      };
       const priceEl = document.getElementById(`mprice-${sym}`);
       if (priceEl) priceEl.textContent = fmt(price, sym);
       const levEl = document.getElementById(`mlev-${sym}`);
@@ -319,42 +344,34 @@ async function fetchAllMids() {
 
 function renderMarketList(markets, list) {
   const dd        = document.getElementById('mktDropdown');
-  const mktSuffix = currentMode === 'aster' ? '-USDT' : '-USDC';
-  const getLev    = sym => currentMode === 'aster' ? '200x' : (marketLev[sym] ? marketLev[sym] + 'x' : '');
+  const isAster   = currentMode === 'aster';
+  const mktSuffix = isAster ? '-USDT' : '-USDC';
+  const getLev    = sym => isAster
+    ? ((asterLev[sym] ?? 200) + 'x')
+    : (marketLev[sym] ? marketLev[sym] + 'x' : '');
   const getPrice  = sym => livePrices[sym]
-    ? (currentMode === 'aster' ? fmtAster(livePrices[sym], sym) : fmt(livePrices[sym], sym))
+    ? (isAster ? fmtAster(livePrices[sym], sym) : fmt(livePrices[sym], sym))
     : '—';
+  const fmtFund = v => v == null ? '—' : `${v >= 0 ? '+' : ''}${v.toFixed(4)}%`;
+  const fmtChg  = v => v == null ? '—' : `${v >= 0 ? '+' : ''}${v.toFixed(2)}%`;
 
-  if (currentMode === 'aster') {
-    dd.classList.add('mkt-wide');
-    const fmtFund = v => v == null ? '—' : `${v >= 0 ? '+' : ''}${v.toFixed(4)}%`;
-    const fmtChg  = v => v == null ? '—' : `${v >= 0 ? '+' : ''}${v.toFixed(2)}%`;
-    list.innerHTML =
-      `<div class="mkt-col-hdr">
-        <span>Market</span><span>Last Price</span><span>24h Change</span><span>8h Funding</span><span>Volume</span><span>Open Interest</span>
-      </div>` +
-      markets.map(sym => {
-        const s       = asterStats[sym] || {};
-        const chgCls  = (s.chgPct  ?? 0) >= 0 ? 'up' : 'dn';
-        const fundCls = (s.fund8h  ?? 0) >= 0 ? 'up' : 'dn';
-        return `<div class="mkt-item mkt-item-wide" data-sym="${sym}">
-          <span class="mkt-item-name">${sym}${mktSuffix}<span class="mkt-item-lev">${getLev(sym)}</span></span>
-          <span class="mkt-item-price" id="mprice-${sym}">${getPrice(sym)}</span>
-          <span class="${chgCls}">${fmtChg(s.chgPct)}</span>
-          <span class="${fundCls}">${fmtFund(s.fund8h)}</span>
-          <span>${s.vol  != null ? '$' + fmtLarge(s.vol) : '—'}</span>
-          <span>${s.oi   != null ? '$' + fmtLarge(s.oi)  : '—'}</span>
-        </div>`;
-      }).join('');
-  } else {
-    dd.classList.remove('mkt-wide');
-    list.innerHTML = markets.map(sym =>
-      `<div class="mkt-item" data-sym="${sym}">
-        <span class="mkt-item-name">${sym}${mktSuffix}<span class="mkt-item-lev">${getLev(sym)}</span></span>
-        <span class="mkt-item-price" id="mprice-${sym}">${getPrice(sym)}</span>
-      </div>`
-    ).join('');
-  }
+  dd.classList.add('mkt-wide');
+  const colHdr = `<div class="mkt-col-hdr">
+    <span>Market</span><span>Last Price</span><span>24h Change</span><span>8h Funding</span><span>Volume</span><span>Open Interest</span>
+  </div>`;
+  list.innerHTML = colHdr + markets.map(sym => {
+    const s       = (isAster ? asterStats : hlStats)[sym] || {};
+    const chgCls  = (s.chgPct ?? 0) >= 0 ? 'up' : 'dn';
+    const fundCls = (s.fund8h ?? 0) >= 0 ? 'up' : 'dn';
+    return `<div class="mkt-item mkt-item-wide" data-sym="${sym}">
+      <span class="mkt-item-name">${sym}${mktSuffix}<span class="mkt-item-lev" id="mlev-${sym}">${getLev(sym)}</span></span>
+      <span class="mkt-item-price" id="mprice-${sym}">${getPrice(sym)}</span>
+      <span class="${chgCls}">${fmtChg(s.chgPct)}</span>
+      <span class="${fundCls}">${fmtFund(s.fund8h)}</span>
+      <span>${s.vol != null ? '$' + fmtLarge(s.vol) : '—'}</span>
+      <span>${s.oi  != null ? '$' + fmtLarge(s.oi)  : '—'}</span>
+    </div>`;
+  }).join('');
 
   list.querySelectorAll('.mkt-item').forEach(el =>
     el.addEventListener('click', () => { selectMarket(el.dataset.sym); closeDropdown(); })
