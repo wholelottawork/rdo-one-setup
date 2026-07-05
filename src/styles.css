@@ -203,6 +203,22 @@ body.mode-aster { --hl-accent: #a78bfa; --hl-accent-dark: rgba(139,92,246,0.15);
 .mkt-item-lev { font-size: 10px; color: var(--hl-text-muted); background: rgba(255,255,255,0.07); border-radius: 3px; padding: 1px 4px; }
 .mkt-item-price { color: var(--hl-text-muted); }
 
+/* Aster wide dropdown */
+.mkt-dropdown.mkt-wide { width: 620px; }
+.mkt-col-hdr {
+  display: grid; grid-template-columns: 2fr 1.4fr 1.2fr 1.2fr 1.2fr 1.4fr;
+  padding: 5px 12px; font-size: 10px; font-weight: 600; letter-spacing: 0.4px;
+  color: var(--hl-text-muted); text-transform: uppercase;
+  border-bottom: 1px solid var(--hl-border);
+}
+.mkt-item-wide {
+  display: grid; grid-template-columns: 2fr 1.4fr 1.2fr 1.2fr 1.2fr 1.4fr;
+  align-items: center;
+}
+.mkt-item-wide span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.up { color: #26a69a; }
+.dn { color: #ef5350; }
+
 /* header stats */
 .hdr-stats {
   display: flex; align-items: center; gap: 0; flex: 1;
