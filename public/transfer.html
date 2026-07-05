@@ -138,35 +138,46 @@
 <nav id="rdo-nav">
   <div class="nav-logo">RDO<span>ONE</span></div>
   <div class="nav-div"></div>
-  <a href="/">Trade</a>
-  <a href="/markets.html">Markets</a>
-  <a href="/news.html">News</a>
-  <a href="/portfolio.html">Portfolio</a>
-  <a href="/transfer.html" class="active">Transfer</a>
+  <a href="/" data-i18n="trade">Trade</a>
+  <a href="/markets.html" data-i18n="markets">Markets</a>
+  <a href="/news.html" data-i18n="news">News</a>
+  <a href="/portfolio.html" data-i18n="portfolio">Portfolio</a>
+  <a href="/transfer.html" class="active" data-i18n="transfer">Transfer</a>
+  <div style="margin-left:auto"></div>
+  <div class="lang-wrap" style="position:relative">
+    <button class="lang-btn" id="langBtn" aria-label="Language" style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;background:transparent;border:1px solid var(--border);border-radius:4px;color:var(--text3);cursor:pointer">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><ellipse cx="12" cy="12" rx="4" ry="10"/><path d="M2 12h20"/></svg>
+    </button>
+    <div class="lang-dropdown" id="langDropdown" style="position:absolute;top:calc(100% + 6px);right:0;z-index:900;background:var(--bg2,#1b2429);border:1px solid var(--border,#273035);border-radius:4px;padding:4px 0;min-width:110px;box-shadow:0 8px 24px rgba(0,0,0,.5);display:none">
+      <button class="lang-option" data-lang="en" style="display:block;width:100%;padding:7px 14px;border:none;background:transparent;color:var(--text3,#878c8f);font-size:12px;text-align:left;cursor:pointer">English</button>
+      <button class="lang-option" data-lang="ru" style="display:block;width:100%;padding:7px 14px;border:none;background:transparent;color:var(--text3,#878c8f);font-size:12px;text-align:left;cursor:pointer">Русский</button>
+      <button class="lang-option" data-lang="zh" style="display:block;width:100%;padding:7px 14px;border:none;background:transparent;color:var(--text3,#878c8f);font-size:12px;text-align:left;cursor:pointer">中文</button>
+    </div>
+  </div>
 </nav>
 
 <main>
   <div class="page-hdr">
-    <div class="page-title">TRANSFER</div>
-    <div class="page-sub">Withdraw in any currency · Send to any address · Move between accounts</div>
+    <div class="page-title" data-i18n="transferTitle">TRANSFER</div>
+    <div class="page-sub" data-i18n="transferSub">Withdraw in any currency · Send to any address · Move between accounts</div>
   </div>
 
   <div class="xfr-tabs">
-    <button class="xfr-tab active" onclick="setTab('withdraw')">Withdraw</button>
-    <button class="xfr-tab"        onclick="setTab('send')">Send</button>
-    <button class="xfr-tab"        onclick="setTab('between')">Between Accounts</button>
+    <button class="xfr-tab active" onclick="setTab('withdraw')" data-i18n="withdraw">Withdraw</button>
+    <button class="xfr-tab"        onclick="setTab('send')" data-i18n="send">Send</button>
+    <button class="xfr-tab"        onclick="setTab('between')" data-i18n="betweenAccounts">Between Accounts</button>
   </div>
 
   <!-- ══ WITHDRAW ══════════════════════════════════════════════════════════ -->
   <div id="tab-withdraw">
     <div class="card">
-      <div class="field-lbl">Source account</div>
+      <div class="field-lbl" data-i18n="sourceAccount">Source account</div>
       <div class="src-tabs">
         <button class="src-tab hl active" id="wd-btn-hl" onclick="setWdSrc('hl')">BASIC · Hyperliquid</button>
         <button class="src-tab as"        id="wd-btn-as" onclick="setWdSrc('aster')">EXTRA · Aster</button>
       </div>
 
-      <div class="field-lbl">Amount</div>
+      <div class="field-lbl" data-i18n="amount">Amount</div>
       <div class="amt-wrap" id="wd-amt-wrap">
         <input class="amt-input" type="number" id="wd-amt" placeholder="0.00" min="0" oninput="onWdAmtInput()">
         <div class="amt-right">
@@ -176,7 +187,7 @@
       </div>
       <div class="bal-hint" id="wd-bal">&nbsp;</div>
 
-      <div class="field-lbl">Receive as</div>
+      <div class="field-lbl" data-i18n="receiveAs">Receive as</div>
       <div class="pair-row">
         <div class="sel-wrap" style="flex:1.3">
           <select id="wd-to-chain" onchange="onWdToChainChange()"></select>
@@ -187,11 +198,11 @@
       </div>
       <div class="conv-hint" id="wd-conv-hint">&nbsp;</div>
 
-      <div class="field-lbl">Destination address</div>
+      <div class="field-lbl" data-i18n="destAddress">Destination address</div>
       <input class="txt-input" type="text" id="wd-dest" placeholder="0x… (default: connected wallet)">
 
       <div id="wd-api-fields" style="display:none">
-        <div class="field-lbl">Aster API credentials</div>
+        <div class="field-lbl" data-i18n="asterApiCreds">Aster API credentials</div>
         <div class="api-row">
           <input class="api-input" type="text"     id="wd-key" placeholder="API Key">
           <input class="api-input" type="password" id="wd-sec" placeholder="API Secret">
@@ -274,7 +285,7 @@
   <!-- ══ BETWEEN ACCOUNTS ══════════════════════════════════════════════════ -->
   <div id="tab-between" style="display:none">
     <div class="card">
-      <div class="field-lbl">Direction</div>
+      <div class="field-lbl" data-i18n="direction">Direction</div>
       <div class="dir-tabs">
         <button class="dir-tab aHL" id="dtab-hl2as" onclick="setDir('hl-to-aster')">
           <span class="dt-from">BASIC → EXTRA</span>
@@ -286,7 +297,7 @@
         </button>
       </div>
 
-      <div class="field-lbl">Amount</div>
+      <div class="field-lbl" data-i18n="amount">Amount</div>
       <div class="amt-wrap" id="btw-amt-wrap">
         <input class="amt-input" type="number" id="btw-amt" placeholder="0.00" min="0">
         <div class="amt-right">
@@ -296,7 +307,7 @@
       </div>
       <div class="bal-hint" id="btw-bal">&nbsp;</div>
 
-      <div class="field-lbl">Aster API credentials</div>
+      <div class="field-lbl" data-i18n="asterApiCreds">Aster API credentials</div>
       <div class="api-row">
         <input class="api-input" type="text"     id="btw-key" placeholder="API Key">
         <input class="api-input" type="password" id="btw-sec" placeholder="API Secret">
@@ -909,6 +920,21 @@ window.addEventListener('load',()=>{
   // Between accounts
   setDir('hl-to-aster');
 });
+</script>
+<script type="module">
+import { setLang, getLang, applyTranslations } from '/src/i18n.js';
+applyTranslations();
+const dd = document.getElementById('langDropdown');
+const btn = document.getElementById('langBtn');
+if (btn) btn.addEventListener('click', () => { dd.style.display = dd.style.display === 'none' ? '' : 'none'; });
+dd?.querySelectorAll('.lang-option').forEach(b => {
+  b.addEventListener('click', () => { setLang(b.dataset.lang); dd.style.display = 'none'; updateLangHighlight(); });
+});
+document.addEventListener('click', e => { if (!e.target.closest('.lang-wrap')) dd.style.display = 'none'; });
+function updateLangHighlight() {
+  document.querySelectorAll('.lang-option').forEach(b => b.style.color = b.dataset.lang === getLang() ? 'var(--accent,#50d2c1)' : '');
+}
+updateLangHighlight();
 </script>
 </body>
 </html>

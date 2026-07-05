@@ -325,11 +325,22 @@
 <nav id="rdo-nav">
   <div class="nav-logo">RDO<span>ONE</span></div>
   <div class="nav-div"></div>
-  <a href="/">Trade</a>
-  <a href="/markets.html">Markets</a>
-  <a href="/news.html">News</a>
-  <a href="/portfolio.html" class="active">Portfolio</a>
-  <a href="/transfer.html">Transfer</a>
+  <a href="/" data-i18n="trade">Trade</a>
+  <a href="/markets.html" data-i18n="markets">Markets</a>
+  <a href="/news.html" data-i18n="news">News</a>
+  <a href="/portfolio.html" class="active" data-i18n="portfolio">Portfolio</a>
+  <a href="/transfer.html" data-i18n="transfer">Transfer</a>
+  <div style="margin-left:auto"></div>
+  <div class="lang-wrap" style="position:relative">
+    <button class="lang-btn" id="langBtn" aria-label="Language" style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;background:transparent;border:1px solid var(--border);border-radius:4px;color:var(--text3);cursor:pointer">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><ellipse cx="12" cy="12" rx="4" ry="10"/><path d="M2 12h20"/></svg>
+    </button>
+    <div class="lang-dropdown" id="langDropdown" style="position:absolute;top:calc(100% + 6px);right:0;z-index:900;background:var(--bg2,#1b2429);border:1px solid var(--border,#273035);border-radius:4px;padding:4px 0;min-width:110px;box-shadow:0 8px 24px rgba(0,0,0,.5);display:none">
+      <button class="lang-option" data-lang="en" style="display:block;width:100%;padding:7px 14px;border:none;background:transparent;color:var(--text3,#878c8f);font-size:12px;text-align:left;cursor:pointer">English</button>
+      <button class="lang-option" data-lang="ru" style="display:block;width:100%;padding:7px 14px;border:none;background:transparent;color:var(--text3,#878c8f);font-size:12px;text-align:left;cursor:pointer">Русский</button>
+      <button class="lang-option" data-lang="zh" style="display:block;width:100%;padding:7px 14px;border:none;background:transparent;color:var(--text3,#878c8f);font-size:12px;text-align:left;cursor:pointer">中文</button>
+    </div>
+  </div>
 </nav>
 
 <main>
@@ -339,8 +350,8 @@
     <div class="phantom-logo">
       <svg viewBox="0 0 128 128" fill="none"><path d="M110.584 64.9142H99.142C99.142 41.8864 80.6366 23.0625 57.9584 23.0625C35.5556 23.0625 17.2065 41.508 16.8677 64.0735C16.5221 87.0972 35.3756 106 58.2219 106H63.3743C85.6702 106 116.581 88.3047 116.581 66.8896C116.581 65.6864 115.684 64.9142 110.584 64.9142Z" fill="white"/></svg>
     </div>
-    <div class="connect-title">Connect your Phantom wallet</div>
-    <div class="connect-sub">View your Solana holdings, deposit, swap, and convert assets.</div>
+    <div class="connect-title" data-i18n="connectPhantom">Connect your Phantom wallet</div>
+    <div class="connect-sub" data-i18n="connectPhantomSub">View your Solana holdings, deposit, swap, and convert assets.</div>
     <button class="connect-btn" id="connect-btn" onclick="connectWallet()">
       <svg width="16" height="16" viewBox="0 0 128 128" fill="none"><path d="M110.584 64.9142H99.142C99.142 41.8864 80.6366 23.0625 57.9584 23.0625C35.5556 23.0625 17.2065 41.508 16.8677 64.0735C16.5221 87.0972 35.3756 106 58.2219 106H63.3743C85.6702 106 116.581 88.3047 116.581 66.8896C116.581 65.6864 115.684 64.9142 110.584 64.9142Z" fill="white"/></svg>
       Connect Phantom
@@ -352,13 +363,13 @@
     <div class="pf-topbar">
       <div class="addr-row">
         <div class="addr-chip" id="addr-chip" onclick="copyFullAddr()" title="Click to copy">—</div>
-        <button class="disc-btn" onclick="disconnectWallet()">Disconnect</button>
+        <button class="disc-btn" onclick="disconnectWallet()" data-i18n="disconnect">Disconnect</button>
       </div>
       <button class="refresh-btn" onclick="loadPortfolio()">↺ Refresh</button>
     </div>
     <div class="total-card">
       <div>
-        <div class="total-lbl">Total Portfolio Value</div>
+        <div class="total-lbl" data-i18n="totalPortfolio">Total Portfolio Value</div>
         <div class="total-val" id="total-val">$—</div>
         <div class="total-sub" id="total-sub">Loading…</div>
       </div>
@@ -406,7 +417,7 @@
 <div class="pnl-header">
   <div>
     <div style="display:flex;align-items:center;gap:12px">
-      <div class="pnl-title" id="pf-section-title">TRADER PNL</div>
+      <div class="pnl-title" id="pf-section-title" data-i18n="traderPnl">TRADER PNL</div>
       <div class="mode-switch" id="pfModeSwitch">
         <button class="mode-btn mode-hl active" id="pfBtnHL" onclick="switchPortfolioMode('hl')">BASIC</button>
         <button class="mode-btn mode-aster" id="pfBtnAster" onclick="switchPortfolioMode('aster')">EXTRA</button>
@@ -415,7 +426,7 @@
     <div class="pnl-addr-sub" id="pnl-addr-sub"></div>
   </div>
   <div class="pnl-controls" id="pf-hl-controls">
-    <button class="pnl-cal-btn" onclick="openCalendarModal()">PNL CALENDAR</button>
+    <button class="pnl-cal-btn" onclick="openCalendarModal()" data-i18n="pnlCalendar">PNL CALENDAR</button>
     <div class="range-tabs">
       <button class="range-tab" onclick="setRange('7D')">7D</button>
       <button class="range-tab" onclick="setRange('30D')">30D</button>
@@ -430,7 +441,7 @@
   <div class="hl-connect-bar">
     <input class="hl-addr-input" id="hl-addr-input" placeholder="Enter Hyperliquid wallet address (0x…)" />
     <button class="hl-load-btn" onclick="handleHLLoad()">Load</button>
-    <button class="hl-evm-btn" id="hl-evm-btn" onclick="connectEVM()">
+    <button class="hl-evm-btn" id="hl-evm-btn" onclick="connectEVM()" data-i18n="connectEvmWallet">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 2v20M2 12h20"/></svg>
       Connect EVM Wallet
     </button>
@@ -448,12 +459,12 @@
 
       <!-- 6 stat cards -->
       <div class="pnl-stats">
-        <div class="stat-card"><div class="stat-lbl">Total Realized PnL</div><div class="stat-val" id="s-total-pnl">—</div><div class="stat-sub" id="s-total-pnl-sub">All-time</div></div>
-        <div class="stat-card"><div class="stat-lbl">Win Rate</div><div class="stat-val" id="s-win-rate">—</div><div class="stat-sub" id="s-win-sub">wins / losses</div></div>
-        <div class="stat-card"><div class="stat-lbl">Total Trades</div><div class="stat-val" id="s-trades">—</div><div class="stat-sub" id="s-trades-sub">closed positions</div></div>
-        <div class="stat-card"><div class="stat-lbl">Avg Hold Time</div><div class="stat-val" id="s-hold">—</div><div class="stat-sub">per trade</div></div>
-        <div class="stat-card"><div class="stat-lbl">Best Trade</div><div class="stat-val pos" id="s-best">—</div><div class="stat-sub" id="s-best-sub"></div></div>
-        <div class="stat-card"><div class="stat-lbl">Worst Trade</div><div class="stat-val neg" id="s-worst">—</div><div class="stat-sub" id="s-worst-sub"></div></div>
+        <div class="stat-card"><div class="stat-lbl" data-i18n="totalRealizedPnl">Total Realized PnL</div><div class="stat-val" id="s-total-pnl">—</div><div class="stat-sub" id="s-total-pnl-sub">All-time</div></div>
+        <div class="stat-card"><div class="stat-lbl" data-i18n="winRate">Win Rate</div><div class="stat-val" id="s-win-rate">—</div><div class="stat-sub" id="s-win-sub">wins / losses</div></div>
+        <div class="stat-card"><div class="stat-lbl" data-i18n="totalTrades">Total Trades</div><div class="stat-val" id="s-trades">—</div><div class="stat-sub" id="s-trades-sub">closed positions</div></div>
+        <div class="stat-card"><div class="stat-lbl" data-i18n="avgHoldTime">Avg Hold Time</div><div class="stat-val" id="s-hold">—</div><div class="stat-sub">per trade</div></div>
+        <div class="stat-card"><div class="stat-lbl" data-i18n="bestTrade">Best Trade</div><div class="stat-val pos" id="s-best">—</div><div class="stat-sub" id="s-best-sub"></div></div>
+        <div class="stat-card"><div class="stat-lbl" data-i18n="worstTrade">Worst Trade</div><div class="stat-val neg" id="s-worst">—</div><div class="stat-sub" id="s-worst-sub"></div></div>
       </div>
 
       <!-- Charts row: cumulative PnL + distribution -->
@@ -519,7 +530,7 @@
           <div id="pv-positions"></div>
         </div>
         <div class="perps-val-placeholder" id="pv-placeholder">Load a Hyperliquid wallet to see perps portfolio.</div>
-        <button class="perps-dep-btn" onclick="openPerpsDeposit()">
+        <button class="perps-dep-btn" onclick="openPerpsDeposit()" data-i18n="depositToPerps">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v13M7 11l5 5 5-5"/><path d="M4 19h16"/></svg>
           Deposit to Perps
         </button>
@@ -1884,6 +1895,21 @@ function applyAsterRangeAndRender() {
 function openAsterDeposit() {
   window.open('https://www.asterdex.com', '_blank', 'noopener');
 }
+</script>
+<script type="module">
+import { setLang, getLang, applyTranslations } from '/src/i18n.js';
+applyTranslations();
+const dd = document.getElementById('langDropdown');
+const btn = document.getElementById('langBtn');
+if (btn) btn.addEventListener('click', () => { dd.style.display = dd.style.display === 'none' ? '' : 'none'; });
+dd?.querySelectorAll('.lang-option').forEach(b => {
+  b.addEventListener('click', () => { setLang(b.dataset.lang); dd.style.display = 'none'; updateLangHighlight(); });
+});
+document.addEventListener('click', e => { if (!e.target.closest('.lang-wrap')) dd.style.display = 'none'; });
+function updateLangHighlight() {
+  document.querySelectorAll('.lang-option').forEach(b => b.style.color = b.dataset.lang === getLang() ? 'var(--accent,#50d2c1)' : '');
+}
+updateLangHighlight();
 </script>
 </body>
 </html>

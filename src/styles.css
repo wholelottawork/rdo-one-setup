@@ -236,6 +236,30 @@ body.mode-aster { --hl-accent: #a78bfa; --hl-accent-dark: rgba(139,92,246,0.15);
 .hdr-stat-val.down { color: var(--hl-sell); }
 
 /* wallet button */
+/* ── LANGUAGE SELECTOR ── */
+.lang-wrap { position: relative; }
+.lang-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; background: transparent;
+  border: 1px solid var(--hl-border); border-radius: var(--hl-radius);
+  color: var(--hl-text-secondary); cursor: pointer; transition: border-color 0.15s, color 0.15s;
+}
+.lang-btn:hover { border-color: var(--hl-text-secondary); color: var(--hl-text-primary); }
+.lang-dropdown {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 900;
+  background: var(--hl-bg-card); border: 1px solid var(--hl-border);
+  border-radius: var(--hl-radius); padding: 4px 0; min-width: 110px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.5);
+}
+.lang-option {
+  display: block; width: 100%; padding: 7px 14px; border: none;
+  background: transparent; color: var(--hl-text-secondary);
+  font-family: var(--hl-font); font-size: 12px; text-align: left;
+  cursor: pointer; transition: background 0.12s, color 0.12s;
+}
+.lang-option:hover { background: var(--hl-bg-hover); color: var(--hl-text-primary); }
+.lang-option.active { color: var(--hl-accent); }
+
 .wallet-btn {
   font-family: var(--hl-font); font-size: 12px; font-weight: 600;
   padding: 6px 14px; background: var(--hl-accent); border: none;

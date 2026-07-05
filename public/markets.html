@@ -150,11 +150,22 @@
 <nav id="rdo-nav">
   <div class="nav-logo">RDO<span>ONE</span></div>
   <div class="nav-div"></div>
-  <a href="/">Trade</a>
-  <a href="/markets.html" class="active">Markets</a>
-  <a href="/news.html">News</a>
-  <a href="/portfolio.html">Portfolio</a>
-  <a href="/transfer.html">Transfer</a>
+  <a href="/" data-i18n="trade">Trade</a>
+  <a href="/markets.html" class="active" data-i18n="markets">Markets</a>
+  <a href="/news.html" data-i18n="news">News</a>
+  <a href="/portfolio.html" data-i18n="portfolio">Portfolio</a>
+  <a href="/transfer.html" data-i18n="transfer">Transfer</a>
+  <div style="margin-left:auto"></div>
+  <div class="lang-wrap" style="position:relative">
+    <button class="lang-btn" id="langBtn" aria-label="Language" style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;background:transparent;border:1px solid var(--border);border-radius:4px;color:var(--text3);cursor:pointer">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><ellipse cx="12" cy="12" rx="4" ry="10"/><path d="M2 12h20"/></svg>
+    </button>
+    <div class="lang-dropdown" id="langDropdown" style="position:absolute;top:calc(100% + 6px);right:0;z-index:900;background:var(--bg2,#1b2429);border:1px solid var(--border,#273035);border-radius:4px;padding:4px 0;min-width:110px;box-shadow:0 8px 24px rgba(0,0,0,.5);display:none">
+      <button class="lang-option" data-lang="en" style="display:block;width:100%;padding:7px 14px;border:none;background:transparent;color:var(--text3,#878c8f);font-size:12px;text-align:left;cursor:pointer">English</button>
+      <button class="lang-option" data-lang="ru" style="display:block;width:100%;padding:7px 14px;border:none;background:transparent;color:var(--text3,#878c8f);font-size:12px;text-align:left;cursor:pointer">Русский</button>
+      <button class="lang-option" data-lang="zh" style="display:block;width:100%;padding:7px 14px;border:none;background:transparent;color:var(--text3,#878c8f);font-size:12px;text-align:left;cursor:pointer">中文</button>
+    </div>
+  </div>
 </nav>
 
 <!-- ─── Ticker bar ────────────────────────────────────────────────────────── -->
@@ -164,57 +175,57 @@
 
 <!-- ─── Main ─────────────────────────────────────────────────────────────── -->
 <main>
-  <h1>Market Overview</h1>
+  <h1 data-i18n="marketOverview">Market Overview</h1>
 
   <!-- Stat cards -->
   <div class="stat-top">
     <div class="big-card">
       <div class="bc-left">
         <div class="bc-val" id="s-mcap">—</div>
-        <div class="bc-lbl">Market Cap <span class="bc-ch" id="s-mcap-ch"></span></div>
+        <div class="bc-lbl"><span data-i18n="marketCap">Market Cap</span> <span class="bc-ch" id="s-mcap-ch"></span></div>
       </div>
       <div class="bc-spark" id="spark-mcap"></div>
     </div>
     <div class="big-card">
       <div class="bc-left">
         <div class="bc-val" id="s-vol">—</div>
-        <div class="bc-lbl">24h Trading Volume <span class="bc-ch" id="s-vol-ch"></span></div>
+        <div class="bc-lbl"><span data-i18n="tradingVol24h">24h Trading Volume</span> <span class="bc-ch" id="s-vol-ch"></span></div>
       </div>
       <div class="bc-spark" id="spark-vol"></div>
     </div>
     <div class="small-row">
       <div class="small-card">
         <div class="sc-val" id="s-btc">—</div>
-        <div class="sc-lbl">BTC Dominance</div>
+        <div class="sc-lbl" data-i18n="btcDominance">BTC Dominance</div>
       </div>
       <div class="small-card">
         <div class="sc-val" id="s-fg">—</div>
-        <div class="sc-lbl" id="s-fg-l">Fear &amp; Greed</div>
+        <div class="sc-lbl" id="s-fg-l" data-i18n="fearGreed">Fear &amp; Greed</div>
       </div>
     </div>
   </div>
 
   <!-- Market Statistics -->
   <div class="mkt-stats-wrap">
-    <div class="mkt-stats-hdr">Market Statistics</div>
+    <div class="mkt-stats-hdr" data-i18n="marketStats">Market Statistics</div>
     <div id="mkt-stats-body"><div style="padding:16px;color:var(--text3);font-size:12px">Loading…</div></div>
   </div>
 
   <!-- Trending + Top Gainers -->
   <div class="panels">
     <div class="panel">
-      <div class="panel-hdr">Trending</div>
+      <div class="panel-hdr" data-i18n="trending">Trending</div>
       <div id="trending"><div class="loading-rows">Loading…</div></div>
     </div>
     <div class="panel">
-      <div class="panel-hdr">Top Gainers (24h)</div>
+      <div class="panel-hdr" data-i18n="topGainers">Top Gainers (24h)</div>
       <div id="gainers"><div class="loading-rows">Loading…</div></div>
     </div>
   </div>
 
   <!-- Converter -->
   <div class="conv-wrap">
-    <div class="panel-hdr">Converter</div>
+    <div class="panel-hdr" data-i18n="converter">Converter</div>
     <div class="conv-body">
       <div class="conv-side">
         <input class="conv-input" type="number" id="cv-amt" value="1" min="0" />
@@ -239,12 +250,12 @@
     <table class="hl-tbl">
       <thead>
         <tr>
-          <th class="l" data-col="name">Market</th>
-          <th data-col="px">Last Price</th>
-          <th data-col="chg">24h Change</th>
-          <th data-col="fund">8h Funding</th>
-          <th data-col="vol" class="sort-active">Volume ↓</th>
-          <th data-col="oi">Open Interest</th>
+          <th class="l" data-col="name" data-i18n="market">Market</th>
+          <th data-col="px" data-i18n="lastPrice">Last Price</th>
+          <th data-col="chg" data-i18n="change24hShort">24h Change</th>
+          <th data-col="fund" data-i18n="funding8h">8h Funding</th>
+          <th data-col="vol" class="sort-active" data-i18n="volume">Volume ↓</th>
+          <th data-col="oi" data-i18n="openInterest">Open Interest</th>
         </tr>
       </thead>
       <tbody id="hl-tbody"><tr><td colspan="6" style="text-align:center;padding:20px;color:var(--text3)">Loading…</td></tr></tbody>
@@ -254,7 +265,7 @@
   <!-- Top 20 table -->
   <div class="tbl-wrap">
     <div class="tbl-hdr">
-      <span class="tbl-title">Top 20 by Market Cap</span>
+      <span class="tbl-title" data-i18n="topByMcap">Top 20 by Market Cap</span>
       <span class="tbl-ts" id="tbl-ts">—</span>
     </div>
     <div id="coins-tbl"><div class="loading-rows">Loading market data…</div></div>
@@ -731,6 +742,21 @@ async function init() {
 }
 
 init();
+</script>
+<script type="module">
+import { setLang, getLang, applyTranslations } from '/src/i18n.js';
+applyTranslations();
+const dd = document.getElementById('langDropdown');
+const btn = document.getElementById('langBtn');
+if (btn) btn.addEventListener('click', () => { dd.style.display = dd.style.display === 'none' ? '' : 'none'; });
+dd?.querySelectorAll('.lang-option').forEach(b => {
+  b.addEventListener('click', () => { setLang(b.dataset.lang); dd.style.display = 'none'; updateLangHighlight(); });
+});
+document.addEventListener('click', e => { if (!e.target.closest('.lang-wrap')) dd.style.display = 'none'; });
+function updateLangHighlight() {
+  document.querySelectorAll('.lang-option').forEach(b => b.style.color = b.dataset.lang === getLang() ? 'var(--accent,#50d2c1)' : '');
+}
+updateLangHighlight();
 </script>
 </body>
 </html>

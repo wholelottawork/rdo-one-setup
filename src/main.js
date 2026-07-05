@@ -9,6 +9,7 @@ import {
 } from './trading.js';
 import { initChart, setCandles, pushTick } from './chart.js';
 import { openDepositModal, closeDepositModal } from './deposit.js';
+import { t, setLang, getLang, applyTranslations } from './i18n.js';
 
 // ── Markets ───────────────────────────────────────────────────
 const HL_MARKETS = [
@@ -243,6 +244,7 @@ async function init() {
   bindIntervals();
   bindBtmTabs();
   bindMarketBtn();
+  initLang();
   await loadMarket('BTC');
   await loadMeta();
 
@@ -342,7 +344,7 @@ function renderMarketList(markets, list) {
 
   dd.classList.add('mkt-wide');
   const colHdr = `<div class="mkt-col-hdr">
-    <span>Market</span><span>Last Price</span><span>24h Change</span><span>8h Funding</span><span>Volume</span><span>Open Interest</span>
+    <span>${t('market')}</span><span>${t('lastPrice')}</span><span>${t('change24hShort')}</span><span>${t('funding8h')}</span><span>${t('volume')}</span><span>${t('openInterest')}</span>
   </div>`;
   list.innerHTML = colHdr + markets.map(sym => {
     const s       = (isAster ? asterStats : hlStats)[sym] || {};
@@ -861,6 +863,34 @@ function fmtLarge(n) {
   return n.toFixed(2);
 }
 
+// ── Language ──────────────────────────────────────────────────
+function initLang() {
+  applyTranslations();
+  const dd = document.getElementById('langDropdown');
+  if (!dd) return;
+  highlightLangOption();
+  dd.querySelectorAll('.lang-option').forEach(btn => {
+    btn.addEventListener('click', () => {
+      setLang(btn.dataset.lang);
+      highlightLangOption();
+      dd.classList.add('hidden');
+      buildMarketDropdown();
+    });
+  });
+  document.addEventListener('click', e => {
+    if (!e.target.closest('.lang-wrap')) dd.classList.add('hidden');
+  });
+}
+function toggleLangDropdown() {
+  document.getElementById('langDropdown')?.classList.toggle('hidden');
+}
+function highlightLangOption() {
+  const lang = getLang();
+  document.querySelectorAll('.lang-option').forEach(b => {
+    b.classList.toggle('active', b.dataset.lang === lang);
+  });
+}
+
 // ── Public API ─────────────────────────────────────────────────
 window.rdo = {
   connectWallet: connectWalletFn,
@@ -882,6 +912,7 @@ window.rdo = {
   toggleOrderBook() {
     document.getElementById('obMini')?.classList.toggle('collapsed');
   },
+  toggleLang: toggleLangDropdown,
   toggleModeHelp() {
     const popup    = document.getElementById('modePopup');
     const backdrop = document.getElementById('modeBackdrop');

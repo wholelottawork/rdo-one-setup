@@ -36,22 +36,22 @@
           <div class="mode-popup-row">
             <span class="mode-popup-tag basic">BASIC</span>
             <div class="mode-popup-info">
-              <strong>RDO ONE x HYPE x LI.FI</strong><br>
-              <b>Up to 40x leverage</b><br>
-              Crypto perps only / Non-custodial / Any collateral<br>
-              Taker fee 0.045% / Maker 0.015%<br>
-              The best liquidity / Average 0.0015% spreads
+              <strong data-i18n="basicTitle">RDO ONE x HYPE x LI.FI</strong><br>
+              <b data-i18n="basicLev">Up to 40x leverage</b><br>
+              <span data-i18n="basicDesc">Crypto perps only / Non-custodial / Any collateral</span><br>
+              <span data-i18n="basicFee">Taker fee 0.045% / Maker 0.015%</span><br>
+              <span data-i18n="basicExtra">The best liquidity / Average 0.0015% spreads</span>
             </div>
           </div>
           <div class="mode-popup-divider"></div>
           <div class="mode-popup-row">
             <span class="mode-popup-tag extra">EXTRA</span>
             <div class="mode-popup-info">
-              <strong>RDO ONE x ASTER x LI.FI</strong><br>
-              <b>Up to 200x leverage</b><br>
-              Crypto perps only / Hybrid-custodial / Any collateral<br>
-              Taker fee 0.04% / Maker 0%<br>
-              Higher leverage level / Best fee rates
+              <strong data-i18n="extraTitle">RDO ONE x ASTER x LI.FI</strong><br>
+              <b data-i18n="extraLev">Up to 200x leverage</b><br>
+              <span data-i18n="extraDesc">Crypto perps only / Hybrid-custodial / Any collateral</span><br>
+              <span data-i18n="extraFee">Taker fee 0.04% / Maker 0%</span><br>
+              <span data-i18n="extraExtra">Higher leverage level / Best fee rates</span>
             </div>
           </div>
         </div>
@@ -60,11 +60,11 @@
       <div class="hdr-div"></div>
 
       <nav class="hdr-nav">
-        <a class="hdr-nav-link active" href="/">Trade</a>
-        <a class="hdr-nav-link" href="/markets.html">Markets</a>
-        <a class="hdr-nav-link" href="/news.html">News</a>
-        <a class="hdr-nav-link" href="/portfolio.html">Portfolio</a>
-        <a class="hdr-nav-link" href="/transfer.html">Transfer</a>
+        <a class="hdr-nav-link active" href="/" data-i18n="trade">Trade</a>
+        <a class="hdr-nav-link" href="/markets.html" data-i18n="markets">Markets</a>
+        <a class="hdr-nav-link" href="/news.html" data-i18n="news">News</a>
+        <a class="hdr-nav-link" href="/portfolio.html" data-i18n="portfolio">Portfolio</a>
+        <a class="hdr-nav-link" href="/transfer.html" data-i18n="transfer">Transfer</a>
       </nav>
 
       <div class="hdr-div"></div>
@@ -76,34 +76,44 @@
 
       <!-- market dropdown -->
       <div id="mktDropdown" class="mkt-dropdown hidden">
-        <input id="mktSearch" class="mkt-search" placeholder="Search market..." autocomplete="off" />
+        <input id="mktSearch" class="mkt-search" placeholder="Search market..." autocomplete="off" data-i18n="searchMarket" data-i18n-attr="placeholder" />
         <div class="mkt-list" id="mktList"></div>
       </div>
     </div>
 
     <div class="hdr-stats">
       <div class="hdr-stat">
-        <span class="hdr-stat-label">Mark</span>
+        <span class="hdr-stat-label" data-i18n="mark">Mark</span>
         <span class="hdr-stat-val" id="statMark">—</span>
       </div>
       <div class="hdr-stat">
-        <span class="hdr-stat-label">24h Change</span>
+        <span class="hdr-stat-label" data-i18n="change24h">24h Change</span>
         <span class="hdr-stat-val" id="statChange">—</span>
       </div>
       <div class="hdr-stat">
-        <span class="hdr-stat-label">24h Volume</span>
+        <span class="hdr-stat-label" data-i18n="volume24h">24h Volume</span>
         <span class="hdr-stat-val" id="statVolume">—</span>
       </div>
       <div class="hdr-stat">
-        <span class="hdr-stat-label">Funding / Countdown</span>
+        <span class="hdr-stat-label" data-i18n="fundingCountdown">Funding / Countdown</span>
         <span class="hdr-stat-val" id="statFunding">— / —</span>
       </div>
     </div>
 
     <div class="hdr-right">
       <span id="balanceDisplay" class="hdr-balance hidden">$0.00</span>
-      <button id="depositBtn" class="deposit-btn hidden" onclick="window.rdo.openDeposit()">DEPOSIT</button>
-      <button id="walletBtn" class="wallet-btn" onclick="window.rdo.connectWallet()">Connect</button>
+      <button id="depositBtn" class="deposit-btn hidden" onclick="window.rdo.openDeposit()" data-i18n="deposit">DEPOSIT</button>
+      <div class="lang-wrap">
+        <button class="lang-btn" id="langBtn" onclick="window.rdo.toggleLang()" aria-label="Language">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><ellipse cx="12" cy="12" rx="4" ry="10"/><path d="M2 12h20"/></svg>
+        </button>
+        <div class="lang-dropdown hidden" id="langDropdown">
+          <button class="lang-option" data-lang="en">English</button>
+          <button class="lang-option" data-lang="ru">Русский</button>
+          <button class="lang-option" data-lang="zh">中文</button>
+        </div>
+      </div>
+      <button id="walletBtn" class="wallet-btn" onclick="window.rdo.connectWallet()" data-i18n="connect">Connect</button>
     </div>
   </header>
 
@@ -113,8 +123,8 @@
     <!-- ─ X TRACKER ─────────────────────────────────────────────── -->
     <aside class="xt-col">
       <div class="xt-hdr">
-        <span class="xt-title">Tracker</span>
-        <button class="xt-connect-btn" id="xtConnectBtn" onclick="window.rdo.connectX()">Connect X</button>
+        <span class="xt-title" data-i18n="tracker">Tracker</span>
+        <button class="xt-connect-btn" id="xtConnectBtn" onclick="window.rdo.connectX()" data-i18n="connectX">Connect X</button>
       </div>
       <div class="xt-feed" id="xtFeed">
         <div class="xt-empty">Connect your X account to see real-time news and mentions for <span class="xt-ticker" id="xtTicker">BTC</span></div>
@@ -143,7 +153,7 @@
           <button class="iv-btn" data-iv="1440">1D</button>
         </div>
         <div class="chart-subhdr-tools">
-          <button class="chart-tool-btn" title="Indicators">⊞ Indicators</button>
+          <button class="chart-tool-btn" title="Indicators">⊞ <span data-i18n="indicators">Indicators</span></button>
         </div>
       </div>
 
@@ -171,13 +181,13 @@
     <!-- ─ LIVE TRADES ────────────────────────────────────────────── -->
     <section class="tr-col">
       <div class="tr-col-hdr">
-        <span class="tr-col-title">Live Trades</span>
+        <span class="tr-col-title" data-i18n="liveTrades">Live Trades</span>
         <span class="tr-col-pair" id="tradesPair">BTC-USDC</span>
       </div>
       <div class="tr-col-labels">
-        <span>Price</span>
-        <span>Size</span>
-        <span>Time</span>
+        <span data-i18n="price">Price</span>
+        <span data-i18n="size">Size</span>
+        <span data-i18n="time">Time</span>
       </div>
       <div id="tradesList" class="tr-col-list"></div>
     </section>
@@ -188,42 +198,42 @@
       <!-- margin / leverage row -->
       <div class="tp-margin-row">
         <select class="tp-select" id="marginType">
-          <option>Cross</option>
-          <option>Isolated</option>
+          <option data-i18n="cross">Cross</option>
+          <option data-i18n="isolated">Isolated</option>
         </select>
         <div class="tp-lev-wrap">
           <input id="levInput" class="tp-lev-input" type="number" min="1" max="50" value="20" />
           <span class="tp-lev-x">x</span>
         </div>
         <select class="tp-select">
-          <option>Unified</option>
+          <option data-i18n="unified">Unified</option>
         </select>
       </div>
 
       <!-- order type tabs -->
       <div class="tp-order-tabs">
-        <button class="tp-otab active" data-ot="market">Market</button>
-        <button class="tp-otab" data-ot="limit">Limit</button>
+        <button class="tp-otab active" data-ot="market" data-i18n="market">Market</button>
+        <button class="tp-otab" data-ot="limit" data-i18n="limit">Limit</button>
       </div>
 
       <!-- buy / sell buttons -->
       <div class="tp-sides">
-        <button id="btnBuy"  class="tp-side tp-buy  active" onclick="window.rdo.setSide(true)">Buy / Long</button>
-        <button id="btnSell" class="tp-side tp-sell"        onclick="window.rdo.setSide(false)">Sell / Short</button>
+        <button id="btnBuy"  class="tp-side tp-buy  active" onclick="window.rdo.setSide(true)" data-i18n="buyLong">Buy / Long</button>
+        <button id="btnSell" class="tp-side tp-sell"        onclick="window.rdo.setSide(false)" data-i18n="sellShort">Sell / Short</button>
       </div>
 
       <!-- trade form -->
       <div class="tp-form">
         <div class="tp-info-row">
-          <span class="tp-info-label">Available to Trade</span>
+          <span class="tp-info-label" data-i18n="availableTrade">Available to Trade</span>
           <span id="tpAvail" class="tp-info-val">0.00 USDC</span>
         </div>
         <div class="tp-info-row">
-          <span class="tp-info-label">Current Position</span>
+          <span class="tp-info-label" data-i18n="currentPosition">Current Position</span>
           <span id="tpCurPos" class="tp-info-val">0.00000 BTC</span>
         </div>
 
-        <div class="tp-field-label">Size</div>
+        <div class="tp-field-label" data-i18n="size">Size</div>
         <div class="tp-size-wrap">
           <input id="sizeInput" class="tp-size-input" type="number" placeholder="0" min="0" oninput="window.rdo.updateStats()" />
           <div class="tp-size-unit" id="sizeUnit">BTC</div>
@@ -240,11 +250,11 @@
         <div class="tp-options">
           <label class="tp-check">
             <input type="checkbox" id="chkReduce" />
-            <span>Reduce Only</span>
+            <span data-i18n="reduceOnly">Reduce Only</span>
           </label>
           <label class="tp-check">
             <input type="checkbox" id="chkTpSl" />
-            <span>Take Profit / Stop Loss</span>
+            <span data-i18n="tpsl">Take Profit / Stop Loss</span>
           </label>
         </div>
 
@@ -258,61 +268,61 @@
         <!-- order stats -->
         <div class="tp-stats">
           <div class="tp-stat-row">
-            <span>Liquidation Price</span>
+            <span data-i18n="liqPrice">Liquidation Price</span>
             <span id="stLiq">N/A</span>
           </div>
           <div class="tp-stat-row">
-            <span>Order Value</span>
+            <span data-i18n="orderValue">Order Value</span>
             <span id="stVal">N/A</span>
           </div>
           <div class="tp-stat-row">
-            <span>Margin Required</span>
+            <span data-i18n="marginRequired">Margin Required</span>
             <span id="stMargin">--</span>
           </div>
           <div class="tp-stat-row">
-            <span>Slippage</span>
+            <span data-i18n="slippage">Slippage</span>
             <span id="stSlip">--</span>
           </div>
           <div class="tp-stat-row">
-            <span>Fee</span>
+            <span data-i18n="fee">Fee</span>
             <span id="stFee">0.0450% / 0.0150%</span>
           </div>
         </div>
 
         <!-- account equity -->
-        <div class="tp-section-title">Account Equity</div>
+        <div class="tp-section-title" data-i18n="accountEquity">Account Equity</div>
         <div class="tp-stats">
           <div class="tp-stat-row">
-            <span>Spot</span>
+            <span data-i18n="spot">Spot</span>
             <span id="eqSpot">$0.00</span>
           </div>
           <div class="tp-stat-row">
-            <span><a href="#" class="tp-link">Perps</a></span>
+            <span><a href="#" class="tp-link" data-i18n="perps">Perps</a></span>
             <span id="eqPerps">$0.00</span>
           </div>
         </div>
 
         <!-- perps overview -->
-        <div class="tp-section-title">Perps Overview</div>
+        <div class="tp-section-title" data-i18n="perpsOverview">Perps Overview</div>
         <div class="tp-stats">
           <div class="tp-stat-row">
-            <span><a href="#" class="tp-link">Balance</a></span>
+            <span><a href="#" class="tp-link" data-i18n="balance">Balance</a></span>
             <span id="ovBalance">$0.00</span>
           </div>
           <div class="tp-stat-row">
-            <span>Unrealized PnL</span>
+            <span data-i18n="unrealizedPnl">Unrealized PnL</span>
             <span id="ovPnl">$0.00</span>
           </div>
           <div class="tp-stat-row">
-            <span>Cross Margin Ratio</span>
+            <span data-i18n="crossMarginRatio">Cross Margin Ratio</span>
             <span id="ovCmr">0.00%</span>
           </div>
           <div class="tp-stat-row">
-            <span><a href="#" class="tp-link">Maintenance Margin</a></span>
+            <span><a href="#" class="tp-link" data-i18n="maintenanceMargin">Maintenance Margin</a></span>
             <span id="ovMm">$0.00</span>
           </div>
           <div class="tp-stat-row">
-            <span><a href="#" class="tp-link">Cross Account Leverage</a></span>
+            <span><a href="#" class="tp-link" data-i18n="crossAccountLev">Cross Account Leverage</a></span>
             <span id="ovLev">0.00x</span>
           </div>
         </div>
@@ -321,16 +331,16 @@
       <!-- ─ ORDER BOOK ──────────────────────────────────────────── -->
       <div class="ob-mini" id="obMini">
         <div class="ob-mini-hdr" onclick="window.rdo.toggleOrderBook()" style="cursor:pointer">
-          <span class="ob-mini-title">Order Book</span>
+          <span class="ob-mini-title" data-i18n="orderBook">Order Book</span>
           <button class="ob-toggle-btn" id="obToggleBtn" aria-label="Toggle order book"></button>
           <div class="ob-colhdr" id="obColHdr" style="flex:1">
-            <span>Price</span><span>Size</span><span>Total</span>
+            <span data-i18n="price">Price</span><span data-i18n="size">Size</span><span data-i18n="total">Total</span>
           </div>
         </div>
         <div id="obBody">
           <div id="obAsks" class="ob-asks ob-asks-mini"></div>
           <div class="ob-spread-row">
-            <span class="ob-spread-label">Spread</span>
+            <span class="ob-spread-label" data-i18n="spread">Spread</span>
             <span id="obSpreadVal" class="ob-spread-val">—</span>
             <span id="obSpreadPct" class="ob-spread-pct"></span>
           </div>
@@ -346,57 +356,57 @@
   <!-- ══ BOTTOM PANEL ══════════════════════════════════════════════ -->
   <section class="btm-panel">
     <div class="btm-tabs">
-      <button class="btm-tab active" data-bt="positions">Positions</button>
-      <button class="btm-tab" data-bt="balances">Balances</button>
-      <button class="btm-tab" data-bt="open-orders">Open Orders</button>
-      <button class="btm-tab" data-bt="trade-history">Trade History</button>
-      <button class="btm-tab" data-bt="funding">Funding History</button>
-      <button class="btm-tab" data-bt="order-history">Order History</button>
+      <button class="btm-tab active" data-bt="positions" data-i18n="positions">Positions</button>
+      <button class="btm-tab" data-bt="balances" data-i18n="balances">Balances</button>
+      <button class="btm-tab" data-bt="open-orders" data-i18n="openOrders">Open Orders</button>
+      <button class="btm-tab" data-bt="trade-history" data-i18n="tradeHistory">Trade History</button>
+      <button class="btm-tab" data-bt="funding" data-i18n="fundingHistory">Funding History</button>
+      <button class="btm-tab" data-bt="order-history" data-i18n="orderHistory">Order History</button>
     </div>
 
     <div class="btm-content">
       <!-- POSITIONS -->
       <div id="btPositions" class="btm-pane">
         <div class="btm-col-hdr">
-          <span>Market</span>
-          <span>Mode</span>
-          <span>Size</span>
-          <span>Position Value</span>
-          <span>Entry Price</span>
-          <span>Mark Price</span>
-          <span>PNL (ROE %)</span>
-          <span>Liq. Price</span>
-          <span>Margin</span>
-          <span>Funding</span>
+          <span data-i18n="market">Market</span>
+          <span data-i18n="mode">Mode</span>
+          <span data-i18n="size">Size</span>
+          <span data-i18n="positionValue">Position Value</span>
+          <span data-i18n="entryPrice">Entry Price</span>
+          <span data-i18n="markPrice">Mark Price</span>
+          <span data-i18n="pnlRoe">PNL (ROE %)</span>
+          <span data-i18n="liqPriceShort">Liq. Price</span>
+          <span data-i18n="margin">Margin</span>
+          <span data-i18n="funding">Funding</span>
         </div>
         <div id="posRows" class="btm-rows">
-          <div class="btm-empty">No open positions yet</div>
+          <div class="btm-empty" data-i18n="noPositions">No open positions yet</div>
         </div>
       </div>
 
       <!-- BALANCES -->
       <div id="btBalances" class="btm-pane hidden">
-        <div class="btm-empty">Connect wallet to view balances</div>
+        <div class="btm-empty" data-i18n="connectBalances">Connect wallet to view balances</div>
       </div>
 
       <!-- OPEN ORDERS -->
       <div id="btOpenOrders" class="btm-pane hidden">
-        <div class="btm-empty">No open orders</div>
+        <div class="btm-empty" data-i18n="noOpenOrders">No open orders</div>
       </div>
 
       <!-- TRADE HISTORY -->
       <div id="btTradeHistory" class="btm-pane hidden">
-        <div class="btm-empty">No trade history</div>
+        <div class="btm-empty" data-i18n="noTradeHistory">No trade history</div>
       </div>
 
       <!-- FUNDING -->
       <div id="btFunding" class="btm-pane hidden">
-        <div class="btm-empty">No funding history</div>
+        <div class="btm-empty" data-i18n="noFundingHistory">No funding history</div>
       </div>
 
       <!-- ORDER HISTORY -->
       <div id="btOrderHistory" class="btm-pane hidden">
-        <div class="btm-empty">No order history</div>
+        <div class="btm-empty" data-i18n="noOrderHistory">No order history</div>
       </div>
     </div>
   </section>
@@ -404,7 +414,7 @@
   <!-- status bar -->
   <div class="status-bar">
     <span class="ws-dot" id="wsDot"></span>
-    <span id="wsStatus" class="ws-status">CONNECTING...</span>
+    <span id="wsStatus" class="ws-status" data-i18n="connecting">CONNECTING...</span>
     <span class="sb-sep">·</span>
     <span id="clockEl" class="sb-clock">—</span>
   </div>
@@ -416,21 +426,21 @@
   <div class="modal-box">
     <div class="modal-header">
       <div>
-        <div class="modal-title">DEPOSIT FUNDS</div>
-        <div class="modal-sub">Swap any token → USDC on Hyperliquid</div>
+        <div class="modal-title" data-i18n="depositFunds">DEPOSIT FUNDS</div>
+        <div class="modal-sub" data-i18n="depositSub">Swap any token → USDC on Hyperliquid</div>
       </div>
       <span class="modal-close" onclick="window.rdo.closeDeposit()">✕</span>
     </div>
 
     <div class="deposit-steps">
-      <div class="step"><span class="step-num">1</span><span>Pick source token (SOL, ETH, USDC, BTC...)</span></div>
-      <div class="step"><span class="step-num">2</span><span>Approve in Phantom — one tap</span></div>
-      <div class="step"><span class="step-num">3</span><span>USDC arrives in ~2 min, ready to trade</span></div>
+      <div class="step"><span class="step-num">1</span><span data-i18n="step1">Pick source token (SOL, ETH, USDC, BTC...)</span></div>
+      <div class="step"><span class="step-num">2</span><span data-i18n="step2">Approve in Phantom — one tap</span></div>
+      <div class="step"><span class="step-num">3</span><span data-i18n="step3">USDC arrives in ~2 min, ready to trade</span></div>
     </div>
 
     <div class="deposit-addr-box">
-      <div class="deposit-addr-label">Your Hyperliquid address</div>
-      <div class="deposit-addr" id="depositAddr">Connect wallet first</div>
+      <div class="deposit-addr-label" data-i18n="yourHlAddr">Your Hyperliquid address</div>
+      <div class="deposit-addr" id="depositAddr" data-i18n="connectFirst">Connect wallet first</div>
     </div>
 
     <div class="deposit-routes">
@@ -447,9 +457,9 @@
         <span class="deposit-route-time">~3 min</span>
       </div>
       <div class="deposit-route">
-        <span class="deposit-route-from">Direct USDC deposit</span>
+        <span class="deposit-route-from" data-i18n="directDeposit">Direct USDC deposit</span>
         <span class="deposit-route-arrow">→</span>
-        <span class="deposit-route-to">Send to address above on HyperEVM (chain ID 998)</span>
+        <span class="deposit-route-to" data-i18n="sendToAddr">Send to address above on HyperEVM (chain ID 998)</span>
         <span class="deposit-route-time">~1 min</span>
       </div>
     </div>

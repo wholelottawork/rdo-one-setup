@@ -87,19 +87,30 @@
 <nav id="rdo-nav">
   <div class="nav-logo">RDO<span>ONE</span></div>
   <div class="nav-div"></div>
-  <a href="/">Trade</a>
-  <a href="/markets.html">Markets</a>
-  <a href="/news.html" class="active">News</a>
-  <a href="/portfolio.html">Portfolio</a>
-  <a href="/transfer.html">Transfer</a>
+  <a href="/" data-i18n="trade">Trade</a>
+  <a href="/markets.html" data-i18n="markets">Markets</a>
+  <a href="/news.html" class="active" data-i18n="news">News</a>
+  <a href="/portfolio.html" data-i18n="portfolio">Portfolio</a>
+  <a href="/transfer.html" data-i18n="transfer">Transfer</a>
+  <div style="margin-left:auto"></div>
+  <div class="lang-wrap" style="position:relative">
+    <button class="lang-btn" id="langBtn" aria-label="Language" style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;background:transparent;border:1px solid var(--border);border-radius:4px;color:var(--text3);cursor:pointer">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><ellipse cx="12" cy="12" rx="4" ry="10"/><path d="M2 12h20"/></svg>
+    </button>
+    <div class="lang-dropdown" id="langDropdown" style="position:absolute;top:calc(100% + 6px);right:0;z-index:900;background:var(--bg2,#1b2429);border:1px solid var(--border,#273035);border-radius:4px;padding:4px 0;min-width:110px;box-shadow:0 8px 24px rgba(0,0,0,.5);display:none">
+      <button class="lang-option" data-lang="en" style="display:block;width:100%;padding:7px 14px;border:none;background:transparent;color:var(--text3,#878c8f);font-size:12px;text-align:left;cursor:pointer">English</button>
+      <button class="lang-option" data-lang="ru" style="display:block;width:100%;padding:7px 14px;border:none;background:transparent;color:var(--text3,#878c8f);font-size:12px;text-align:left;cursor:pointer">Русский</button>
+      <button class="lang-option" data-lang="zh" style="display:block;width:100%;padding:7px 14px;border:none;background:transparent;color:var(--text3,#878c8f);font-size:12px;text-align:left;cursor:pointer">中文</button>
+    </div>
+  </div>
 </nav>
 
 <main>
   <div class="page-hdr">
-    <h1>Crypto News</h1>
+    <h1 data-i18n="cryptoNews">Crypto News</h1>
     <div class="hdr-right">
       <span id="update-ts"></span>
-      <button class="refresh-btn" id="refresh-btn" onclick="refresh()">Refresh</button>
+      <button class="refresh-btn" id="refresh-btn" onclick="refresh()" data-i18n="refresh">Refresh</button>
     </div>
   </div>
   <div class="filter-row" id="cat-filters"></div>
@@ -414,6 +425,21 @@ function buildFilters() {
 
 buildFilters();
 load();
+</script>
+<script type="module">
+import { setLang, getLang, applyTranslations } from '/src/i18n.js';
+applyTranslations();
+const dd = document.getElementById('langDropdown');
+const btn = document.getElementById('langBtn');
+if (btn) btn.addEventListener('click', () => { dd.style.display = dd.style.display === 'none' ? '' : 'none'; });
+dd?.querySelectorAll('.lang-option').forEach(b => {
+  b.addEventListener('click', () => { setLang(b.dataset.lang); dd.style.display = 'none'; updateLangHighlight(); });
+});
+document.addEventListener('click', e => { if (!e.target.closest('.lang-wrap')) dd.style.display = 'none'; });
+function updateLangHighlight() {
+  document.querySelectorAll('.lang-option').forEach(b => b.style.color = b.dataset.lang === getLang() ? 'var(--accent,#50d2c1)' : '');
+}
+updateLangHighlight();
 </script>
 </body>
 </html>
