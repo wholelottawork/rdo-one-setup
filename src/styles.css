@@ -711,6 +711,9 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
 .pos-row .pnl-neg  { color: var(--hl-sell); font-weight: 600; }
 .pos-row .dir-long  { color: var(--hl-buy); }
 .pos-row .dir-short { color: var(--hl-sell); }
+.pos-mode-tag { font-size: 9px; font-weight: 700; letter-spacing: 0.5px; padding: 2px 6px; border-radius: 3px; }
+.pos-mode-basic { background: var(--hl-accent-dark); color: var(--hl-accent); }
+.pos-mode-extra { background: rgba(139,92,246,0.15); color: #a78bfa; }
 .pos-close-btn {
   font-family: var(--hl-font); font-size: 9px; padding: 3px 6px;
   background: transparent; border: 1px solid var(--hl-sell); color: var(--hl-sell);

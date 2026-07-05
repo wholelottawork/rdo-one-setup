@@ -754,8 +754,11 @@ function renderPositions(positions, addr) {
     const roe    = p.entryPrice
       ? ((px - p.entryPrice) / p.entryPrice * p.leverage * (p.isLong ? 1 : -1) * 100)
       : 0;
+    const modeLbl = currentMode === 'aster' ? 'EXTRA' : 'BASIC';
+    const modeCls = currentMode === 'aster' ? 'pos-mode-extra' : 'pos-mode-basic';
     return `<div class="pos-row">
       <span class="pos-sym">${p.symbol}</span>
+      <span><span class="pos-mode-tag ${modeCls}">${modeLbl}</span></span>
       <span>${p.size.toFixed(4)}</span>
       <span>$${(Math.abs(p.size) * px).toFixed(2)}</span>
       <span>${fmt(p.entryPrice, p.symbol)}</span>
