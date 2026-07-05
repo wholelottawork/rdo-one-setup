@@ -28,8 +28,7 @@ const ASTER_STOCK_MARKETS = [
   'NVDA','TSLA','AAPL','MSFT','GOOGL','AMZN','META','COIN','MSTR','AMD',
 ];
 
-// Combine — stocks shown first in Aster mode as a differentiator
-const ASTER_MARKETS = [...ASTER_STOCK_MARKETS, ...ASTER_CRYPTO_MARKETS];
+const ASTER_MARKETS = [...ASTER_CRYPTO_MARKETS];
 
 const MARKETS = HL_MARKETS; // alias for current mode
 
@@ -66,10 +65,10 @@ async function switchMode(mode) {
     const feeEl = document.getElementById('stFee');
     if (feeEl) feeEl.textContent = '0.0400% Taker / 0.0000% Maker';
 
-    // Switch market to first Aster market (NVDA)
-    currentMarket = 'NVDA';
-    document.getElementById('mktSymbol').textContent = 'NVDA-USDT';
-    document.getElementById('sizeUnit').textContent  = 'NVDA';
+    // Switch market to BTC on Aster
+    currentMarket = 'BTC';
+    document.getElementById('mktSymbol').textContent = 'BTC-USDT';
+    document.getElementById('sizeUnit').textContent  = 'BTC';
 
     // Clear stale HL trade feed
     recentTrades = [];
