@@ -46,20 +46,22 @@ export async function getBook(mode: TradeMode, symbol: string): Promise<OrderBoo
     }
     const { getL2Book } = await import('./hyperliquid');
     return await getL2Book(symbol);
-  } catch {
+  } catch (e) {
+    console.error('getBook failed', { mode, symbol }, e);
     return { asks: [], bids: [] };
   }
 }
 
-export async function getCandles(mode: TradeMode, symbol: string, intervalMinutes: number): Promise<Candle[]> {
+export async function getCandles(mode: TradeMode, symbol: string, intervalMinutes: number, count = 200): Promise<Candle[]> {
   try {
     if (mode === 'aster') {
       const { getAsterCandles } = await import('./aster');
-      return await getAsterCandles(symbol, intervalMinutes, 200);
+      return await getAsterCandles(symbol, intervalMinutes, count);
     }
     const { getCandles: getHLCandles } = await import('./hyperliquid');
-    return await getHLCandles(symbol, intervalMinutes, 200);
-  } catch {
+    return await getHLCandles(symbol, intervalMinutes, count);
+  } catch (e) {
+    console.error('getCandles failed', { mode, symbol, intervalMinutes, count }, e);
     return [];
   }
 }
@@ -68,17 +70,18 @@ export async function getFundingRates(mode: TradeMode): Promise<Record<string, n
   try {
     if (mode === 'aster') {
       const { getAsterFunding } = await import('./aster');
-      return await getAsterFunding();
+      return await getAsterFunding(); // already scaled by 100 (percentage)
     }
     const { getMetaAndAssetCtxs } = await import('./hyperliquid');
     const map = await getMetaAndAssetCtxs();
     if (!map) return {};
     const out: Record<string, number> = {};
     map.forEach((ctx, symbol) => {
-      out[symbol] = ctx.funding * 100;
+      out[symbol] = ctx.funding * 100; // scale to percentage
     });
-    return out;
-  } catch {
+    return out; // both branches return funding rates as percentages (already scaled by 100)
+  } catch (e) {
+    console.error('getFundingRates failed', { mode }, e);
     return {};
   }
 }
