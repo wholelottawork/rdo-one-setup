@@ -126,8 +126,8 @@ export async function getFundingRates(mode: TradeMode): Promise<Record<string, n
 }
 
 export async function getBalance(mode: TradeMode, evmAddress: string): Promise<number> {
+  assertHLMode(mode);
   try {
-    assertHLMode(mode);
     const { loadBalance } = await import('./hyperliquid');
     return await loadBalance(evmAddress);
   } catch (e) {
@@ -137,8 +137,8 @@ export async function getBalance(mode: TradeMode, evmAddress: string): Promise<n
 }
 
 export async function getPositions(mode: TradeMode, evmAddress: string): Promise<Position[]> {
+  assertHLMode(mode);
   try {
-    assertHLMode(mode);
     const { getPositions: getHLPositions } = await import('./hyperliquid');
     return await getHLPositions(evmAddress);
   } catch (e) {
@@ -148,8 +148,8 @@ export async function getPositions(mode: TradeMode, evmAddress: string): Promise
 }
 
 export async function getFills(mode: TradeMode, evmAddress: string): Promise<Fill[]> {
+  assertHLMode(mode);
   try {
-    assertHLMode(mode);
     const { getUserFills } = await import('./hyperliquid');
     return await getUserFills(evmAddress);
   } catch (e) {
@@ -159,8 +159,8 @@ export async function getFills(mode: TradeMode, evmAddress: string): Promise<Fil
 }
 
 export async function getOpenOrders(mode: TradeMode, evmAddress: string): Promise<OpenOrder[]> {
+  assertHLMode(mode);
   try {
-    assertHLMode(mode);
     const { getOpenOrders: getHLOpenOrders } = await import('./hyperliquid');
     return await getHLOpenOrders(evmAddress);
   } catch (e) {
