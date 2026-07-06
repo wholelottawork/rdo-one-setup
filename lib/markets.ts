@@ -1,15 +1,8 @@
-export const HL_MARKETS = [
-  'BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'ADA', 'AVAX', 'DOGE', 'LINK', 'DOT',
-  'UNI', 'ATOM', 'LTC', 'PEPE', 'WIF', 'BONK', 'JUP', 'ARB', 'OP', 'SUI',
-  'APT', 'INJ', 'SEI', 'TIA', 'GMX', 'PENDLE', 'BLUR', 'SHIB', 'FLOKI',
-  'NEAR', 'FTM', 'MATIC', 'SAND', 'MANA', 'AXS', 'ENJ', 'CHZ', 'RUNE',
-  'LDO', 'CRV', 'AAVE', 'MKR', 'SNX', 'COMP', '1INCH', 'IMX', 'FIL', 'AR',
-];
-
-export const ASTER_MARKETS = [
-  'BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'DOGE', 'AVAX', 'ADA', 'LINK', 'DOT',
-  'SUI', 'APT', 'INJ', 'ARB', 'OP', 'PEPE', 'WIF', 'NEAR', 'ATOM', 'UNI',
-];
+// Market symbol lists are NOT hardcoded here on purpose — both venues'
+// symbols come straight from their live APIs, so we always show exactly
+// what's tradeable instead of a hand-picked snapshot that goes stale (HL and
+// Aster both relist/delist coins under different tickers over time — see
+// lib/hyperliquid.ts's getHLTickers() and lib/aster.ts's getAsterSymbols()).
 
 export type TradeMode = 'hl' | 'aster';
 

@@ -99,6 +99,11 @@
     /* ─── HL Perps Table ───────────────────────────────────────────────── */
     .hl-wrap{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;margin-bottom:16px}
     .hl-top{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border)}
+    .perp-mode-switch{display:flex;align-items:center;gap:2px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);padding:2px;flex-shrink:0}
+    .perp-mode-btn{font-family:inherit;font-size:11px;font-weight:700;letter-spacing:.3px;padding:5px 12px;border-radius:4px;border:none;cursor:pointer;color:var(--text3);background:transparent;transition:all .15s}
+    .perp-mode-btn:hover{color:var(--text)}
+    .perp-mode-btn.active{background:var(--bg2);color:var(--accent)}
+    .perp-mode-btn.extra.active{color:#a78bfa}
     .hl-search-box{display:flex;align-items:center;gap:8px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);padding:6px 10px;flex:1;max-width:320px}
     .hl-search-box svg{flex-shrink:0;opacity:.5}
     .hl-search{background:none;border:none;outline:none;color:var(--text);font-size:12px;font-family:inherit;width:100%}

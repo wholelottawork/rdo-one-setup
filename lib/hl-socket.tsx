@@ -24,26 +24,34 @@ const HLSocketContext = createContext<HLSocketValue | null>(null);
  * One shared price/trade WebSocket for the whole terminal — replaces
  * trading.js's startPriceStream(), whose DOM writes (#wsDot/#wsStatus) are
  * now just `status` state consumed wherever needed.
+ *
+ * No fixed symbol list: `allMids` already carries every market HL offers, so
+ * `prices` covers all of them without us hardcoding which ones to keep.
+ * Trade subscriptions are per-coin and dynamic — sent the moment the first
+ * `subscribeTrades(symbol, ...)` listener registers, and unsubscribed when
+ * the last one unmounts — so switching to *any* market HL lists (not just a
+ * pre-picked subset) gets a live trades feed, not just the top N.
  */
-export function HLSocketProvider({ symbols, children }: { symbols: string[]; children: React.ReactNode }) {
+export function HLSocketProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<HLConnStatus>('connecting');
   const [prices, setPrices] = useState<Record<string, number>>({});
   const tradeListeners = useRef(new Map<string, Set<(t: Trade) => void>>());
-  const symbolsKey = symbols.join(',');
+  const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
     let alive = true;
     let reconnectTimer: ReturnType<typeof setTimeout>;
-    let ws: WebSocket;
 
     function connect() {
-      ws = new WebSocket(hlWsUrl());
+      const ws = new WebSocket(hlWsUrl());
+      wsRef.current = ws;
 
       ws.onopen = () => {
         setStatus('live');
         ws.send(JSON.stringify({ method: 'subscribe', subscription: { type: 'allMids' } }));
-        symbolsKey.split(',').filter(Boolean).forEach(sym => {
-          ws.send(JSON.stringify({ method: 'subscribe', subscription: { type: 'trades', coin: sym } }));
+        // Re-subscribe any coins that already had listeners before a reconnect
+        tradeListeners.current.forEach((_listeners, coin) => {
+          ws.send(JSON.stringify({ method: 'subscribe', subscription: { type: 'trades', coin } }));
         });
       };
 
@@ -51,12 +59,11 @@ export function HLSocketProvider({ symbols, children }: { symbols: string[]; chi
         try {
           const msg = JSON.parse(data);
           if (msg.channel === 'allMids') {
-            const syms = symbolsKey.split(',').filter(Boolean);
             setPrices(prev => {
               const next = { ...prev };
               let changed = false;
-              syms.forEach(sym => {
-                const px = parseFloat(msg.data.mids[sym]);
+              Object.entries(msg.data.mids as Record<string, string>).forEach(([sym, raw]) => {
+                const px = parseFloat(raw);
                 if (px && next[sym] !== px) { next[sym] = px; changed = true; }
               });
               return changed ? next : prev;
@@ -86,14 +93,29 @@ export function HLSocketProvider({ symbols, children }: { symbols: string[]; chi
     return () => {
       alive = false;
       clearTimeout(reconnectTimer);
-      ws?.close();
+      wsRef.current?.close();
     };
-  }, [symbolsKey]);
+  }, []);
 
   const subscribeTrades = useCallback((symbol: string, cb: (t: Trade) => void) => {
-    if (!tradeListeners.current.has(symbol)) tradeListeners.current.set(symbol, new Set());
-    tradeListeners.current.get(symbol)!.add(cb);
-    return () => tradeListeners.current.get(symbol)?.delete(cb);
+    const isNewCoin = !tradeListeners.current.has(symbol);
+    if (isNewCoin) tradeListeners.current.set(symbol, new Set());
+    const listeners = tradeListeners.current.get(symbol)!;
+    listeners.add(cb);
+
+    if (isNewCoin && wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ method: 'subscribe', subscription: { type: 'trades', coin: symbol } }));
+    }
+
+    return () => {
+      listeners.delete(cb);
+      if (listeners.size === 0) {
+        tradeListeners.current.delete(symbol);
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({ method: 'unsubscribe', subscription: { type: 'trades', coin: symbol } }));
+        }
+      }
+    };
   }, []);
 
   return (

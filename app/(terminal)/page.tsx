@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { useWallet, getEVMProvider } from '@/lib/wallet';
 import { useToast } from '@/lib/toast';
@@ -9,9 +10,9 @@ import {
   useHLMeta, useHLTickers, useHLCandles, useHLBalance, useHLPositions,
   useHLFills, useHLOpenOrders, useHLFunding,
 } from '@/lib/hl-hooks';
-import { useAsterTickers, useAsterFunding, useAsterCandles, useAsterBook, useAsterOpenInterest } from '@/lib/aster-hooks';
+import { useAsterTickers, useAsterFunding, useAsterCandles, useAsterBook, useAsterOpenInterest, useAsterSymbols, useAsterLeverageBrackets } from '@/lib/aster-hooks';
 import { openPosition, closePosition, cancelOrder, getL2Book, type OrderBook } from '@/lib/hyperliquid';
-import { HL_MARKETS, ASTER_MARKETS, fmtPrice, fmtAster, fmtLarge, type TradeMode } from '@/lib/markets';
+import { fmtPrice, fmtAster, fmtLarge, type TradeMode } from '@/lib/markets';
 import { Header, type DropdownRow, type HeaderStats } from './_components/Header';
 import { XTracker } from './_components/XTracker';
 import { ChartColumn } from './_components/ChartColumn';
@@ -20,9 +21,6 @@ import { TradePanel } from './_components/TradePanel';
 import { BottomPanel } from './_components/BottomPanel';
 import { StatusBar } from './_components/StatusBar';
 import { DepositModal } from './_components/DepositModal';
-
-// Same symbol set the original startPriceStream subscribed to
-const STREAM_SYMBOLS = HL_MARKETS.slice(0, 20);
 
 // countdown() — verbatim from main.js (time to next 8h funding boundary)
 function countdown(): string {
@@ -39,15 +37,36 @@ function countdown(): string {
 
 export default function TerminalPage() {
   return (
-    <HLSocketProvider symbols={STREAM_SYMBOLS}>
-      <Terminal />
+    <Suspense fallback={null}>
+      <TerminalPageInner />
+    </Suspense>
+  );
+}
+
+// Reads ?sym=&mode= from the URL (e.g. links from the Markets page perps
+// table) so the terminal opens on the clicked market instead of always BTC.
+// Needs its own component + Suspense boundary — useSearchParams() requires
+// one for static prerendering, same as the /swap page.
+//
+// No hardcoded market list to validate against here — the live symbol list
+// is fetched async inside <Terminal>, and every per-symbol fetch already
+// degrades gracefully (empty/zero) for a symbol that turns out not to exist,
+// so an unrecognized ?sym= just shows "—" until the user picks a real one.
+function TerminalPageInner() {
+  const params = useSearchParams();
+  const requestedMode: TradeMode = params.get('mode') === 'aster' ? 'aster' : 'hl';
+  const initialMarket = params.get('sym')?.toUpperCase() || 'BTC';
+
+  return (
+    <HLSocketProvider>
+      <Terminal initialMode={requestedMode} initialMarket={initialMarket} />
     </HLSocketProvider>
   );
 }
 
-function Terminal() {
-  const [mode, setMode] = useState<TradeMode>('hl');
-  const [market, setMarket] = useState('BTC');
+function Terminal({ initialMode, initialMarket }: { initialMode: TradeMode; initialMarket: string }) {
+  const [mode, setMode] = useState<TradeMode>(initialMode);
+  const [market, setMarket] = useState(initialMarket);
   const [intervalMinutes, setIntervalMinutes] = useState(1);
   const [isBuy, setIsBuy] = useState(true);
   const [size, setSize] = useState('');
@@ -82,6 +101,7 @@ function Terminal() {
   const { data: hlMeta } = useHLMeta();
   const { data: hlTickers } = useHLTickers();
   const { data: hlCandles } = useHLCandles(market, intervalMinutes);
+  const { data: asterSymbols } = useAsterSymbols();
   const { data: asterTickers } = useAsterTickers();
   const { data: asterFunding } = useAsterFunding();
   const { data: asterCandles } = useAsterCandles(market, intervalMinutes);
@@ -93,7 +113,8 @@ function Terminal() {
     return out;
   }, [asterTickers]);
 
-  const { data: asterOI } = useAsterOpenInterest(ASTER_MARKETS, asterPrices, isAster);
+  const { data: asterOI } = useAsterOpenInterest(asterSymbols ?? [], asterPrices, isAster);
+  const { data: asterLeverage } = useAsterLeverageBrackets();
 
   // livePrices — ticker snapshot for all markets, overlaid by ws stream (HL)
   const livePrices = useMemo(() => {
@@ -169,13 +190,20 @@ function Terminal() {
   }, [isAster, asterTickers, hlMeta, market, livePrices, clockTick]);
 
   // ── Market dropdown rows (renderMarketList) ───────────────────
+  // Both branches iterate whatever the live API returns — no hardcoded
+  // symbol arrays — so a market Aster or Hyperliquid adds/removes shows up
+  // (or disappears) here automatically instead of needing a code change.
   const dropdownRows: DropdownRow[] = useMemo(() => {
     if (isAster) {
-      return ASTER_MARKETS.map(sym => {
+      return (asterSymbols ?? []).map(sym => {
         const ticker = asterTickers?.find(t => t.symbol === sym);
+        const lev = asterLeverage?.[sym];
         return {
           sym,
-          lev: '200x',
+          // Real per-symbol max leverage via the signed V3 leverageBracket
+          // endpoint (server/lib/aster-auth.js) — varies a lot by symbol
+          // (200x for majors, as low as 2-5x for small caps), so don't guess.
+          lev: lev ? lev + 'x' : '—',
           price: ticker?.lastPrice ? fmtAster(ticker.lastPrice) : '—',
           chgPct: ticker ? ticker.priceChangePercent : null,
           fund8h: asterFunding?.[sym] ?? null,
@@ -184,20 +212,19 @@ function Terminal() {
         };
       });
     }
-    return HL_MARKETS.map(sym => {
-      const s = hlTickers?.[sym];
+    return Object.entries(hlTickers ?? {}).map(([sym, s]) => {
       const px = livePrices[sym];
       return {
         sym,
-        lev: s?.lev ? s.lev + 'x' : '',
+        lev: s.lev ? s.lev + 'x' : '',
         price: px ? fmtPrice(px) : '—',
-        chgPct: s?.chgPct ?? null,
-        fund8h: s?.fund8h ?? null,
-        vol: s?.vol ?? null,
-        oi: s?.oi ?? null,
+        chgPct: s.chgPct ?? null,
+        fund8h: s.fund8h ?? null,
+        vol: s.vol ?? null,
+        oi: s.oi ?? null,
       };
     });
-  }, [isAster, asterTickers, asterFunding, asterOI, hlTickers, livePrices]);
+  }, [isAster, asterSymbols, asterTickers, asterFunding, asterOI, asterLeverage, hlTickers, livePrices]);
 
   // ── Actions ────────────────────────────────────────────────────
   function changeMode(next: TradeMode) {

@@ -8,6 +8,8 @@ import {
   useCgCoinsMarkets, useFearGreed,
 } from '@/lib/markets-hooks';
 import { useHLTickers } from '@/lib/hl-hooks';
+import { useAsterTickers, useAsterFunding, useAsterOpenInterest, useAsterSymbols, useAsterLeverageBrackets } from '@/lib/aster-hooks';
+import { type TradeMode } from '@/lib/markets';
 
 // ─── Helpers — verbatim from public/markets.html ─────────────────────────────
 const LABEL: Record<string, string> = Object.fromEntries(TICKER_SYMBOLS.map(s => [s, s.replace('USDT', '')]));
@@ -75,7 +77,7 @@ function Spark({ rawPts, color, gid }: { rawPts: Array<[number, number]>; color:
   );
 }
 
-// ─── HL perps table sorting ───────────────────────────────────────────────────
+// ─── Perps table sorting (shared by HL + Aster) ──────────────────────────────
 type HLCol = 'name' | 'px' | 'chg' | 'fund' | 'vol' | 'oi';
 const HL_COL_LABELS: Record<HLCol, string> = {
   name: 'Market', px: 'Last Price', chg: '24h Change', fund: '8h Funding', vol: 'Volume', oi: 'Open Interest',
@@ -106,6 +108,18 @@ export default function MarketsPage() {
   const { data: coinsAll } = useCgCoinsMarkets();
   const { data: fg } = useFearGreed();
   const { data: hlTickers } = useHLTickers();
+
+  const [perpMode, setPerpMode] = useState<TradeMode>('hl');
+  const { data: asterSymbols } = useAsterSymbols();
+  const { data: asterTickers } = useAsterTickers();
+  const { data: asterFunding } = useAsterFunding();
+  const asterPricesMap = useMemo(() => {
+    const m: Record<string, number> = {};
+    (asterTickers ?? []).forEach(t => { m[t.symbol] = t.lastPrice; });
+    return m;
+  }, [asterTickers]);
+  const { data: asterOI } = useAsterOpenInterest(asterSymbols ?? [], asterPricesMap, perpMode === 'aster');
+  const { data: asterLeverage } = useAsterLeverageBrackets();
 
   const [hlSort, setHlSort] = useState<{ col: HLCol; dir: 1 | -1 }>({ col: 'vol', dir: -1 });
   const [hlQuery, setHlQuery] = useState('');
@@ -162,25 +176,46 @@ export default function MarketsPage() {
     : cvResult >= 1000 ? cvResult.toLocaleString('en-US', { maximumFractionDigits: 2 })
     : cvResult.toFixed(cvResult >= 1 ? 4 : 8);
 
-  // ── HL perps rows (fetchHLPerps + renderHLTable) ───────────────
+  // ── Perps rows — HL (fetchHLPerps) or Aster (fetchAsterMids/Funding/OI) ──
   const hlRows = useMemo(() => {
-    const rows = Object.entries(hlTickers ?? {}).map(([name, s]) => ({
-      name,
-      maxLev: s.lev,
-      px: s.price,
-      chgAbs: s.price - s.prevDayPx,
-      chgPct: s.chgPct,
-      fund8h: s.fund8h * 8, // original: funding * 8 * 100
-      vol: s.vol,
-      oi: s.oi,
-    })).filter(d => !hlQuery || d.name.toLowerCase().includes(hlQuery.toLowerCase()));
-    rows.sort((a, b) => {
+    const rows = perpMode === 'hl'
+      ? Object.entries(hlTickers ?? {}).map(([name, s]) => ({
+          name,
+          maxLev: s.lev,
+          px: s.price,
+          chgAbs: s.price - s.prevDayPx,
+          chgPct: s.chgPct,
+          fund8h: s.fund8h * 8, // original: funding * 8 * 100
+          vol: s.vol,
+          oi: s.oi,
+        }))
+      : (asterSymbols ?? []).map(name => {
+          const t = (asterTickers ?? []).find(x => x.symbol === name);
+          const px = t?.lastPrice ?? 0;
+          const open = t?.openPrice ?? px;
+          return {
+            name,
+            // Real per-symbol max leverage via the signed V3 leverageBracket
+            // endpoint (server/lib/aster-auth.js) — varies by symbol, so this
+            // falls back to 0 (rendered "—") rather than guessing a number.
+            maxLev: asterLeverage?.[name] ?? 0,
+            px,
+            chgAbs: px - open,
+            chgPct: t?.priceChangePercent ?? 0,
+            fund8h: asterFunding?.[name] ?? 0,
+            vol: t?.quoteVolume ?? 0,
+            oi: asterOI?.[name] ?? 0,
+          };
+        });
+
+    const filtered = rows.filter(d => !hlQuery || d.name.toLowerCase().includes(hlQuery.toLowerCase()));
+    filtered.sort((a, b) => {
       if (hlSort.col === 'name') return hlSort.dir * a.name.localeCompare(b.name);
       const key = hlSort.col === 'px' ? 'px' : hlSort.col === 'chg' ? 'chgPct' : hlSort.col === 'fund' ? 'fund8h' : hlSort.col;
       return hlSort.dir * ((a[key as 'px'] ?? 0) - (b[key as 'px'] ?? 0));
     });
-    return rows;
-  }, [hlTickers, hlQuery, hlSort]);
+    return filtered;
+  }, [perpMode, hlTickers, asterSymbols, asterTickers, asterFunding, asterOI, asterLeverage, hlQuery, hlSort]);
 
   function clickHLCol(col: HLCol) {
     setHlSort(prev => prev.col === col
@@ -338,9 +373,23 @@ export default function MarketsPage() {
           </div>
         </div>
 
-        {/* Hyperliquid Perps */}
+        {/* Perpetuals — Hyperliquid (Basic) / Aster (Extra) */}
         <div className="hl-wrap">
           <div className="hl-top">
+            <div className="perp-mode-switch">
+              <button
+                className={`perp-mode-btn${perpMode === 'hl' ? ' active' : ''}`}
+                onClick={() => setPerpMode('hl')}
+              >
+                BASIC
+              </button>
+              <button
+                className={`perp-mode-btn extra${perpMode === 'aster' ? ' active' : ''}`}
+                onClick={() => setPerpMode('aster')}
+              >
+                EXTRA
+              </button>
+            </div>
             <div className="hl-search-box">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" /></svg>
               <input className="hl-search" id="hl-search" placeholder="Search" value={hlQuery} onChange={e => setHlQuery(e.target.value)} />
@@ -369,12 +418,12 @@ export default function MarketsPage() {
                 const fundCls = d.fund8h >= 0 ? 'up' : 'dn';
                 const chgSign = d.chgPct >= 0 ? '+' : '';
                 return (
-                  <tr key={d.name} onClick={() => { window.location.href = `/?sym=${encodeURIComponent(d.name)}`; }}>
+                  <tr key={d.name} onClick={() => { window.location.href = `/?sym=${encodeURIComponent(d.name)}&mode=${perpMode}`; }}>
                     <td>
                       <div className="hl-market">
                         <span className="hl-star">☆</span>
-                        <span className="hl-sym">{d.name}-USDC</span>
-                        <span className="hl-lev">{d.maxLev}x</span>
+                        <span className="hl-sym">{d.name}{perpMode === 'aster' ? '-USDT' : '-USDC'}</span>
+                        <span className="hl-lev">{d.maxLev ? `${d.maxLev}x` : '—'}</span>
                       </div>
                     </td>
                     <td>{fmtHLPx(d.px)}</td>
