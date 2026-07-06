@@ -38,6 +38,39 @@ export interface CancelParams {
 import type { Candle, OrderBook } from './hyperliquid';
 export type { Candle, OrderBook, Position, Fill, OpenOrder } from './hyperliquid';
 
+export async function getMarkets(mode: TradeMode): Promise<UnifiedMarket[]> {
+  try {
+    if (mode === 'aster') {
+      const { getAsterTickers } = await import('./aster');
+      const tickers = await getAsterTickers();
+      return tickers.map(t => ({
+        symbol: t.symbol,
+        price: t.lastPrice,
+        priceChange24h: t.priceChangePercent,
+        volume24h: t.quoteVolume,
+        fundingRate8h: 0,
+        openInterest: 0,
+        maxLeverage: 200,
+      }));
+    }
+
+    const { getHLTickers } = await import('./hyperliquid');
+    const tickers = await getHLTickers();
+    return Object.entries(tickers).map(([symbol, t]) => ({
+      symbol,
+      price: t.price,
+      priceChange24h: t.chgPct,
+      volume24h: t.vol,
+      fundingRate8h: t.fund8h,
+      openInterest: t.oi,
+      maxLeverage: t.lev,
+    }));
+  } catch (e) {
+    console.error('getMarkets failed', { mode }, e);
+    return [];
+  }
+}
+
 export async function getBook(mode: TradeMode, symbol: string): Promise<OrderBook> {
   try {
     if (mode === 'aster') {
