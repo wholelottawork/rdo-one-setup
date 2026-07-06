@@ -19,14 +19,16 @@ export function useBook(mode: TradeMode, symbol: string, enabled = true) {
     queryKey: ['dex', 'book', mode, symbol],
     queryFn: () => getBook(mode, symbol),
     refetchInterval: mode === 'aster' ? 2_000 : 3_000,
-    enabled,
+    enabled: !!symbol && enabled,
   });
 }
 
 export function useCandles(mode: TradeMode, symbol: string, intervalMinutes: number) {
-  return useQuery<Candle[]>({
+  return useQuery({
     queryKey: ['dex', 'candles', mode, symbol, intervalMinutes],
     queryFn: () => getCandles(mode, symbol, intervalMinutes),
+    // Refresh candles every 60s to catch new closed bars
+    refetchInterval: 60_000,
   });
 }
 
