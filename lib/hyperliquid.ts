@@ -4,8 +4,8 @@
 // the backend never holds keys.
 
 const HL_API = '/api/hl';
-const BUILDER_ADDRESS = '0x0000000000000000000000000000000000000000'; // ← replace with your treasury wallet
-const BUILDER_FEE = 1000; // tenths of bps → 0.10%
+export const BUILDER_ADDRESS = '0x0000000000000000000000000000000000000000'; // ← replace with your treasury wallet
+export const BUILDER_FEE = 1000; // tenths of bps → 0.10%
 
 const assetIndexMap: Record<string, number> = {};
 
@@ -263,7 +263,7 @@ export async function getL2Book(symbol: string): Promise<OrderBook> {
 // ── Minimal msgpack encoder (for Hyperliquid action hashing) ───────────────
 type MpValue = null | undefined | boolean | number | string | MpValue[] | { [key: string]: MpValue };
 
-function mpEncode(val: MpValue): Uint8Array {
+export function mpEncode(val: MpValue): Uint8Array {
   const out: number[] = [];
   function enc(v: MpValue) {
     if (v === null || v === undefined) { out.push(0xc0); return; }
@@ -312,13 +312,13 @@ function mpEncode(val: MpValue): Uint8Array {
   return new Uint8Array(out);
 }
 
-function floatToWire(x: number): string {
+export function floatToWire(x: number): string {
   const r = Math.round(x * 1e8) / 1e8;
   if (Number.isInteger(r)) return String(Math.round(r));
   return r.toFixed(8).replace(/\.?0+$/, '');
 }
 
-async function computeActionHash(wireAction: MpValue, nonce: number): Promise<string> {
+export async function computeActionHash(wireAction: MpValue, nonce: number): Promise<string> {
   const { ethers } = await import('ethers');
   const packed = mpEncode(wireAction);
   const data = new Uint8Array(packed.length + 9);
@@ -328,13 +328,13 @@ async function computeActionHash(wireAction: MpValue, nonce: number): Promise<st
   return ethers.keccak256(data);
 }
 
-interface Signer {
+export interface Signer {
   // Method (not arrow-property) syntax so ethers' concretely-typed
   // JsonRpcSigner is assignable — TS checks method params bivariantly.
   signTypedData(domain: unknown, types: unknown, value: unknown): Promise<string>;
 }
 
-async function signAction(signer: Signer, wireAction: MpValue, nonce: number) {
+export async function signAction(signer: Signer, wireAction: MpValue, nonce: number) {
   const hash = await computeActionHash(wireAction, nonce);
   const domain = {
     name: 'Exchange', version: '1', chainId: 42161,
