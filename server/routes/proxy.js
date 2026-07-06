@@ -35,6 +35,17 @@ export default async function proxyRoutes(fastify) {
     );
   });
 
+  // ── Hyperliquid TESTNET REST API (POST) ────────────────────────────────────
+  // Simple pass-through, no caching — testnet is low volume and needs real-time responses
+  fastify.post('/hl-testnet/*', async (req) => {
+    const path = req.params['*'];
+    return fetchJSON(`https://api.hyperliquid-testnet.xyz/${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req.body || {}),
+    });
+  });
+
   // ── Binance (GET — candlestick data, tickers) ──────────────────────────────
   fastify.get('/binance/*', async (req) => {
     const path     = req.params['*'];
