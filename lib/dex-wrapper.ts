@@ -35,39 +35,50 @@ export interface CancelParams {
   signer: Signer;
 }
 
+import type { Candle, OrderBook } from './hyperliquid';
 export type { Candle, OrderBook, Position, Fill, OpenOrder } from './hyperliquid';
 
-export async function getMarkets(mode: TradeMode): Promise<UnifiedMarket[]> {
+export async function getBook(mode: TradeMode, symbol: string): Promise<OrderBook> {
   try {
     if (mode === 'aster') {
-      const { getAsterTickers } = await import('./aster');
-      const tickers = await getAsterTickers();
-      if (!Array.isArray(tickers)) return [];
-      return tickers.map(t => ({
-        symbol: t.symbol,
-        price: t.lastPrice,
-        priceChange24h: t.priceChangePercent,
-        volume24h: t.quoteVolume,
-        // Aster: funding/OI fetched separately; maxLeverage is 200x per Aster docs
-        fundingRate8h: 0,
-        openInterest: 0,
-        maxLeverage: 200,
-      }));
+      const { getAsterBook } = await import('./aster');
+      return await getAsterBook(symbol);
     }
+    const { getL2Book } = await import('./hyperliquid');
+    return await getL2Book(symbol);
+  } catch {
+    return { asks: [], bids: [] };
+  }
+}
 
-    const { getHLTickers } = await import('./hyperliquid');
-    const tickers = await getHLTickers();
-    if (!tickers || typeof tickers !== 'object') return [];
-    return Object.entries(tickers).map(([symbol, t]) => ({
-      symbol,
-      price: t.price,
-      priceChange24h: t.chgPct,
-      volume24h: t.vol,
-      fundingRate8h: t.fund8h,
-      openInterest: t.oi,
-      maxLeverage: t.lev,
-    }));
+export async function getCandles(mode: TradeMode, symbol: string, intervalMinutes: number): Promise<Candle[]> {
+  try {
+    if (mode === 'aster') {
+      const { getAsterCandles } = await import('./aster');
+      return await getAsterCandles(symbol, intervalMinutes, 200);
+    }
+    const { getCandles: getHLCandles } = await import('./hyperliquid');
+    return await getHLCandles(symbol, intervalMinutes, 200);
   } catch {
     return [];
+  }
+}
+
+export async function getFundingRates(mode: TradeMode): Promise<Record<string, number>> {
+  try {
+    if (mode === 'aster') {
+      const { getAsterFunding } = await import('./aster');
+      return await getAsterFunding();
+    }
+    const { getMetaAndAssetCtxs } = await import('./hyperliquid');
+    const map = await getMetaAndAssetCtxs();
+    if (!map) return {};
+    const out: Record<string, number> = {};
+    map.forEach((ctx, symbol) => {
+      out[symbol] = ctx.funding * 100;
+    });
+    return out;
+  } catch {
+    return {};
   }
 }
