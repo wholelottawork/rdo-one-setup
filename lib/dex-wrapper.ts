@@ -35,7 +35,7 @@ export interface CancelParams {
   signer: Signer;
 }
 
-import type { Candle, OrderBook } from './hyperliquid';
+import type { Candle, OrderBook, Position, Fill, OpenOrder } from './hyperliquid';
 export type { Candle, OrderBook, Position, Fill, OpenOrder } from './hyperliquid';
 
 export async function getMarkets(mode: TradeMode): Promise<UnifiedMarket[]> {
@@ -116,5 +116,57 @@ export async function getFundingRates(mode: TradeMode): Promise<Record<string, n
   } catch (e) {
     console.error('getFundingRates failed', { mode }, e);
     return {};
+  }
+}
+
+export async function getBalance(mode: TradeMode, evmAddress: string): Promise<number> {
+  try {
+    if (mode === 'aster') {
+      throw new Error('Aster user info requires API key authentication — not yet supported.');
+    }
+    const { loadBalance } = await import('./hyperliquid');
+    return await loadBalance(evmAddress);
+  } catch (e) {
+    console.error('getBalance failed', { mode, evmAddress }, e);
+    return 0;
+  }
+}
+
+export async function getPositions(mode: TradeMode, evmAddress: string): Promise<Position[]> {
+  try {
+    if (mode === 'aster') {
+      throw new Error('Aster user info requires API key authentication — not yet supported.');
+    }
+    const { getPositions: getHLPositions } = await import('./hyperliquid');
+    return await getHLPositions(evmAddress);
+  } catch (e) {
+    console.error('getPositions failed', { mode, evmAddress }, e);
+    return [];
+  }
+}
+
+export async function getFills(mode: TradeMode, evmAddress: string): Promise<Fill[]> {
+  try {
+    if (mode === 'aster') {
+      throw new Error('Aster user info requires API key authentication — not yet supported.');
+    }
+    const { getUserFills } = await import('./hyperliquid');
+    return await getUserFills(evmAddress);
+  } catch (e) {
+    console.error('getFills failed', { mode, evmAddress }, e);
+    return [];
+  }
+}
+
+export async function getOpenOrders(mode: TradeMode, evmAddress: string): Promise<OpenOrder[]> {
+  try {
+    if (mode === 'aster') {
+      throw new Error('Aster user info requires API key authentication — not yet supported.');
+    }
+    const { getOpenOrders: getHLOpenOrders } = await import('./hyperliquid');
+    return await getHLOpenOrders(evmAddress);
+  } catch (e) {
+    console.error('getOpenOrders failed', { mode, evmAddress }, e);
+    return [];
   }
 }
