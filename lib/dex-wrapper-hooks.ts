@@ -1,10 +1,11 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 import {
   getMarkets, getBook, getCandles, getFundingRates,
   getBalance, getPositions, getFills, getOpenOrders,
   type TradeMode, type Candle, type OrderBook,
+  type Position, type Fill, type OpenOrder,
 } from './dex-wrapper';
 
 export function useMarkets(mode: TradeMode) {
@@ -41,36 +42,38 @@ export function useFundingRates(mode: TradeMode) {
   });
 }
 
-export function useBalance(mode: TradeMode, address: string | null) {
+export function useBalance(mode: TradeMode, address: string | null): UseQueryResult<number> {
   return useQuery({
     queryKey: ['dex', 'balance', mode, address],
     queryFn: () => getBalance(mode, address!),
-    enabled: !!address && mode === 'hl',
+    enabled: !!address && mode !== 'aster',
     refetchInterval: 15_000,
   });
 }
 
-export function usePositions(mode: TradeMode, address: string | null) {
+export function usePositions(mode: TradeMode, address: string | null): UseQueryResult<Position[]> {
   return useQuery({
     queryKey: ['dex', 'positions', mode, address],
     queryFn: () => getPositions(mode, address!),
-    enabled: !!address && mode === 'hl',
+    enabled: !!address && mode !== 'aster',
     refetchInterval: 15_000,
   });
 }
 
-export function useFills(mode: TradeMode, address: string | null, enabled: boolean) {
+export function useFills(mode: TradeMode, address: string | null, enabled: boolean): UseQueryResult<Fill[]> {
   return useQuery({
     queryKey: ['dex', 'fills', mode, address],
     queryFn: () => getFills(mode, address!),
-    enabled: !!address && enabled && mode === 'hl',
+    enabled: !!address && enabled && mode !== 'aster',
+    refetchInterval: 10_000,
   });
 }
 
-export function useOpenOrders(mode: TradeMode, address: string | null, enabled: boolean) {
+export function useOpenOrders(mode: TradeMode, address: string | null, enabled: boolean): UseQueryResult<OpenOrder[]> {
   return useQuery({
     queryKey: ['dex', 'openOrders', mode, address],
     queryFn: () => getOpenOrders(mode, address!),
-    enabled: !!address && enabled && mode === 'hl',
+    enabled: !!address && enabled && mode !== 'aster',
+    refetchInterval: 10_000,
   });
 }
