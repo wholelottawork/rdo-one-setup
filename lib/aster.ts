@@ -116,6 +116,112 @@ export async function getAsterLeverageBrackets(): Promise<Record<string, number>
   }
 }
 
+export interface AsterPosition {
+  symbol: string;
+  positionAmt: number;
+  entryPrice: number;
+  unrealizedProfit: number;
+  leverage: number;
+}
+
+export interface AsterAccountInfo {
+  totalWalletBalance: number;
+  totalMarginBalance: number;
+  totalUnrealizedProfit: number;
+  totalPositionInitialMargin: number;
+  totalOpenOrderInitialMargin: number;
+  availableBalance: number;
+  positions: AsterPosition[];
+}
+
+/**
+ * Real account snapshot for OUR configured Aster agent (server/lib/aster-auth.js)
+ * — NOT a lookup by arbitrary address. Aster's signed endpoints only return
+ * data for whichever account the registered agent is approved on; there is no
+ * public "look up any address's positions" endpoint the way Hyperliquid has.
+ */
+export async function getAsterAccount(): Promise<AsterAccountInfo | null> {
+  try {
+    const res = await fetch('/api/aster-signed/fapi/v3/accountWithJoinMargin');
+    const data = await res.json();
+    if (!data || typeof data !== 'object' || !Array.isArray(data.positions)) return null;
+    return {
+      totalWalletBalance: parseFloat(data.totalWalletBalance ?? '0'),
+      totalMarginBalance: parseFloat(data.totalMarginBalance ?? '0'),
+      totalUnrealizedProfit: parseFloat(data.totalUnrealizedProfit ?? '0'),
+      totalPositionInitialMargin: parseFloat(data.totalPositionInitialMargin ?? '0'),
+      totalOpenOrderInitialMargin: parseFloat(data.totalOpenOrderInitialMargin ?? '0'),
+      availableBalance: parseFloat(data.availableBalance ?? '0'),
+      positions: (data.positions as Array<Record<string, string>>)
+        .filter(p => parseFloat(p.positionAmt ?? '0') !== 0)
+        .map(p => ({
+          symbol: String(p.symbol).replace(/USDT$/, ''),
+          positionAmt: parseFloat(p.positionAmt ?? '0'),
+          entryPrice: parseFloat(p.entryPrice ?? '0'),
+          unrealizedProfit: parseFloat(p.unrealizedProfit ?? '0'),
+          leverage: parseFloat(p.leverage ?? '0'),
+        })),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export interface AsterIncomeEntry {
+  symbol: string;
+  income: number;
+  time: number;
+}
+
+const INCOME_WINDOW_MS = 6.9 * 24 * 60 * 60 * 1000; // just under Aster's 7-day-per-call cap
+const INCOME_BATCH = 5;
+
+/**
+ * Realized PnL history for our agent's account via GET /fapi/v3/income
+ * (incomeType=REALIZED_PNL) — covers every symbol in one logical fetch,
+ * unlike /fapi/v3/userTrades which requires a single mandatory `symbol` and
+ * can't answer "all of this account's trades." The tradeoff: income entries
+ * carry pnl + symbol + time, not per-trade entry/exit price or size — enough
+ * to drive total PnL, win rate, best/worst, and PnL-over-time charts, but not
+ * a HL-style trade table with entry/exit prices.
+ *
+ * Each call is capped to a ~7-day window (Aster's real limit), so a longer
+ * range is chunked into windows and fetched in small batches to stay well
+ * under Aster's request-weight limit regardless of how far back we look.
+ */
+export async function getAsterIncomeHistory(sinceMs: number): Promise<AsterIncomeEntry[]> {
+  const now = Date.now();
+  const windows: Array<{ start: number; end: number }> = [];
+  for (let end = now; end > sinceMs; end -= INCOME_WINDOW_MS) {
+    windows.push({ start: Math.max(sinceMs, end - INCOME_WINDOW_MS), end });
+  }
+
+  const out: AsterIncomeEntry[] = [];
+  for (let i = 0; i < windows.length; i += INCOME_BATCH) {
+    const batch = windows.slice(i, i + INCOME_BATCH);
+    const results = await Promise.all(batch.map(async ({ start, end }) => {
+      try {
+        const res = await fetch(`/api/aster-signed/fapi/v3/income?incomeType=REALIZED_PNL&startTime=${start}&endTime=${end}&limit=1000`);
+        const data = await res.json();
+        return Array.isArray(data) ? data : [];
+      } catch {
+        return [];
+      }
+    }));
+    results.forEach(entries => {
+      (entries as Array<Record<string, string>>).forEach(e => {
+        out.push({
+          symbol: String(e.symbol ?? '').replace(/USDT$/, ''),
+          income: parseFloat(e.income ?? '0'),
+          time: Number(e.time),
+        });
+      });
+    });
+  }
+
+  return out.sort((a, b) => a.time - b.time);
+}
+
 // Open interest per symbol (USD notional) — ported from main.js fetchAsterOI().
 // Binance-style futures APIs (Aster included) have no bulk OI endpoint, only
 // one symbol per call. Now that the symbol list is the full live exchange

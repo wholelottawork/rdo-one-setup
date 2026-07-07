@@ -5,6 +5,7 @@ import { useTranslation } from '@/lib/i18n';
 import { RdoNav } from '@/lib/RdoNav';
 import { getPhantomSolana, loadSolanaPortfolio, type SolAsset } from '@/lib/solana';
 import { loadArbitrumBalances, type ArbBalances } from '@/lib/arbitrum';
+import { getAsterAccount, getAsterIncomeHistory, type AsterAccountInfo, type AsterIncomeEntry } from '@/lib/aster';
 import {
   fmt, fmtUSD, fmtK, shorten, pCls, fmtDate, rangeStartMs, formatDuration, calcEntryPx,
   buildPnLChartSvg, buildDistributionHtml, buildCalendar, buildSparkPath, downloadCard,
@@ -13,7 +14,11 @@ import {
 
 const SOL_MINT = 'So11111111111111111111111111111111111111112';
 const HL_API = '/api/hl/info';
-const ASTER_API = '/api/aster-fapi';
+
+// Aster's income endpoint (unlike HL's userFillsByTime) caps each call to a
+// ~7-day window, so "ALL" is bounded here rather than a true unbounded
+// lookback — see getAsterIncomeHistory in lib/aster.ts.
+const ASTER_ALL_LOOKBACK_MS = 365 * 24 * 60 * 60 * 1000;
 
 type Range = '7D' | '30D' | '90D' | 'ALL';
 type PfMode = 'hl' | 'aster';
@@ -23,13 +28,6 @@ interface EIP1193 { request: (a: { method: string; params?: unknown[] }) => Prom
 interface PerpsState {
   equity: number; upnl: number; ntl: number; avail: number; marginUsed: number; lev: string;
   positions: Array<{ coin: string; isLong: boolean; upnl: number }>;
-}
-
-interface AsterTrade { symbol?: string; side?: string; price?: string; qty?: string; quoteQty?: string; realizedPnl?: string; time: number }
-
-interface AsterAccount {
-  equity: number; upnl: number; ntl: number; avail: number; margin: number; lev: string;
-  positions: Array<{ sym: string; isLong: boolean; upnl: number }>;
 }
 
 export default function PortfolioPage() {
@@ -65,11 +63,11 @@ export default function PortfolioPage() {
   const [calMonth, setCalMonth] = useState(now.getMonth());
 
   // ── Aster state ────────────────────────────────────────────────
-  const [asterAddrInput, setAsterAddrInput] = useState('');
-  const [asterHint, setAsterHint] = useState(false);
+  // No address input — Aster's signed endpoints only return data for our one
+  // configured agent (server/lib/aster-auth.js), not an arbitrary lookup.
   const [asterLoading, setAsterLoading] = useState(false);
-  const [asterAccount, setAsterAccount] = useState<AsterAccount | 'error' | null>(null);
-  const [asterFills, setAsterFills] = useState<AsterTrade[] | null>(null);
+  const [asterAccount, setAsterAccount] = useState<AsterAccountInfo | 'error' | null>(null);
+  const [asterIncome, setAsterIncome] = useState<AsterIncomeEntry[] | null>(null);
 
   // ── Modals ─────────────────────────────────────────────────────
   const [depOpen, setDepOpen] = useState(false);
@@ -380,96 +378,63 @@ export default function PortfolioPage() {
   const calendar = useMemo(() => buildCalendar(hl?.dailyPnl ?? {}, calYear, calMonth), [hl, calYear, calMonth]);
 
   // ── Aster (loadAsterData etc.) ─────────────────────────────────
-  const loadAsterData = useCallback(async (address: string) => {
+  // Real data for our one configured agent's account (server/lib/aster-auth.js)
+  // — there's no address to pass in, unlike the HL side. "ALL" is bounded to
+  // ASTER_ALL_LOOKBACK_MS because Aster's income endpoint caps each call to a
+  // ~7-day window (see getAsterIncomeHistory).
+  const loadAsterData = useCallback(async () => {
     setAsterLoading(true);
     setAsterAccount(null);
-    setAsterFills(null);
-    const [posRes, tradesRes] = await Promise.allSettled([
-      (async () => {
-        const r = await fetch(`${ASTER_API}/v2/account?address=${encodeURIComponent(address)}`);
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        return r.json();
-      })(),
-      (async () => {
-        const r = await fetch(`${ASTER_API}/v1/userTrades?address=${encodeURIComponent(address)}&limit=500`);
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        const data = await r.json();
-        return Array.isArray(data) ? (data as AsterTrade[]) : [];
-      })(),
+    setAsterIncome(null);
+    const sinceMs = Date.now() - ASTER_ALL_LOOKBACK_MS;
+    const [accountRes, incomeRes] = await Promise.allSettled([
+      getAsterAccount(),
+      getAsterIncomeHistory(sinceMs),
     ]);
 
-    if (posRes.status === 'fulfilled') {
-      const data = posRes.value;
-      const totalWalletBalance = parseFloat(data.totalWalletBalance ?? data.totalMarginBalance ?? 0);
-      const totalUnrealizedProfit = parseFloat(data.totalUnrealizedProfit ?? 0);
-      const totalPositionInitialMargin = parseFloat(data.totalPositionInitialMargin ?? 0);
-      const totalOpenOrderInitialMargin = parseFloat(data.totalOpenOrderInitialMargin ?? 0);
-      const availableBalance = parseFloat(data.availableBalance ?? totalWalletBalance - totalPositionInitialMargin);
-      const totalCrossUnPnl = parseFloat(data.totalCrossUnPnl ?? totalUnrealizedProfit);
-      const equity = totalWalletBalance + totalCrossUnPnl;
-      const ntl = totalPositionInitialMargin;
-      const lev = ntl > 0 ? (ntl / Math.max(equity, 0.01)).toFixed(2) + 'x' : '0.00x';
-      const positions = ((data.positions || []) as Array<{ positionAmt?: string; initialMargin?: string; unrealizedProfit?: string; symbol?: string }>)
-        .filter(p => parseFloat(p.positionAmt ?? p.initialMargin ?? '0') !== 0)
-        .map(p => ({
-          sym: p.symbol?.replace('USDT', '') ?? '—',
-          isLong: parseFloat(p.positionAmt ?? '0') > 0,
-          upnl: parseFloat(p.unrealizedProfit ?? '0'),
-        }));
-      setAsterAccount({ equity, upnl: totalCrossUnPnl, ntl, avail: availableBalance, margin: totalPositionInitialMargin + totalOpenOrderInitialMargin, lev, positions });
-    } else {
-      setAsterAccount('error');
-    }
-
-    setAsterFills(tradesRes.status === 'fulfilled' ? tradesRes.value : []);
+    setAsterAccount(accountRes.status === 'fulfilled' && accountRes.value ? accountRes.value : 'error');
+    setAsterIncome(incomeRes.status === 'fulfilled' ? incomeRes.value : []);
     setAsterLoading(false);
   }, []);
 
   function switchPortfolioMode(mode: PfMode) {
     setPfMode(mode);
-    if (mode === 'aster') {
-      const addr = asterAddrInput.trim();
-      if (addr) loadAsterData(addr);
-      else if (evmAddr) { setAsterAddrInput(evmAddr); loadAsterData(evmAddr); }
-    }
-  }
-
-  async function connectAsterEVM() {
-    const w = window as unknown as { phantom?: { ethereum?: EIP1193 }; ethereum?: EIP1193 };
-    for (const provider of [w.phantom?.ethereum, w.ethereum]) {
-      if (!provider) continue;
-      try {
-        let accs = (await provider.request({ method: 'eth_accounts' })) as string[];
-        if (!accs?.[0]) accs = (await provider.request({ method: 'eth_requestAccounts' })) as string[];
-        if (accs?.[0]) { setAsterAddrInput(accs[0]); loadAsterData(accs[0]); return; }
-      } catch { /* try next */ }
-    }
-    setAsterHint(true);
-    setTimeout(() => setAsterHint(false), 4000);
+    if (mode === 'aster' && asterIncome === null && !asterLoading) loadAsterData();
   }
 
   const aster = useMemo(() => {
-    if (!asterFills) return null;
-    const cutoff = rangeStartMs(range);
-    const closing = asterFills.filter(t => parseFloat(t.realizedPnl ?? '0') !== 0 && (range === 'ALL' || t.time >= cutoff));
-    if (!closing.length) return { closing, recent: [] as AsterTrade[], totalPnl: 0, wins: 0, losses: 0, winRate: '—', bestVal: 0, worstVal: 0, bestT: undefined as AsterTrade | undefined, worstT: undefined as AsterTrade | undefined, cumPts: [] as CumPoint[] };
-    const totalPnl = closing.reduce((s, t) => s + parseFloat(t.realizedPnl!), 0);
-    const wins = closing.filter(t => parseFloat(t.realizedPnl!) > 0).length;
-    const losses = closing.filter(t => parseFloat(t.realizedPnl!) < 0).length;
-    const pnlVals = closing.map(t => parseFloat(t.realizedPnl!));
+    if (!asterIncome) return null;
+    const cutoff = range === 'ALL' ? Date.now() - ASTER_ALL_LOOKBACK_MS : rangeStartMs(range);
+    const closing = asterIncome.filter(e => e.time >= cutoff);
+    if (!closing.length) return { closing, recent: [] as AsterIncomeEntry[], totalPnl: 0, wins: 0, losses: 0, winRate: '—', bestVal: 0, worstVal: 0, bestT: undefined as AsterIncomeEntry | undefined, worstT: undefined as AsterIncomeEntry | undefined, cumPts: [] as CumPoint[] };
+    const totalPnl = closing.reduce((s, e) => s + e.income, 0);
+    const wins = closing.filter(e => e.income > 0).length;
+    const losses = closing.filter(e => e.income < 0).length;
+    const pnlVals = closing.map(e => e.income);
     const bestVal = Math.max(...pnlVals);
     const worstVal = Math.min(...pnlVals);
-    const bestT = closing.find(t => parseFloat(t.realizedPnl!) === bestVal);
-    const worstT = closing.find(t => parseFloat(t.realizedPnl!) === worstVal);
+    const bestT = closing.find(e => e.income === bestVal);
+    const worstT = closing.find(e => e.income === worstVal);
     const sorted = [...closing].sort((a, b) => a.time - b.time);
     let cum = 0;
-    const cumPts: CumPoint[] = sorted.map(t => { cum += parseFloat(t.realizedPnl!); return { t: t.time, v: cum }; });
+    const cumPts: CumPoint[] = sorted.map(e => { cum += e.income; return { t: e.time, v: cum }; });
     const recent = [...closing].sort((a, b) => b.time - a.time).slice(0, 50);
     return { closing, recent, totalPnl, wins, losses, winRate: ((wins / closing.length) * 100).toFixed(1) + '%', bestVal, worstVal, bestT, worstT, cumPts };
-  }, [asterFills, range]);
+  }, [asterIncome, range]);
 
   const asterChart = useMemo(() => buildPnLChartSvg(aster?.cumPts ?? [], aster?.totalPnl), [aster]);
-  const asterDist = useMemo(() => buildDistributionHtml((aster?.closing ?? []).map(t => ({ closedPnl: t.realizedPnl }))), [aster]);
+  const asterDist = useMemo(() => buildDistributionHtml((aster?.closing ?? []).map(e => ({ closedPnl: String(e.income) }))), [aster]);
+
+  // accountWithJoinMargin doesn't return one blended "account leverage" or a
+  // notional-value field directly — derive them from open positions (entry
+  // price, since there's no live mark price in this payload either).
+  const asterDerived = useMemo(() => {
+    if (!asterAccount || asterAccount === 'error') return { ntl: 0, lev: '0.00x' };
+    const positions = asterAccount.positions;
+    const ntl = positions.reduce((s, p) => s + Math.abs(p.positionAmt * p.entryPrice), 0);
+    const lev = positions.length ? (positions.reduce((s, p) => s + p.leverage, 0) / positions.length).toFixed(2) + 'x' : '0.00x';
+    return { ntl, lev };
+  }, [asterAccount]);
 
   // ── Deposit modal helpers ──────────────────────────────────────
   function openDeposit() {
@@ -853,18 +818,11 @@ export default function PortfolioPage() {
         {/* ══ EXTRA MODE (Aster) ══ */}
         <div id="pnl-section-aster" style={pfMode === 'aster' ? undefined : { display: 'none' }}>
           <div className="hl-connect-bar">
-            <input
-              className="hl-addr-input"
-              id="aster-addr-input"
-              placeholder={asterHint ? 'No EVM wallet found — enter address manually' : 'Enter Aster / EVM wallet address (0x…)'}
-              style={asterHint ? { borderColor: 'var(--red)' } : undefined}
-              value={asterAddrInput}
-              onChange={e => setAsterAddrInput(e.target.value)}
-            />
-            <button className="aster-load-btn" onClick={() => { const a = asterAddrInput.trim(); if (a) loadAsterData(a); }}>Load</button>
-            <button className="hl-evm-btn" id="aster-evm-btn" onClick={connectAsterEVM}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><path d="M12 2v20M2 12h20" /></svg>
-              Connect EVM Wallet
+            <div style={{ fontSize: 12, color: 'var(--text3)' }}>
+              Showing the Aster account linked to this app&apos;s Pro API agent — Aster has no public per-address lookup like Hyperliquid, so there&apos;s nothing to type in here.
+            </div>
+            <button className="aster-load-btn" onClick={loadAsterData} disabled={asterLoading}>
+              {asterLoading ? 'Loading…' : '↺ Refresh'}
             </button>
           </div>
 
@@ -875,8 +833,8 @@ export default function PortfolioPage() {
                 <div className="stat-card"><div className="stat-lbl">Win Rate</div><div className="stat-val" id="as-win-rate">{asterLoading ? '…' : aster?.closing.length ? aster.winRate : '—'}</div><div className="stat-sub" id="as-win-sub">{aster?.closing.length ? `${aster.wins}W / ${aster.losses}L` : 'wins / losses'}</div></div>
                 <div className="stat-card"><div className="stat-lbl">Total Trades</div><div className="stat-val" id="as-trades">{asterLoading ? '…' : aster?.closing.length ? aster.closing.length.toLocaleString() : '—'}</div><div className="stat-sub">closed positions</div></div>
                 <div className="stat-card"><div className="stat-lbl">Avg Hold Time</div><div className="stat-val" id="as-hold">—</div><div className="stat-sub">per trade</div></div>
-                <div className="stat-card"><div className="stat-lbl">Best Trade</div><div className="stat-val pos" id="as-best">{asterLoading ? '…' : aster?.closing.length && aster.bestVal ? '+$' + fmt(aster.bestVal) : '—'}</div><div className="stat-sub" id="as-best-sub">{aster?.bestT ? (aster.bestT.symbol ?? '').replace('USDT', '') + ' · ' + fmtDate(aster.bestT.time) : ''}</div></div>
-                <div className="stat-card"><div className="stat-lbl">Worst Trade</div><div className="stat-val neg" id="as-worst">{asterLoading ? '…' : aster?.closing.length && aster.worstVal ? '-$' + fmt(Math.abs(aster.worstVal)) : '—'}</div><div className="stat-sub" id="as-worst-sub">{aster?.worstT ? (aster.worstT.symbol ?? '').replace('USDT', '') + ' · ' + fmtDate(aster.worstT.time) : ''}</div></div>
+                <div className="stat-card"><div className="stat-lbl">Best Trade</div><div className="stat-val pos" id="as-best">{asterLoading ? '…' : aster?.closing.length && aster.bestVal ? '+$' + fmt(aster.bestVal) : '—'}</div><div className="stat-sub" id="as-best-sub">{aster?.bestT ? aster.bestT.symbol + ' · ' + fmtDate(aster.bestT.time) : ''}</div></div>
+                <div className="stat-card"><div className="stat-lbl">Worst Trade</div><div className="stat-val neg" id="as-worst">{asterLoading ? '…' : aster?.closing.length && aster.worstVal ? '-$' + fmt(Math.abs(aster.worstVal)) : '—'}</div><div className="stat-sub" id="as-worst-sub">{aster?.worstT ? aster.worstT.symbol + ' · ' + fmtDate(aster.worstT.time) : ''}</div></div>
               </div>
 
               <div className="charts-row">
@@ -886,7 +844,7 @@ export default function PortfolioPage() {
                     <div className={asterChart.totalCls} id="as-chart-total">{asterChart.total}</div>
                   </div>
                   <svg id="as-pnl-chart-svg" viewBox="0 0 800 200" preserveAspectRatio="none"
-                    dangerouslySetInnerHTML={{ __html: asterFills ? asterChart.svg : '<text x="400" y="105" text-anchor="middle" font-size="11" fill="#4a5568">Load a wallet to see PnL chart</text>' }} />
+                    dangerouslySetInnerHTML={{ __html: asterIncome ? asterChart.svg : '<text x="400" y="105" text-anchor="middle" font-size="11" fill="#4a5568">Loading…</text>' }} />
                 </div>
                 <div className="chart-card dist">
                   <div className="chart-hdr"><div className="chart-title">PnL Distribution</div></div>
@@ -896,37 +854,33 @@ export default function PortfolioPage() {
 
               <div className="trades-card">
                 <div className="trades-title">
-                  <span>Aster Trade History</span>
+                  <span>Aster Realized PnL History</span>
                   <span id="aster-trades-count" style={{ fontSize: 11, fontWeight: 500, color: 'var(--text3)' }}>
-                    {aster?.closing.length ? aster.recent.length + ' of ' + aster.closing.length + ' trades' : ''}
+                    {aster?.closing.length ? aster.recent.length + ' of ' + aster.closing.length + ' events' : ''}
                   </span>
                 </div>
                 <div id="aster-trades-body">
                   {asterLoading ? (
                     <div className="hl-placeholder">Loading…</div>
-                  ) : !asterFills ? (
-                    <div className="hl-placeholder">Enter your Aster address above to view trading history.</div>
+                  ) : !asterIncome ? (
+                    <div className="hl-placeholder">—</div>
                   ) : !aster?.recent.length ? (
-                    <div className="hl-placeholder">No trade history found for this address.</div>
+                    <div className="hl-placeholder">No realized PnL in this period.</div>
                   ) : (
                     <>
-                      <div className="trades-grid trades-hdr" style={{ gridTemplateColumns: '1fr 64px 88px 70px 88px' }}><span>Token</span><span>Side</span><span>Price</span><span>Size</span><span>PnL</span></div>
-                      {aster.recent.map((trade, i) => {
-                        const pnl = parseFloat(trade.realizedPnl ?? '0');
-                        const px = parseFloat(trade.price ?? '0');
-                        const qty = parseFloat(trade.qty ?? trade.quoteQty ?? '0');
-                        const isLong = (trade.side ?? '').toUpperCase() === 'BUY';
-                        const sym = (trade.symbol ?? '').replace('USDT', '').replace('PERP', '');
-                        return (
-                          <div className="trades-grid trade-row" style={{ gridTemplateColumns: '1fr 64px 88px 70px 88px' }} key={i}>
-                            <div className="trade-coin">{sym}</div>
-                            <div><span className={`trade-dir ${isLong ? 'long' : 'short'}`}>{isLong ? 'Long' : 'Short'}</span></div>
-                            <div className="trade-cell">${fmt(px, px < 1 ? 4 : 2)}</div>
-                            <div className="trade-cell">{fmt(qty, qty < 1 ? 4 : 2)}</div>
-                            <div className={`trade-pnl ${pCls(pnl)}`}>{pnl >= 0 ? '+' : ''}${fmt(pnl)}</div>
-                          </div>
-                        );
-                      })}
+                      {/* Aster's income endpoint gives pnl + symbol + time per closed
+                          position, not per-fill entry/exit price like HL's userFillsByTime
+                          — /fapi/v3/userTrades would add that, but requires a mandatory
+                          per-symbol query, so it can't answer "all of this account's trades"
+                          in one call the way this table needs. */}
+                      <div className="trades-grid trades-hdr" style={{ gridTemplateColumns: '1fr 100px 120px' }}><span>Token</span><span>PnL</span><span>Date</span></div>
+                      {aster.recent.map((entry, i) => (
+                        <div className="trades-grid trade-row" style={{ gridTemplateColumns: '1fr 100px 120px' }} key={i}>
+                          <div className="trade-coin">{entry.symbol || '—'}</div>
+                          <div className={`trade-pnl ${pCls(entry.income)}`}>{entry.income >= 0 ? '+' : ''}${fmt(entry.income)}</div>
+                          <div className="trade-cell">{fmtDate(entry.time)}</div>
+                        </div>
+                      ))}
                     </>
                   )}
                 </div>
@@ -940,7 +894,7 @@ export default function PortfolioPage() {
                   <div className="share-logo">RDO<span style={{ color: '#f59e0b' }}>ONE</span></div>
                 </div>
                 <div id="aster-share-content">
-                  <div className="share-placeholder">Load an Aster wallet to see your PnL card.</div>
+                  <div className="share-placeholder">Aster share card not built yet — see the stats and chart below instead.</div>
                 </div>
               </div>
 
@@ -949,30 +903,30 @@ export default function PortfolioPage() {
                   <span className="perps-val-title" style={{ color: '#f59e0b' }}>Aster Perps</span>
                   <span className="perps-val-live"><span style={{ width: 5, height: 5, borderRadius: '50%', background: '#f59e0b', display: 'inline-block', animation: 'pulse 2s ease-in-out infinite' }}></span> LIVE</span>
                 </div>
-                <div className="perps-val-eq" id="as-pv-equity">{asterLoading ? '…' : asterAccount && asterAccount !== 'error' ? '$' + fmt(asterAccount.equity) : '—'}</div>
-                <div className="perps-val-sub">Unrealized PnL: <span id="as-pv-upnl" style={{ fontWeight: 600, ...(asterAccount && asterAccount !== 'error' ? { color: asterAccount.upnl > 0 ? 'var(--green)' : asterAccount.upnl < 0 ? 'var(--red)' : 'var(--text3)' } : {}) }}>{asterLoading ? '…' : asterAccount && asterAccount !== 'error' ? (asterAccount.upnl >= 0 ? '+' : '') + '$' + fmt(asterAccount.upnl) : '—'}</span></div>
+                <div className="perps-val-eq" id="as-pv-equity">{asterLoading ? '…' : asterAccount && asterAccount !== 'error' ? '$' + fmt(asterAccount.totalMarginBalance) : '—'}</div>
+                <div className="perps-val-sub">Unrealized PnL: <span id="as-pv-upnl" style={{ fontWeight: 600, ...(asterAccount && asterAccount !== 'error' ? { color: asterAccount.totalUnrealizedProfit > 0 ? 'var(--green)' : asterAccount.totalUnrealizedProfit < 0 ? 'var(--red)' : 'var(--text3)' } : {}) }}>{asterLoading ? '…' : asterAccount && asterAccount !== 'error' ? (asterAccount.totalUnrealizedProfit >= 0 ? '+' : '') + '$' + fmt(asterAccount.totalUnrealizedProfit) : '—'}</span></div>
                 <div className="perps-val-rows">
-                  <div className="perps-val-row"><span>Position Value</span><span id="as-pv-ntl">{asterLoading ? '…' : asterAccount && asterAccount !== 'error' ? '$' + fmt(asterAccount.ntl) : '—'}</span></div>
-                  <div className="perps-val-row"><span>Available Margin</span><span id="as-pv-avail">{asterLoading ? '…' : asterAccount && asterAccount !== 'error' ? '$' + fmt(asterAccount.avail) : '—'}</span></div>
-                  <div className="perps-val-row"><span>Margin Used</span><span id="as-pv-margin">{asterLoading ? '…' : asterAccount && asterAccount !== 'error' ? '$' + fmt(asterAccount.margin) : '—'}</span></div>
-                  <div className="perps-val-row"><span>Account Leverage</span><span id="as-pv-lev">{asterLoading ? '…' : asterAccount && asterAccount !== 'error' ? asterAccount.lev : '—'}</span></div>
+                  <div className="perps-val-row"><span>Position Value</span><span id="as-pv-ntl">{asterLoading ? '…' : asterAccount && asterAccount !== 'error' ? '$' + fmt(asterDerived.ntl) : '—'}</span></div>
+                  <div className="perps-val-row"><span>Available Margin</span><span id="as-pv-avail">{asterLoading ? '…' : asterAccount && asterAccount !== 'error' ? '$' + fmt(asterAccount.availableBalance) : '—'}</span></div>
+                  <div className="perps-val-row"><span>Margin Used</span><span id="as-pv-margin">{asterLoading ? '…' : asterAccount && asterAccount !== 'error' ? '$' + fmt(asterAccount.totalPositionInitialMargin + asterAccount.totalOpenOrderInitialMargin) : '—'}</span></div>
+                  <div className="perps-val-row"><span>Account Leverage</span><span id="as-pv-lev">{asterLoading ? '…' : asterAccount && asterAccount !== 'error' ? asterDerived.lev : '—'}</span></div>
                 </div>
                 <div id="as-pv-positions-wrap" style={{ marginTop: 12, display: asterAccount && asterAccount !== 'error' && asterAccount.positions.length ? 'block' : 'none' }}>
                   <div className="perps-val-pos-hdr">Open Positions</div>
                   <div id="as-pv-positions">
                     {asterAccount && asterAccount !== 'error' && asterAccount.positions.slice(0, 6).map((p, i) => (
                       <div className="pv-pos-row" key={i}>
-                        <span><span className="pv-pos-coin">{p.sym}</span><span className={`pv-pos-dir ${p.isLong ? 'long' : 'short'}`}>{p.isLong ? 'LONG' : 'SHORT'}</span></span>
-                        <span className={`pv-pos-pnl ${pCls(p.upnl)}`}>{p.upnl >= 0 ? '+' : ''}${fmt(p.upnl)}</span>
+                        <span><span className="pv-pos-coin">{p.symbol}</span><span className={`pv-pos-dir ${p.positionAmt > 0 ? 'long' : 'short'}`}>{p.positionAmt > 0 ? 'LONG' : 'SHORT'}</span></span>
+                        <span className={`pv-pos-pnl ${pCls(p.unrealizedProfit)}`}>{p.unrealizedProfit >= 0 ? '+' : ''}${fmt(p.unrealizedProfit)}</span>
                       </div>
                     ))}
                   </div>
                 </div>
                 <div className="perps-val-placeholder" id="as-pv-placeholder" style={{ display: asterAccount && asterAccount !== 'error' ? 'none' : undefined }}>
                   {asterAccount === 'error' ? (
-                    <>Could not load Aster portfolio.<br /><span style={{ fontSize: 10, color: 'var(--text3)' }}>Collateral: USDT · Max leverage: 200x</span></>
+                    <>Could not load Aster portfolio — check ASTER_SIGNER_PRIVATE_KEY is set and the agent is approved.<br /><span style={{ fontSize: 10, color: 'var(--text3)' }}>Collateral: USDT · Max leverage: 200x</span></>
                   ) : (
-                    <>Enter your Aster address to see perps portfolio.<br /><span style={{ fontSize: 10, color: 'var(--text3)', marginTop: 4, display: 'block' }}>Collateral: USDT &nbsp;·&nbsp; Max leverage: 200x</span></>
+                    <>Loading Aster portfolio…<br /><span style={{ fontSize: 10, color: 'var(--text3)', marginTop: 4, display: 'block' }}>Collateral: USDT &nbsp;·&nbsp; Max leverage: 200x</span></>
                   )}
                 </div>
                 <button className="perps-dep-btn" style={{ background: '#f59e0b', color: '#1a1044' }} onClick={() => window.open('https://www.asterdex.com', '_blank', 'noopener')}>
