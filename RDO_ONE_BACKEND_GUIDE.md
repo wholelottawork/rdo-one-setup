@@ -226,6 +226,182 @@ All symbols must be passed as `BTCUSDT`, `NVDAUSDT`, etc.
 
 ---
 
+### 4.3 LI.FI (Transfer page)
+
+**What it is:** LI.FI is a cross-chain bridge + DEX aggregator. RDO ONE uses it on the Transfer page (`public/transfer.html`) to swap and bridge tokens across chains after withdrawing from HL or Aster.
+
+**Base URL:** `https://li.quest`  
+**Via backend:** `/api/lifi-api/*` → `/lifi-api/*` (dev proxy)  
+**Auth:** None required for quote/route endpoints (public API)
+
+**The only LI.FI endpoint used:**
+```
+GET /lifi-api/v1/quote
+```
+
+Query parameters:
+| Param | Example | Description |
+|---|---|---|
+| `fromChain` | `42161` | Source chain ID |
+| `toChain` | `1` | Destination chain ID |
+| `fromToken` | `0xaf88d065...` | Source token contract address |
+| `toToken` | `0xa0b86991...` | Destination token contract address |
+| `fromAmount` | `5000000` | Amount in token's smallest unit (raw, no decimals) |
+| `fromAddress` | `0xabc...` | User's wallet address (for routing) |
+| `toAddress` | `0xabc...` | Recipient address (can differ from fromAddress) |
+| `slippage` | `0.005` | 0.5% slippage tolerance |
+
+**Quote response — fields the app uses:**
+```json
+{
+  "transactionRequest": {
+    "to": "0x...",       // LI.FI router contract
+    "data": "0x...",     // encoded calldata — send as-is
+    "value": "0",        // ETH value if bridging native
+    "gasLimit": "350000"
+  },
+  "estimate": {
+    "toAmount": "4985000",          // how much recipient gets (raw)
+    "feeCosts": [{ "amountUSD": "1.20" }],
+    "gasCosts": [{ "amountUSD": "0.80" }],
+    "executionDuration": 45,         // seconds
+    "approvalAddress": "0x..."       // spender for ERC20 approve
+  },
+  "action": {
+    "fromToken": { "address": "0x...", "decimals": 6 },
+    "toToken":   { "symbol": "ETH",   "decimals": 18 },
+    "fromAmount": "5000000"
+  },
+  "includedSteps": [
+    { "toolDetails": { "name": "Uniswap" }, "type": "swap" },
+    { "toolDetails": { "name": "Stargate" }, "type": "cross" }
+  ]
+}
+```
+
+**Execution flow (in browser, no backend needed):**
+1. Call `/lifi-api/v1/quote` → get `transactionRequest`
+2. Check ERC20 allowance: `eth_call` → `allowance(owner, approvalAddress)`
+3. If insufficient: `eth_sendTransaction` → `approve(approvalAddress, fromAmount)` → poll receipt
+4. `eth_sendTransaction` with the `transactionRequest` data → poll receipt
+
+**Supported chains (hardcoded in transfer.html):**
+
+| Chain | Chain ID | Tokens |
+|---|---|---|
+| Arbitrum | 42161 | ETH, USDC, USDT, ARB, WBTC |
+| Ethereum | 1 | ETH, USDC, USDT, WBTC |
+| Base | 8453 | ETH, USDC, cbBTC |
+| Optimism | 10 | ETH, USDC, USDT, OP |
+| Polygon | 137 | POL, USDC, USDT, WBTC |
+| BNB Chain | 56 | BNB, USDT, USDC, ETH |
+| Avalanche | 43114 | AVAX, USDC, USDT |
+
+**Key token addresses (Arbitrum — most relevant):**
+```
+USDC: 0xaf88d065e77c8cc2239327c5edb3a432268e5831
+USDT: 0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9
+ETH:  0x0000000000000000000000000000000000000000 (native)
+WBTC: 0x2f2a2543b76a4166549f7aab2e75bef0aefc5b0f
+ARB:  0x912ce59144191c1204e64559fe8253a0e49e6548
+```
+
+---
+
+### 4.4 Transfer Page — Three Tabs
+
+**Tab 1: Withdraw**
+
+Withdraw from HL (USDC) or Aster (USDT) and receive any token on any chain.
+
+Flow when destination is USDC on Arbitrum (same token, no swap):
+```
+1. Sign EIP-712 withdrawal in wallet → POST /hl/exchange (type: withdraw3)
+   OR  sign Aster HMAC withdrawal  → POST /aster-fapi/v1/withdraw
+2. Done — funds arrive on Arbitrum in ~2 min
+```
+
+Flow when destination is a different token or chain (LI.FI involved):
+```
+1. Withdraw from HL/Aster → wallet receives USDC/USDT on Arbitrum
+2. Poll wallet balance every 12s until USDC/USDT arrives (up to 6-10 min)
+3. GET /lifi-api/v1/quote → get route for USDC/USDT → target token/chain
+4. ERC20 approve (if needed) → eth_sendTransaction with LI.FI calldata
+5. Poll tx receipt → done
+```
+
+**Tab 2: Send**
+
+Arbitrary cross-chain transfer using LI.FI only. Funds come from the user's connected wallet (not HL or Aster).
+
+Flow:
+```
+1. User picks from chain/token, to chain/token, amount, destination address
+2. GET /lifi-api/v1/quote (debounced 650ms) → show estimated receive amount, fee, gas, route, ETA
+3. User clicks Send → ERC20 approve if needed → eth_sendTransaction
+```
+
+Quote is shown in real time as the user types. The send button is disabled until a valid quote exists.
+
+**Tab 3: Between Accounts**
+
+One-click fully automated transfer between HL and Aster accounts. Handles the full sequence.
+
+HL → Aster flow (4 steps):
+```
+1. Withdraw USDC from Hyperliquid (EIP-712 signed, POST /hl/exchange)
+2. Poll wallet every 12s until USDC arrives on Arbitrum (~2-6 min)
+3. GET /lifi-api/v1/quote for USDC → USDT on Arbitrum → swap via LI.FI
+4. GET Aster deposit address (HMAC signed) → send USDT to it via ERC20 transfer
+```
+
+Aster → HL flow (4 steps):
+```
+1. Withdraw USDT from Aster (HMAC signed, POST /aster-fapi/v1/withdraw)
+2. Poll wallet every 12s until USDT arrives on Arbitrum (~5-10 min)
+3. GET /lifi-api/v1/quote for USDT → USDC on Arbitrum → swap via LI.FI
+4. Hyperliquid auto-detects USDC on Arbitrum and credits the account
+```
+
+User signs 2-3 wallet transactions total (withdrawal EIP-712 + ERC20 approve + swap tx).
+
+**Aster API authentication (used in Transfer page):**
+
+Aster uses HMAC-SHA256 signing — all signed in browser using `crypto.subtle`, no server involved:
+```js
+// Build query string with timestamp
+const qs = `asset=USDT&amount=100&address=0x...&timestamp=${Date.now()}`;
+
+// Import secret key
+const k = await crypto.subtle.importKey('raw', enc.encode(secret),
+  { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+
+// Sign and hex-encode
+const sig = await crypto.subtle.sign('HMAC', k, enc.encode(qs));
+const hex = Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2,'0')).join('');
+
+// Request
+POST /aster-fapi/v1/withdraw?${qs}&signature=${hex}
+Headers: { 'X-MBX-APIKEY': apiKey }
+```
+
+Aster deposit address endpoint:
+```
+GET /aster-fapi/v1/capital/deposit/address?coin=USDT&network=ARBITRUM&timestamp=...&signature=...
+Headers: { 'X-MBX-APIKEY': apiKey }
+Response: { address: "0x..." }
+```
+
+**Progress tracker UI:**
+
+All multi-step flows show a live step tracker with animated dots:
+- Spinning dot = step in progress
+- Green check = step complete
+- Red X = step failed
+- Each step has a real-time status message that updates as it progresses
+
+---
+
 ## 5. Backend Routes (All Routes)
 
 ### REST — all prefixed with `/api/` in production
