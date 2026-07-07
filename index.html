@@ -31,6 +31,9 @@
         <!-- backdrop for mode popup -->
         <div class="mode-backdrop hidden" id="modeBackdrop" onclick="window.rdo.toggleModeHelp()"></div>
 
+        <!-- backdrop for market dropdown -->
+        <div class="mode-backdrop hidden" id="mktBackdrop"></div>
+
         <!-- mode info popup -->
         <div class="mode-popup hidden" id="modePopup">
           <div class="mode-popup-row">
@@ -78,6 +81,11 @@
       <div id="mktDropdown" class="mkt-dropdown hidden">
         <input id="mktSearch" class="mkt-search" placeholder="Search market..." autocomplete="off" data-i18n="searchMarket" data-i18n-attr="placeholder" />
         <div class="mkt-list" id="mktList"></div>
+        <div class="mkt-hints">
+          <span class="mkt-hint"><kbd>↑↓</kbd> Navigate</span>
+          <span class="mkt-hint"><kbd>Enter</kbd> Select</span>
+          <span class="mkt-hint"><kbd>Esc</kbd> Close</span>
+        </div>
       </div>
     </div>
 
@@ -103,6 +111,7 @@
     <div class="hdr-right">
       <span id="balanceDisplay" class="hdr-balance hidden">$0.00</span>
       <button id="depositBtn" class="deposit-btn hidden" onclick="window.rdo.openDeposit()" data-i18n="deposit">DEPOSIT</button>
+      <button id="rubBtn" class="rub-btn hidden" onclick="window.rdo.openOnramp()">₽ RUB</button>
       <div class="lang-wrap">
         <button class="lang-btn" id="langBtn" onclick="window.rdo.toggleLang()" aria-label="Language">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><ellipse cx="12" cy="12" rx="4" ry="10"/><path d="M2 12h20"/></svg>
@@ -113,6 +122,8 @@
           <button class="lang-option" data-lang="zh">中文</button>
         </div>
       </div>
+      <!-- backdrop for language dropdown -->
+      <div class="mode-backdrop hidden" id="langBackdrop"></div>
       <button id="walletBtn" class="wallet-btn" onclick="window.rdo.connectWallet()" data-i18n="connect">Connect</button>
     </div>
   </header>
@@ -466,6 +477,83 @@
 
     <div class="modal-note">
       Wire up <code>@lifi/widget</code> in <code>src/deposit.js</code> to enable one-click swaps from any chain.
+    </div>
+  </div>
+</div>
+
+<!-- ══ WALLET CONNECT MODAL ══════════════════════════════════════ -->
+<div id="walletModal" class="modal-overlay hidden" onclick="window.rdo.closeWalletModal(event)">
+  <div class="modal-box wm-box">
+    <div class="modal-header" style="padding:16px 18px 0">
+      <div>
+        <div class="modal-title">CONNECT WALLET</div>
+        <div class="modal-sub">Choose how to connect</div>
+      </div>
+      <span class="modal-close" onclick="window.rdo.closeWalletModalForce()">✕</span>
+    </div>
+    <div class="wm-options">
+      <button class="wm-opt" onclick="window.rdo.connectExtension()">
+        <div class="wm-opt-icon">💻</div>
+        <div class="wm-opt-body">
+          <div class="wm-opt-name">Browser Extension</div>
+          <div class="wm-opt-sub">MetaMask · Phantom</div>
+        </div>
+        <span class="wm-opt-arrow">›</span>
+      </button>
+      <button class="wm-opt wm-opt-featured" onclick="window.rdo.connectAntarctic()">
+        <div class="wm-opt-icon wm-opt-icon-aw">🐧</div>
+        <div class="wm-opt-body">
+          <div class="wm-opt-name">Antarctic Wallet</div>
+          <div class="wm-opt-sub">Scan QR with mobile app</div>
+        </div>
+        <span class="wm-opt-badge">Recommended</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ RUB ON-RAMP MODAL ════════════════════════════════════════ -->
+<div id="onrampModal" class="modal-overlay hidden" onclick="window.rdo.closeOnramp(event)">
+  <div class="modal-box" style="max-width:400px">
+    <div class="modal-header" style="padding:16px 18px 0">
+      <div>
+        <div class="modal-title">DEPOSIT RUB → PERPS</div>
+        <div class="modal-sub">Купи USDT за рубли и отправь на перпы</div>
+      </div>
+      <span class="modal-close" onclick="window.rdo.closeOnrampForce()">✕</span>
+    </div>
+    <div class="onramp-body">
+      <!-- address -->
+      <div class="onramp-addr-box">
+        <div class="onramp-addr-label">Адрес Antarctic Wallet (USDT)</div>
+        <div class="onramp-addr-row">
+          <span class="onramp-address" id="onrampAddress">—</span>
+          <button class="onramp-copy-btn" id="onrampCopyBtn">Copy</button>
+        </div>
+      </div>
+
+      <!-- steps -->
+      <div class="onramp-steps">
+        <div class="onramp-step"><span class="onramp-num">1</span>Купи USDT за рубли на UTORG или Mercuryo</div>
+        <div class="onramp-step"><span class="onramp-num">2</span>USDT придёт в Antarctic Wallet (~5 мин)</div>
+        <div class="onramp-step"><span class="onramp-num">3</span>Нажми DEPOSIT → LI.FI для отправки на перпы</div>
+      </div>
+
+      <!-- provider buttons -->
+      <div class="onramp-providers">
+        <button class="onramp-provider-btn onramp-utorg" id="onrampUtorgBtn">
+          <span class="onramp-prov-name">UTORG</span>
+          <span class="onramp-prov-tag">Рекомендуем для РФ</span>
+        </button>
+        <button class="onramp-provider-btn onramp-mercuryo" id="onrampMercuryoBtn">
+          <span class="onramp-prov-name">Mercuryo</span>
+          <span class="onramp-prov-tag">Альтернатива</span>
+        </button>
+      </div>
+
+      <div class="onramp-note">
+        После покупки используй <strong>DEPOSIT → LI.FI</strong> для перевода USDT на маржу
+      </div>
     </div>
   </div>
 </div>

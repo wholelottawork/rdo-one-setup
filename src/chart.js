@@ -8,7 +8,7 @@ import {
 // ── theme ─────────────────────────────────────────────────────
 const THEME = {
   layout: {
-    background: { color: '#0f1a1e' },
+    background: { color: '#000000' },
     textColor:  '#878c8f',
     fontFamily: "'Inter', system-ui, sans-serif",
     fontSize:   11,
@@ -33,11 +33,11 @@ const THEME = {
     },
   },
   rightPriceScale: {
-    borderColor:    '#273035',
+    borderColor:    '#1f1f1f',
     scaleMargins:   { top: 0.06, bottom: 0.04 },
   },
   timeScale: {
-    borderColor:    '#273035',
+    borderColor:    '#1f1f1f',
     timeVisible:    true,
     secondsVisible: false,
     barSpacing:     8,

@@ -1,5 +1,10 @@
 import { showToast } from './toast.js';
-import { connectWallet, getEVMAddress, getEVMProvider } from './wallet.js';
+import {
+  connectWallet, connectExtension, connectAntarctic,
+  closeWalletModal, closeWalletModalForce,
+  getEVMAddress, getEVMProvider,
+} from './wallet.js';
+import { openOnramp, closeOnramp, closeOnrampForce } from './onramp.js';
 import {
   loadBalance, getPositions, getMarketPrice,
   getCandles, openPosition, closePosition, cancelOrder,
@@ -370,20 +375,50 @@ function bindMarketBtn() {
   const dd   = document.getElementById('mktDropdown');
   const srch = document.getElementById('mktSearch');
 
+  const backdrop = document.getElementById('mktBackdrop');
+
+  function openDropdown() {
+    dd.classList.remove('hidden');
+    backdrop.classList.remove('hidden');
+    srch.focus();
+    document.getElementById('modePopup')?.classList.add('hidden');
+    document.getElementById('modeBackdrop')?.classList.add('hidden');
+  }
+
   btn.addEventListener('click', e => {
     e.stopPropagation();
-    dd.classList.toggle('hidden');
-    if (!dd.classList.contains('hidden')) {
-      srch.focus();
-      // Close mode help popup if open
-      document.getElementById('modePopup')?.classList.add('hidden');
-    }
+    if (dd.classList.contains('hidden')) openDropdown();
+    else closeDropdown();
   });
+
+  backdrop.addEventListener('click', () => closeDropdown());
 
   srch.addEventListener('input', () => {
     const q       = srch.value.toLowerCase();
     const markets = currentMode === 'aster' ? ASTER_MARKETS : HL_MARKETS;
     renderMarketList(markets.filter(s => s.toLowerCase().includes(q)), document.getElementById('mktList'));
+    focusedIdx = -1;
+  });
+
+  let focusedIdx = -1;
+
+  function getItems() { return [...document.getElementById('mktList').querySelectorAll('.mkt-item')]; }
+
+  function setFocus(idx) {
+    const items = getItems();
+    items.forEach(el => el.classList.remove('mkt-focused'));
+    if (idx < 0 || idx >= items.length) { focusedIdx = -1; return; }
+    focusedIdx = idx;
+    items[idx].classList.add('mkt-focused');
+    items[idx].scrollIntoView({ block: 'nearest' });
+  }
+
+  srch.addEventListener('keydown', e => {
+    const items = getItems();
+    if (e.key === 'ArrowDown')  { e.preventDefault(); setFocus(Math.min(focusedIdx + 1, items.length - 1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setFocus(Math.max(focusedIdx - 1, 0)); }
+    else if (e.key === 'Enter' && focusedIdx >= 0) { selectMarket(items[focusedIdx].dataset.sym); closeDropdown(); }
+    else if (e.key === 'Escape') closeDropdown();
   });
 
   document.addEventListener('click', e => {
@@ -393,6 +428,7 @@ function bindMarketBtn() {
 
 function closeDropdown() {
   document.getElementById('mktDropdown').classList.add('hidden');
+  document.getElementById('mktBackdrop').classList.add('hidden');
   document.getElementById('mktSearch').value = '';
   rebuildDropdown();
 }
@@ -866,23 +902,30 @@ function fmtLarge(n) {
 // ── Language ──────────────────────────────────────────────────
 function initLang() {
   applyTranslations();
-  const dd = document.getElementById('langDropdown');
+  const dd  = document.getElementById('langDropdown');
+  const bdp = document.getElementById('langBackdrop');
   if (!dd) return;
   highlightLangOption();
+  const closeLang = () => { dd.classList.add('hidden'); bdp?.classList.add('hidden'); };
   dd.querySelectorAll('.lang-option').forEach(btn => {
     btn.addEventListener('click', () => {
       setLang(btn.dataset.lang);
       highlightLangOption();
-      dd.classList.add('hidden');
+      closeLang();
       buildMarketDropdown();
     });
   });
+  bdp?.addEventListener('click', closeLang);
   document.addEventListener('click', e => {
-    if (!e.target.closest('.lang-wrap')) dd.classList.add('hidden');
+    if (!e.target.closest('.lang-wrap') && e.target !== bdp) closeLang();
   });
 }
 function toggleLangDropdown() {
-  document.getElementById('langDropdown')?.classList.toggle('hidden');
+  const dd  = document.getElementById('langDropdown');
+  const bdp = document.getElementById('langBackdrop');
+  const isHidden = dd?.classList.contains('hidden');
+  dd?.classList.toggle('hidden');
+  bdp?.classList.toggle('hidden', !isHidden);
 }
 function highlightLangOption() {
   const lang = getLang();
@@ -901,8 +944,15 @@ window.rdo = {
   submitTrade,
   closePos,
   cancelOrd,
-  openDeposit:  openDepositModal,
-  closeDeposit: closeDepositModal,
+  openDeposit:       openDepositModal,
+  closeDeposit:      closeDepositModal,
+  connectExtension,
+  connectAntarctic,
+  closeWalletModal,
+  closeWalletModalForce,
+  openOnramp,
+  closeOnramp,
+  closeOnrampForce,
   connectX() {
     const btn = document.getElementById('xtConnectBtn');
     if (btn) { btn.textContent = 'Connected'; btn.disabled = true; }
