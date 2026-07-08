@@ -349,6 +349,42 @@ export async function approveAsterAgent(userAddress: string, signer: Signer): Pr
 }
 
 /**
+ * Best-effort check of whether `userAddress` has already approved our shared
+ * agent. Aster has NO dedicated "is this agent approved?" endpoint — confirmed
+ * against the V3 docs, whose only agent endpoint is registerAndApproveAgent —
+ * so we infer it by probing a cheap signed read: if accountWithJoinMargin
+ * returns a real snapshot, our agent can sign for this user (→ approved); a
+ * null result means either not-approved or a transient error, which callers
+ * treat the same way (offer approval). Reuses the same call the portfolio
+ * loads anyway, so it adds no extra request weight when wired into that path.
+ */
+export async function isAsterAgentApproved(userAddress: string): Promise<boolean> {
+  const account = await getAsterAccount(userAddress);
+  return account !== null;
+}
+
+/**
+ * Check-then-approve wrapper: only prompts the user's wallet for the on-chain
+ * approval signature when the agent isn't already approved for `userAddress`.
+ * This is what makes approval a "one time, and again only if needed" action
+ * instead of a button the user must click on every visit. `getSigner` is a
+ * callback (rather than a Signer) so the caller can lazily do wallet-side
+ * prep — switching the wallet to BSC, building the ethers signer — ONLY on
+ * the branch that actually needs to sign, never when already approved.
+ */
+export async function ensureAsterAgentApproved(
+  userAddress: string,
+  getSigner: () => Promise<Signer>,
+): Promise<{ ok: boolean; alreadyApproved: boolean; message: string }> {
+  if (await isAsterAgentApproved(userAddress)) {
+    return { ok: true, alreadyApproved: true, message: 'Agent already approved' };
+  }
+  const signer = await getSigner();
+  const result = await approveAsterAgent(userAddress, signer);
+  return { ok: result.ok, alreadyApproved: false, message: result.message };
+}
+
+/**
  * User Data Stream (listenKey) lifecycle — POST to start, PUT to keepalive
  * (required every ~60min or the stream expires), DELETE to close. This is
  * the alternative Aster's own docs recommend over REST polling: once

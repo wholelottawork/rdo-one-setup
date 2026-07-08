@@ -4,17 +4,18 @@ import './portfolio.css';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "@/lib/i18n";
+import { useWallet, getEVMProvider } from "@/lib/wallet";
+import { useShell } from "@/app/_components/ShellContext";
 import {
   getPhantomSolana,
   loadSolanaPortfolio,
   type SolAsset,
 } from "@/lib/solana";
 import { loadArbitrumBalances, type ArbBalances } from "@/lib/arbitrum";
-import { getEVMProvider } from "@/lib/wallet";
 import {
   getAsterAccount,
   getAsterIncomeHistory,
-  approveAsterAgent,
+  ensureAsterAgentApproved,
   type AsterAccountInfo,
   type AsterIncomeEntry,
 } from "@/lib/aster";
@@ -47,7 +48,6 @@ const HL_API = "/api/hl/info";
 const ASTER_ALL_LOOKBACK_MS = 365 * 24 * 60 * 60 * 1000;
 
 type Range = "7D" | "30D" | "90D" | "ALL";
-type PfMode = "hl" | "aster";
 
 interface EIP1193 {
   request: (a: { method: string; params?: unknown[] }) => Promise<unknown>;
@@ -67,6 +67,15 @@ interface PerpsState {
 export default function PortfolioPage() {
   const { t } = useTranslation();
 
+  // ── ONE global wallet + ONE global BASIC/EXTRA mode ────────────
+  // The whole app shares a single EVM wallet (useWallet) and a single mode
+  // switch (the header's, via ShellContext). The portfolio no longer has its
+  // own EVM connect flow or its own BASIC/EXTRA toggle — it just reads these.
+  // Aliased to the local names this file already uses everywhere so the reads
+  // below stay unchanged; only the connect/disconnect/switch handlers differ.
+  const { address: evmAddr, connect, disconnect } = useWallet();
+  const { mode: pfMode } = useShell();
+
   // ── Wallet / assets state ──────────────────────────────────────
   const [pubkey, setPubkey] = useState<string | null>(null);
   const [installHint, setInstallHint] = useState(false);
@@ -74,12 +83,9 @@ export default function PortfolioPage() {
   const [assets, setAssets] = useState<SolAsset[] | null>(null);
   const [assetsError, setAssetsError] = useState<string | null>(null);
   const [chipCopied, setChipCopied] = useState(false);
-  const [evmAddr, setEvmAddr] = useState<string | null>(null);
-  const [evmSource, setEvmSource] = useState<string>("Wallet");
   const [evmBal, setEvmBal] = useState<
     ArbBalances | "loading" | "error" | null
   >(null);
-  const [evmHintMsg, setEvmHintMsg] = useState<string | null>(null);
   const [netBtn, setNetBtn] = useState<
     "idle" | "added" | "failed" | "nowallet"
   >("idle");
@@ -91,7 +97,6 @@ export default function PortfolioPage() {
   const [hlLoading, setHlLoading] = useState(false);
   const [hlError, setHlError] = useState<string | null>(null);
   const [range, setRange] = useState<Range>("ALL");
-  const [pfMode, setPfMode] = useState<PfMode>("hl");
   const [perps, setPerps] = useState<PerpsState | "loading" | "error" | null>(
     null,
   );
@@ -196,119 +201,26 @@ export default function PortfolioPage() {
     }
   }
 
-  // ── EVM detect/connect (setEVMAddr / autoDetectEVM / connectEVM) ─
-  const setEVMAddress = useCallback(
-    (addr: string, source: string) => {
-      setEvmAddr(addr);
-      setEvmSource(source);
-      setHlAddrInput(addr);
-      loadHLData(addr);
-      setEvmBal("loading");
-      loadArbitrumBalances(addr)
-        .then(setEvmBal)
-        .catch(() => setEvmBal("error"));
-    },
-    [loadHLData],
-  );
-
-  const clearEVMAddr = useCallback(() => {
-    setEvmAddr(null);
-    setHlAddrInput("");
-    setEvmBal(null);
-  }, []);
-
-  const autoDetectEVM = useCallback(async () => {
-    const w = window as unknown as {
-      phantom?: { ethereum?: EIP1193 };
-      ethereum?: EIP1193;
-    };
-    const phEvm = w.phantom?.ethereum;
-    if (phEvm) {
-      try {
-        let accs = (await phEvm.request({
-          method: "eth_accounts",
-        })) as string[];
-        if (!accs?.[0])
-          accs = (await phEvm.request({
-            method: "eth_requestAccounts",
-          })) as string[];
-        if (accs?.[0]) {
-          setEVMAddress(accs[0], "Phantom");
-          return;
-        }
-      } catch {
-        /* EVM not configured in Phantom — fall through */
-      }
-    }
-    const prov = w.ethereum;
-    if (prov && !prov.isPhantom) {
-      try {
-        const accs = (await prov.request({
-          method: "eth_accounts",
-        })) as string[];
-        if (accs?.[0]) {
-          setEVMAddress(accs[0], "Wallet");
-          return;
-        }
-      } catch {
-        /* silent */
-      }
-    }
-  }, [setEVMAddress]);
-
-  async function connectEVM() {
-    const w = window as unknown as {
-      phantom?: { ethereum?: EIP1193 };
-      ethereum?: EIP1193;
-    };
-    const phEvm = w.phantom?.ethereum;
-    if (phEvm) {
-      try {
-        let accs = (await phEvm.request({
-          method: "eth_accounts",
-        })) as string[];
-        if (!accs?.[0])
-          accs = (await phEvm.request({
-            method: "eth_requestAccounts",
-          })) as string[];
-        if (accs?.[0]) {
-          setEVMAddress(accs[0], "Phantom");
-          return;
-        }
-      } catch (e) {
-        if ((e as { code?: number }).code !== 4001)
-          evmHint(
-            "Enable EVM in Phantom → Settings → Networks, then try again.",
-          );
-        return;
-      }
-    }
-    const provider = w.ethereum;
-    if (!provider) {
-      evmHint(
-        "No EVM wallet found — install MetaMask or Rabby, or enter address manually.",
-      );
+  // ── Global EVM wallet → HL + Arbitrum data ─────────────────────
+  // The connected address comes from the ONE shared wallet (useWallet, aliased
+  // to evmAddr above). Whenever it changes, auto-fill the HL address input and
+  // load that wallet's HL fills + Arbitrum balances. Manually typing a
+  // different address into the HL input and hitting Load still works (to
+  // inspect any wallet) — it just overrides loadedAddr without touching the
+  // connected wallet. No local connect/detect logic: the global WalletProvider
+  // already reconnects a trusted wallet on mount, so this fires on its own.
+  useEffect(() => {
+    if (!evmAddr) {
+      setEvmBal(null);
       return;
     }
-    try {
-      let accs = (await provider.request({
-        method: "eth_accounts",
-      })) as string[];
-      if (!accs?.[0])
-        accs = (await provider.request({
-          method: "eth_requestAccounts",
-        })) as string[];
-      if (accs?.[0]) setEVMAddress(accs[0], "Wallet");
-    } catch (e) {
-      if ((e as { code?: number }).code !== 4001)
-        evmHint("Connection failed — enter your Hyperliquid address manually.");
-    }
-  }
-
-  function evmHint(msg: string) {
-    setEvmHintMsg(msg);
-    setTimeout(() => setEvmHintMsg(null), 5000);
-  }
+    setHlAddrInput(evmAddr);
+    loadHLData(evmAddr);
+    setEvmBal("loading");
+    loadArbitrumBalances(evmAddr)
+      .then(setEvmBal)
+      .catch(() => setEvmBal("error"));
+  }, [evmAddr, loadHLData]);
 
   async function addHyperEVM() {
     const w = window as unknown as {
@@ -406,7 +318,8 @@ export default function PortfolioPage() {
     }
     setPubkey(null);
     setAssets(null);
-    clearEVMAddr();
+    // Solana disconnect no longer touches the EVM wallet — that's the shared
+    // global wallet now, managed from the header.
   }
 
   const loadPortfolio = useCallback(async (pk: string) => {
@@ -441,8 +354,7 @@ export default function PortfolioPage() {
   useEffect(() => {
     if (!pubkey) return;
     loadPortfolio(pubkey);
-    autoDetectEVM();
-  }, [pubkey, loadPortfolio, autoDetectEVM]);
+  }, [pubkey, loadPortfolio]);
 
   // Escape closes modals
   useEffect(() => {
@@ -608,6 +520,11 @@ export default function PortfolioPage() {
       getAsterIncomeHistory(sinceMs, evmAddr),
     ]);
 
+    // A valid account snapshot means our shared agent is approved for this
+    // wallet; a null/failed result means it isn't (or a transient error) —
+    // which is what surfaces the "Approve Agent" button below. Aster has no
+    // approval-status endpoint (see isAsterAgentApproved in lib/aster.ts), so
+    // this load doubles as the approval check — no extra request weight.
     setAsterAccount(
       accountRes.status === "fulfilled" && accountRes.value
         ? accountRes.value
@@ -617,52 +534,49 @@ export default function PortfolioPage() {
     setAsterLoading(false);
   }, [evmAddr, range]);
 
-  function switchPortfolioMode(mode: PfMode) {
-    setPfMode(mode);
-    if (mode === "aster" && evmAddr && asterIncome === null && !asterLoading)
-      loadAsterData();
-  }
-
-  // Covers connecting the wallet while already on the Aster tab (switchPortfolioMode
-  // only fires the initial load on tab switch, not on a later wallet connect).
+  // Auto-load Aster data whenever EXTRA mode is active with a connected wallet
+  // — covers both flipping to EXTRA via the global header switch and connecting
+  // the wallet while already on EXTRA. The load itself is the approval check.
   useEffect(() => {
     if (pfMode === "aster" && evmAddr && asterIncome === null && !asterLoading)
       loadAsterData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [evmAddr, pfMode]);
 
-  // One-time on-chain approval letting our shared Pro API agent read/trade
-  // for evmAddr — see approveAsterAgent in lib/aster.ts for the signing
-  // details and why field order in the signed message matters.
+  // Check-then-approve: ensureAsterAgentApproved probes first and only prompts
+  // the wallet for the on-chain approval signature when the agent isn't already
+  // approved for evmAddr — so an already-approved wallet is never asked to
+  // switch networks or sign anything ("one time, and again only if needed").
+  // The getSigner callback does the wallet-side prep (switch to BSC, build the
+  // ethers signer) lazily, on the not-approved branch only.
   async function approveAsterAgentFlow() {
     if (!evmAddr) return;
     const provider = getEVMProvider();
     if (!provider) return;
     setAsterApproving(true);
     setAsterApproveMsg(null);
-    const onBsc = await ensureBscNetwork(provider as unknown as EIP1193);
-    if (!onBsc) {
-      setAsterApproveMsg(
-        "Please switch your wallet to BNB Smart Chain (BSC) to approve the agent — Aster's approval signature requires it.",
-      );
-      setAsterApproving(false);
-      return;
-    }
     try {
-      const { ethers } = await import("ethers");
-      const signer = await new ethers.BrowserProvider(
-        provider as never,
-      ).getSigner();
-      const result = await approveAsterAgent(evmAddr, signer);
+      const result = await ensureAsterAgentApproved(evmAddr, async () => {
+        const onBsc = await ensureBscNetwork(provider as unknown as EIP1193);
+        if (!onBsc) {
+          throw new Error(
+            "switch your wallet to BNB Smart Chain (BSC) — Aster's approval signature requires it",
+          );
+        }
+        const { ethers } = await import("ethers");
+        return new ethers.BrowserProvider(provider as never).getSigner();
+      });
       setAsterApproveMsg(
         result.ok
-          ? "Agent approved — loading your Aster data…"
+          ? result.alreadyApproved
+            ? "Agent already approved — loading your Aster data…"
+            : "Agent approved — loading your Aster data…"
           : `Approval failed: ${result.message}`,
       );
       if (result.ok) loadAsterData();
     } catch (e) {
       setAsterApproveMsg(
-        e instanceof Error ? e.message : "Approval failed",
+        `Approval failed: ${e instanceof Error ? e.message : "unknown error"}`,
       );
     } finally {
       setAsterApproving(false);
@@ -1100,7 +1014,9 @@ export default function PortfolioPage() {
           </div>
         </div>
 
-        {/* ══ ALWAYS VISIBLE: section header + mode switcher ══ */}
+        {/* ══ ALWAYS VISIBLE: section header ══ */}
+        {/* BASIC/EXTRA is driven by the ONE global mode switch in the header —
+            no duplicate toggle here. The title reflects the active venue. */}
         <div className="section-divider" style={{ marginTop: 32 }}>
           <span>Trader PnL</span>
         </div>
@@ -1114,22 +1030,11 @@ export default function PortfolioPage() {
               >
                 {pfMode === "hl" ? t("traderPnl") : "ASTER PNL"}
               </div>
-              <div className="mode-switch" id="pfModeSwitch">
-                <button
-                  className={`mode-btn mode-hl${pfMode === "hl" ? " active" : ""}`}
-                  id="pfBtnHL"
-                  onClick={() => switchPortfolioMode("hl")}
-                >
-                  BASIC
-                </button>
-                <button
-                  className={`mode-btn mode-aster${pfMode === "aster" ? " active" : ""}`}
-                  id="pfBtnAster"
-                  onClick={() => switchPortfolioMode("aster")}
-                >
-                  EXTRA
-                </button>
-              </div>
+              <span
+                className={`pf-mode-badge ${pfMode === "aster" ? "extra" : "basic"}`}
+              >
+                {pfMode === "aster" ? "EXTRA" : "BASIC"}
+              </span>
             </div>
             <div className="pnl-addr-sub" id="pnl-addr-sub">
               {loadedAddr
@@ -1164,10 +1069,7 @@ export default function PortfolioPage() {
             <input
               className="hl-addr-input"
               id="hl-addr-input"
-              placeholder={
-                evmHintMsg ?? "Enter Hyperliquid wallet address (0x…)"
-              }
-              style={evmHintMsg ? { borderColor: "var(--red)" } : undefined}
+              placeholder="Enter Hyperliquid wallet address (0x…)"
               value={hlAddrInput}
               onChange={(e) => setHlAddrInput(e.target.value)}
             />
@@ -1186,18 +1088,18 @@ export default function PortfolioPage() {
                 id="hl-evm-btn"
                 style={{ borderColor: "var(--green)", color: "var(--green)" }}
                 title="Click to disconnect"
-                onClick={clearEVMAddr}
+                onClick={disconnect}
               >
                 <svg width="8" height="8" viewBox="0 0 8 8">
                   <circle cx="4" cy="4" r="4" fill="#1fa67d" />
                 </svg>{" "}
-                {evmSource}: {shorten(evmAddr)}
+                {shorten(evmAddr)}
               </button>
             ) : (
               <button
                 className="hl-evm-btn"
                 id="hl-evm-btn"
-                onClick={connectEVM}
+                onClick={() => connect()}
               >
                 <svg
                   width="14"
@@ -1757,21 +1659,27 @@ export default function PortfolioPage() {
                   className="hl-evm-btn"
                   style={{ borderColor: "var(--green)", color: "var(--green)" }}
                   title="Click to disconnect"
-                  onClick={clearEVMAddr}
+                  onClick={disconnect}
                 >
                   <svg width="8" height="8" viewBox="0 0 8 8">
                     <circle cx="4" cy="4" r="4" fill="#1fa67d" />
                   </svg>{" "}
-                  {evmSource}: {shorten(evmAddr)}
+                  {shorten(evmAddr)}
                 </button>
-                <button
-                  className="hl-evm-btn"
-                  onClick={approveAsterAgentFlow}
-                  disabled={asterApproving}
-                  title="Approve this app's Aster Pro API agent for this wallet — required once before any data will load"
-                >
-                  {asterApproving ? "Approving…" : "Approve Agent"}
-                </button>
+                {/* Approval is checked automatically by the data load — this
+                    button only appears when the agent isn't approved yet (or a
+                    load errored). Once approved it disappears; the user never
+                    re-approves unless actually needed. */}
+                {asterAccount === "error" && (
+                  <button
+                    className="hl-evm-btn"
+                    onClick={approveAsterAgentFlow}
+                    disabled={asterApproving}
+                    title="One-time on-chain approval letting this app's Aster agent read/trade for this wallet"
+                  >
+                    {asterApproving ? "Approving…" : "Approve Agent"}
+                  </button>
+                )}
                 <button
                   className="aster-load-btn"
                   onClick={loadAsterData}
@@ -1783,15 +1691,14 @@ export default function PortfolioPage() {
             ) : (
               <>
                 <div style={{ fontSize: 12, color: "var(--text3)" }}>
-                  Connect an EVM wallet, then approve this app&apos;s Aster
-                  Pro API agent — Aster has no public per-address lookup like
-                  Hyperliquid, so we need that one-time on-chain approval to
-                  read or trade on your behalf.
+                  Connect your wallet to view your Aster portfolio — Aster has
+                  no public per-address lookup like Hyperliquid, so the first
+                  time you&apos;ll approve this app&apos;s agent once, on-chain.
                 </div>
                 <button
                   className="hl-evm-btn"
                   id="aster-evm-btn"
-                  onClick={connectEVM}
+                  onClick={() => connect()}
                 >
                   <svg
                     width="14"

@@ -86,6 +86,12 @@ main{max-width:1400px;margin:0 auto;padding:0 20px 60px}
     .range-tab:hover{color:var(--text2)}
     .range-tab.active{background:var(--bg2);border-color:var(--border);color:var(--text)}
 
+    /* Read-only venue badge — the BASIC/EXTRA switch now lives only in the
+       global header; this just reflects which venue the section is showing. */
+    .pf-mode-badge{padding:3px 9px;border-radius:3px;font-size:10px;font-weight:700;letter-spacing:.06em;border:1px solid transparent}
+    .pf-mode-badge.basic{color:var(--accent);background:rgba(80,210,193,.1);border-color:rgba(80,210,193,.25)}
+    .pf-mode-badge.extra{color:#f59e0b;background:rgba(245,158,11,.1);border-color:rgba(245,158,11,.25)}
+
     /* ─── Two-column PnL layout ─────────────────────────────────────────── */
     .pnl-layout{display:flex;gap:22px;align-items:flex-start}
     .pnl-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:14px}
