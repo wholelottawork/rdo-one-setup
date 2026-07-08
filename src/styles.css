@@ -61,7 +61,7 @@ html, body {
 /* ── HEADER ─────────────────────────────────────────────────── */
 .hdr {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 0 36px; gap: 0;
+  padding: 0 52px; gap: 0;
   background: var(--hl-bg-page);
   border-bottom: 1px solid var(--hl-border);
   position: relative; z-index: 200;
