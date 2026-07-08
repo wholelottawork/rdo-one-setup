@@ -441,14 +441,20 @@
             <div style="font-size:10.5px;color:var(--hl-text-secondary);line-height:1.6">
               Each bar is a <b style="color:var(--hl-text-primary)">price level</b> with leveraged positions stacked on it. The wider the bar, the more USD is at risk of forced liquidation at that price.
             </div>
-            <div style="display:flex;flex-direction:column;gap:5px;margin-top:2px">
-              <div style="display:flex;align-items:flex-start;gap:8px;font-size:10.5px">
-                <span style="display:inline-block;width:11px;height:11px;background:#ff7caa;border-radius:2px;flex-shrink:0;margin-top:2px"></span>
-                <span style="color:var(--hl-text-secondary)"><b style="color:var(--hl-text-primary)">Pink bars (above price)</b> — short positions. Price rising into these will trigger their liquidation, adding more buying pressure.</span>
+            <div style="display:flex;flex-direction:column;gap:8px;margin-top:2px">
+              <div style="display:flex;flex-direction:column;gap:3px">
+                <div style="display:flex;align-items:center;gap:8px;font-size:10.5px">
+                  <span style="display:inline-block;width:11px;height:11px;background:#ff7caa;border-radius:2px;flex-shrink:0"></span>
+                  <b style="color:var(--hl-text-primary)">Pink bars (above price)</b>
+                </div>
+                <div style="font-size:10px;color:var(--hl-text-secondary);line-height:1.55;padding-left:19px">Short positions. Price rising into these triggers their liquidation, injecting cascading buy orders into the market.</div>
               </div>
-              <div style="display:flex;align-items:flex-start;gap:8px;font-size:10.5px">
-                <span style="display:inline-block;width:11px;height:11px;background:#7cffc0;border-radius:2px;flex-shrink:0;margin-top:2px"></span>
-                <span style="color:var(--hl-text-secondary)"><b style="color:var(--hl-text-primary)">Green bars (below price)</b> — long positions. Price falling into these forces their liquidation, adding selling pressure.</span>
+              <div style="display:flex;flex-direction:column;gap:3px">
+                <div style="display:flex;align-items:center;gap:8px;font-size:10.5px">
+                  <span style="display:inline-block;width:11px;height:11px;background:#7cffc0;border-radius:2px;flex-shrink:0"></span>
+                  <b style="color:var(--hl-text-primary)">Green bars (below price)</b>
+                </div>
+                <div style="font-size:10px;color:var(--hl-text-secondary);line-height:1.55;padding-left:19px">Long positions. Price falling into these forces liquidation, injecting cascading sell orders into the market.</div>
               </div>
             </div>
             <div style="font-size:10px;color:var(--hl-text-muted);margin-top:2px;line-height:1.6">
