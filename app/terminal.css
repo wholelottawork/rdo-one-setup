@@ -319,6 +319,16 @@ body.mode-aster { --hl-accent: #a78bfa; --hl-accent-dark: rgba(139,92,246,0.15);
   padding: 16px 20px;
 }
 
+/* Trade page inner grid — ChartColumn | TradesColumn | TradePanel */
+.trade-content-grid {
+  display: grid;
+  grid-template-columns: 1fr var(--tr) var(--tp);
+  height: 100%;
+  overflow: hidden;
+}
+.trade-content-grid > .chart-col { border-right: 1px solid var(--hl-border); }
+.trade-content-grid > .tr-col   { border-right: 1px solid var(--hl-border); }
+
 /* ── X TRACKER ──────────────────────────────────────────────── */
 .xt-col {
   display: flex; flex-direction: column;

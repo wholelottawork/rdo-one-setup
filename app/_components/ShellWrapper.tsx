@@ -1,5 +1,6 @@
 'use client';
 
+import { useCallback } from 'react';
 import { usePathname } from 'next/navigation';
 import { useShell } from './ShellContext';
 import { Header } from './Header';
@@ -29,6 +30,9 @@ export function ShellWrapper({ children }: { children: React.ReactNode }) {
     handleClosePosition, handleCancelOrder,
   } = useShell();
 
+  const onOpenDeposit = useCallback(() => {}, []);
+  const onTabData = useCallback(() => {}, []);
+
   return (
     <>
       <div id="app">
@@ -36,11 +40,11 @@ export function ShellWrapper({ children }: { children: React.ReactNode }) {
           mode={mode}
           market={market}
           stats={headerStats}
-          balance={0}
+          balance={balance}
           dropdownRows={dropdownRows}
           onModeChange={setMode}
           onSelectMarket={setMarket}
-          onOpenDeposit={() => {}}
+          onOpenDeposit={onOpenDeposit}
           network={network}
           onNetworkChange={setNetwork}
           activePage={activePage}
@@ -64,7 +68,7 @@ export function ShellWrapper({ children }: { children: React.ReactNode }) {
             livePrices={livePrices}
             onClosePosition={handleClosePosition}
             onCancelOrder={handleCancelOrder}
-            onTabData={() => {}}
+            onTabData={onTabData}
           />
         </BottomPanelShell>
 

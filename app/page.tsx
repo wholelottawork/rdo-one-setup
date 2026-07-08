@@ -236,7 +236,7 @@ function Terminal() {
   }
 
   return (
-    <>
+    <div className="trade-content-grid">
       <ChartColumn
         mode={mode}
         market={market}
@@ -265,6 +265,6 @@ function Terminal() {
         onSubmit={submitTrade}
       />
       <DepositModal open={depositOpen} onClose={() => setDepositOpen(false)} />
-    </>
+    </div>
   );
 }
