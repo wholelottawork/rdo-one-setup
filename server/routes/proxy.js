@@ -191,6 +191,33 @@ export default async function proxyRoutes(fastify) {
     });
   });
 
+  // PUT/DELETE variants of the same signed passthrough — needed for the
+  // listenKey user-data-stream lifecycle (PUT to keepalive, DELETE to
+  // close), which are otherwise identical USER_STREAM-auth signed calls.
+  fastify.put("/aster-signed/*", async (req) => {
+    const path = req.params["*"];
+    const signedQuery = await signAsterV3Request(req.body || {});
+    const url = `https://fapi.asterdex.com/${path}`;
+
+    return fetchJSON(url, {
+      method: "PUT",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", ...ASTER_HEADERS },
+      body: signedQuery,
+    });
+  });
+
+  fastify.delete("/aster-signed/*", async (req) => {
+    const path = req.params["*"];
+    const signedQuery = await signAsterV3Request(req.body || {});
+    const url = `https://fapi.asterdex.com/${path}`;
+
+    return fetchJSON(url, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", ...ASTER_HEADERS },
+      body: signedQuery,
+    });
+  });
+
   // registerAndApproveAgent is PUBLIC (unauthenticated) and signed by the
   // END USER's own wallet client-side, not by our agent — this route never
   // touches ASTER_SIGNER_PRIVATE_KEY, it's a plain form-urlencoded

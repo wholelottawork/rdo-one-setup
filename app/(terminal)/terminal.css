@@ -309,6 +309,15 @@ body.mode-aster { --hl-accent: #a78bfa; --hl-accent-dark: rgba(139,92,246,0.15);
   border-bottom: 1px solid var(--hl-border);
 }
 
+/* Center content area for non-terminal pages (markets, news, portfolio, etc.)
+   Replaces the chart+trades+trade-panel grid with a single scrollable area. */
+.page-content-area {
+  grid-column: 2 / -1;
+  overflow-y: auto;
+  background: var(--hl-bg-page);
+  border-right: 1px solid var(--hl-border);
+}
+
 /* ── X TRACKER ──────────────────────────────────────────────── */
 .xt-col {
   display: flex; flex-direction: column;
