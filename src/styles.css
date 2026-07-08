@@ -71,7 +71,7 @@ html, body {
 .hdr-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .hdr-div   { width: 1px; height: 18px; background: var(--hl-border); flex-shrink: 0; }
 
-.hdr-nav { display: flex; align-items: center; gap: 4px; }
+.hdr-nav { display: flex; align-items: center; gap: 4px; margin: 0 16px; }
 .hdr-nav-link {
   font-size: 12px; font-weight: 500; color: var(--hl-text-secondary);
   text-decoration: none; padding: 5px 12px; border-radius: 7px;
