@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { useTranslation } from '@/lib/i18n';
 import { useWallet } from '@/lib/wallet';
 
@@ -8,6 +9,9 @@ import { useWallet } from '@/lib/wallet';
 export function DepositModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { t } = useTranslation();
   const { address } = useWallet();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => { setMounted(true); }, []);
 
   return (
     <div
@@ -32,7 +36,7 @@ export function DepositModal({ open, onClose }: { open: boolean; onClose: () => 
 
         <div className="deposit-addr-box">
           <div className="deposit-addr-label">{t('yourHlAddr')}</div>
-          <div className="deposit-addr" id="depositAddr">{address ?? t('connectFirst')}</div>
+          <div className="deposit-addr" id="depositAddr">{mounted && address ? address : t('connectFirst')}</div>
         </div>
 
         <div className="deposit-routes">

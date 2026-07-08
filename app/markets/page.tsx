@@ -1,8 +1,10 @@
 'use client';
 
+import './markets.css';
+
 import { useMemo, useState } from 'react';
 import { useTranslation } from '@/lib/i18n';
-import { TerminalShell, TerminalShellProvider } from '@/app/(terminal)/_components/TerminalShell';
+import { TerminalShell } from '@/app/_components/TerminalShell';
 import {
   TICKER_SYMBOLS, useBinanceTicker, useBtcKlines, useCgGlobal, useCgTrending,
   useCgCoinsMarkets, useFearGreed,
@@ -228,7 +230,6 @@ export default function MarketsPage() {
   const fgVal = fg?.value;
 
   return (
-    <TerminalShellProvider network={network}>
       <TerminalShell activePage="markets" initialMode={perpMode} initialMarket="BTC" network={network} onNetworkChange={setNetwork}>
         {/* ─── Ticker bar ─── */}
         <div className="ticker-wrap">
@@ -488,6 +489,5 @@ export default function MarketsPage() {
           </div>
         </div>
       </TerminalShell>
-    </TerminalShellProvider>
   );
 }

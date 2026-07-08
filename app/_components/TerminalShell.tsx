@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useWallet } from '@/lib/wallet';
 import { useToast } from '@/lib/toast';
-import { HLSocketProvider, useHLSocket } from '@/lib/hl-socket';
+import { useHLSocket } from '@/lib/hl-socket';
 import { useHLMeta, useHLTickers, useHLBalance, useHLPositions, useHLFills, useHLOpenOrders, useHLFunding } from '@/lib/hl-hooks';
 import {
   useAsterTickers, useAsterFunding, useAsterSymbols, useAsterLeverageBrackets,
@@ -254,22 +254,5 @@ export function TerminalShell({
         <StatusBar status={status} />
       </div>
     </>
-  );
-}
-
-/** Wrapper that provides the HLSocketProvider context needed by TerminalShell.
- *  Use this at the page level: <TerminalShellProvider><YourPage /></TerminalShellProvider>
- *  Or better: wrap your page content with TerminalShell directly inside the provider. */
-export function TerminalShellProvider({
-  children,
-  network = 'mainnet',
-}: {
-  children: React.ReactNode;
-  network?: HLNetwork;
-}) {
-  return (
-    <HLSocketProvider network={network}>
-      {children}
-    </HLSocketProvider>
   );
 }

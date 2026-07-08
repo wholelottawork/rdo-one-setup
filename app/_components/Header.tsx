@@ -48,9 +48,12 @@ export function Header({ mode, market, stats, balance, dropdownRows, onModeChang
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const [mounted, setMounted] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const mktBtnRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => { setMounted(true); }, []);
 
   const isAster = mode === 'aster';
   const suffix = isAster ? '-USDT' : '-USDC';
@@ -226,8 +229,8 @@ export function Header({ mode, market, stats, balance, dropdownRows, onModeChang
       </div>
 
       <div className="hdr-right">
-        <span id="balanceDisplay" className={`hdr-balance${address ? '' : ' hidden'}`}>${balance.toFixed(2)}</span>
-        <button id="depositBtn" className={`deposit-btn${address ? '' : ' hidden'}`} onClick={onOpenDeposit}>{t('deposit')}</button>
+        <span id="balanceDisplay" className={`hdr-balance${mounted && address ? '' : ' hidden'}`}>${balance.toFixed(2)}</span>
+        <button id="depositBtn" className={`deposit-btn${mounted && address ? '' : ' hidden'}`} onClick={onOpenDeposit}>{t('deposit')}</button>
         <div className="lang-wrap">
           <button className="lang-btn" id="langBtn" onClick={() => setLangOpen(o => !o)} aria-label="Language">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><ellipse cx="12" cy="12" rx="4" ry="10" /><path d="M2 12h20" /></svg>
@@ -246,13 +249,13 @@ export function Header({ mode, market, stats, balance, dropdownRows, onModeChang
         </div>
         <button
           id="walletBtn"
-          className={`wallet-btn${address ? ' connected' : ''}`}
+          className={`wallet-btn${mounted && address ? ' connected' : ''}`}
           onClick={() => { if (!address) connect(); }}
           disabled={!checked}
         >
-          {!checked ? '…' : address ? address.slice(0, 6) + '...' + address.slice(-4) : t('connect')}
+          {!checked ? '…' : mounted && address ? address.slice(0, 6) + '...' + address.slice(-4) : t('connect')}
         </button>
-        {address && (
+        {mounted && address && (
           <button
             id="walletDisconnectBtn"
             className="wallet-disconnect-btn"

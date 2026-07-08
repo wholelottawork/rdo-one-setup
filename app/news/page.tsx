@@ -1,13 +1,15 @@
 'use client';
 
+import './news.css';
+
 import { useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from '@/lib/i18n';
 import { useNews, timeAgo, SOURCE_META, CATEGORIES, type Article } from '@/lib/news';
 import {
   TerminalShell,
-  TerminalShellProvider,
-} from '@/app/(terminal)/_components/TerminalShell';
+  
+} from '@/app/_components/TerminalShell';
 import type { HLNetwork } from '@/lib/hyperliquid';
 
 const PAGE_SIZE = 18;
@@ -132,7 +134,6 @@ export default function NewsPage() {
   const ok = sourcesTotal - failed.length;
 
   return (
-    <TerminalShellProvider network={network}>
       <TerminalShell
         activePage="news"
         initialMode="hl"
@@ -182,6 +183,5 @@ export default function NewsPage() {
           <button className="load-more-btn" onClick={() => setShown(s => Math.min(s + PAGE_SIZE, visibleArticles.length))}>{t('loadMore')}</button>
         </div>
       </TerminalShell>
-    </TerminalShellProvider>
   );
 }

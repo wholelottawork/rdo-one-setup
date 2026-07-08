@@ -34,13 +34,21 @@ interface WalletContextValue {
 
 const WalletContext = createContext<WalletContextValue | null>(null);
 
+const LS_KEY = 'wallet_address';
+
 export function WalletProvider({ children }: { children: React.ReactNode }) {
-  const [address, setAddress] = useState<string | null>(null);
+  // Read from localStorage synchronously on first render so the address is
+  // available immediately — no flash of "Connect" while we check the wallet.
+  const [address, setAddress] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    try { return localStorage.getItem(LS_KEY); } catch { return null; }
+  });
   const [isConnecting, setIsConnecting] = useState(false);
   const [checked, setChecked] = useState(false);
   const showToast = useToast();
 
-  // On mount: check if wallet is already connected (survives page navigations)
+  // On mount: verify the wallet is still connected (in case user disconnected
+  // outside the app). If not, clear the stored address.
   useEffect(() => {
     const provider = getEVMProvider();
     if (!provider) {
@@ -49,7 +57,13 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     }
     provider.request({ method: 'eth_accounts' }).then((accounts) => {
       const accs = accounts as string[];
-      if (accs?.[0]) setAddress(accs[0]);
+      if (accs?.[0]) {
+        setAddress(accs[0]);
+        try { localStorage.setItem(LS_KEY, accs[0]); } catch { /* silent */ }
+      } else {
+        setAddress(null);
+        try { localStorage.removeItem(LS_KEY); } catch { /* silent */ }
+      }
     }).catch(() => { /* silent */ }).finally(() => setChecked(true));
   }, []);
 
@@ -64,6 +78,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     try {
       const accounts = (await provider.request({ method: 'eth_requestAccounts' })) as string[];
       setAddress(accounts[0]);
+      try { localStorage.setItem(LS_KEY, accounts[0]); } catch { /* silent */ }
       return accounts[0];
     } catch {
       showToast('Connection rejected', 'err');
@@ -73,7 +88,10 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     }
   }, [showToast]);
 
-  const disconnect = useCallback(() => setAddress(null), []);
+  const disconnect = useCallback(() => {
+    setAddress(null);
+    try { localStorage.removeItem(LS_KEY); } catch { /* silent */ }
+  }, []);
 
   const value = useMemo(
     () => ({ address, isConnecting, checked, connect, disconnect }),

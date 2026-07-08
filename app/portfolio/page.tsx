@@ -1,8 +1,10 @@
 "use client";
 
+import './portfolio.css';
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "@/lib/i18n";
-import { TerminalShell, TerminalShellProvider } from "@/app/(terminal)/_components/TerminalShell";
+import { TerminalShell } from "@/app/_components/TerminalShell";
 import { type HLNetwork } from "@/lib/hyperliquid";
 import {
   getPhantomSolana,
@@ -823,7 +825,6 @@ export default function PortfolioPage() {
   const totalVal = solTotal + evmTotal;
 
   return (
-    <TerminalShellProvider network={network}>
       <TerminalShell
         activePage="portfolio"
         initialMode={pfMode === "aster" ? "aster" : "hl"}
@@ -2669,6 +2670,5 @@ export default function PortfolioPage() {
           </div>
         </div>
       </TerminalShell>
-    </TerminalShellProvider>
   );
 }

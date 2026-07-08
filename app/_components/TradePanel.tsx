@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from '@/lib/i18n';
 import { useWallet } from '@/lib/wallet';
 import { fmtPrice, fmtLarge, type TradeMode } from '@/lib/markets';
@@ -41,6 +41,9 @@ export function TradePanel({
   const [orderType, setOrderType] = useState<'market' | 'limit'>('market');
   const [obCollapsed, setObCollapsed] = useState(false);
   const [sliderVal, setSliderVal] = useState(0);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => { setMounted(true); }, []);
 
   const maxLev = mode === 'aster' ? 200 : 50;
 
@@ -130,7 +133,7 @@ export function TradePanel({
       <div className="tp-form">
         <div className="tp-info-row">
           <span className="tp-info-label">{t('availableTrade')}</span>
-          <span id="tpAvail" className="tp-info-val">{address ? `$${balance.toFixed(2)} USDC` : '0.00 USDC'}</span>
+          <span id="tpAvail" className="tp-info-val">{mounted && address ? `$${balance.toFixed(2)} USDC` : '0.00 USDC'}</span>
         </div>
         <div className="tp-info-row">
           <span className="tp-info-label">{t('currentPosition')}</span>
@@ -188,7 +191,7 @@ export function TradePanel({
           disabled={submitting}
           onClick={onSubmit}
         >
-          {submitting ? 'Confirming...' : address ? `${isBuy ? t('buyLong') : t('sellShort')} ${market}` : t('connect')}
+          {submitting ? 'Confirming...' : mounted && address ? `${isBuy ? t('buyLong') : t('sellShort')} ${market}` : t('connect')}
         </button>
 
         <div id="tradeErr" className={`tp-err${error ? '' : ' hidden'}`}>{error}</div>

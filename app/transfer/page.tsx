@@ -1,11 +1,13 @@
 'use client';
 
+import './transfer.css';
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from '@/lib/i18n';
 import {
   TerminalShell,
-  TerminalShellProvider,
-} from '@/app/(terminal)/_components/TerminalShell';
+  
+} from '@/app/_components/TerminalShell';
 import type { HLNetwork } from '@/lib/hyperliquid';
 import {
   CHAINS, USDC_ARB, USDT_ARB, getProv, type EIP1193,
@@ -468,7 +470,6 @@ export default function TransferPage() {
   const isBtwAster = btwDir === 'aster-to-hl';
 
   return (
-    <TerminalShellProvider network={network}>
       <TerminalShell
         activePage="transfer"
         initialMode={mode as 'hl' | 'aster'}
@@ -697,7 +698,6 @@ export default function TransferPage() {
           </div>
         </div>
       </TerminalShell>
-    </TerminalShellProvider>
   );
 }
 

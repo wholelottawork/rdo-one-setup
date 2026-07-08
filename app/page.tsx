@@ -19,15 +19,15 @@ import {
 import { openPosition, closePosition, cancelOrder, getL2Book, type OrderBook, type HLNetwork } from '@/lib/hyperliquid';
 import { asterPlaceOrder, asterClosePosition, asterCancelOrder } from '@/lib/aster';
 import { fmtPrice, fmtAster, fmtLarge, type TradeMode } from '@/lib/markets';
-import { Header, type DropdownRow, type HeaderStats } from './_components/Header';
-import { XTracker } from './_components/XTracker';
-import { ChartColumn } from './_components/ChartColumn';
-import { TradesColumn } from './_components/TradesColumn';
-import { TradePanel } from './_components/TradePanel';
-import { BottomPanel } from './_components/BottomPanel';
-import { BottomPanelShell } from './_components/BottomPanelShell';
-import { StatusBar } from './_components/StatusBar';
-import { DepositModal } from './_components/DepositModal';
+import { Header, type DropdownRow, type HeaderStats } from '@/app/_components/Header';
+import { XTracker } from '@/app/_components/XTracker';
+import { ChartColumn } from '@/app/_components/ChartColumn';
+import { TradesColumn } from '@/app/_components/TradesColumn';
+import { TradePanel } from '@/app/_components/TradePanel';
+import { BottomPanel } from '@/app/_components/BottomPanel';
+import { BottomPanelShell } from '@/app/_components/BottomPanelShell';
+import { StatusBar } from '@/app/_components/StatusBar';
+import { DepositModal } from '@/app/_components/DepositModal';
 
 // countdown() — verbatim from main.js (time to next 8h funding boundary)
 function countdown(): string {

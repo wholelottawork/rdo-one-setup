@@ -1,12 +1,15 @@
 import type { Metadata } from 'next';
 import { AppProviders } from '@/lib/providers';
-import './transfer.css';
+import { HLSocketProvider } from '@/lib/hl-socket';
+import './terminal.css';
 
 export const metadata: Metadata = {
-  title: 'RDO ONE — Transfer',
+  title: 'RDO ONE — Perpetuals Terminal',
 };
 
-export default function TransferLayout({ children }: { children: React.ReactNode }) {
+/** Single root layout shared by ALL pages.
+ *  Providers mount once and persist across client-side navigations. */
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <head>
@@ -15,7 +18,11 @@ export default function TransferLayout({ children }: { children: React.ReactNode
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
       </head>
       <body>
-        <AppProviders>{children}</AppProviders>
+        <AppProviders>
+          <HLSocketProvider network="mainnet">
+            {children}
+          </HLSocketProvider>
+        </AppProviders>
       </body>
     </html>
   );
