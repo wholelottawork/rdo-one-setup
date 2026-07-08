@@ -78,8 +78,6 @@ export default function PortfolioPage() {
 
   // ── Wallet / assets state ──────────────────────────────────────
   const [pubkey, setPubkey] = useState<string | null>(null);
-  const [installHint, setInstallHint] = useState(false);
-  const [connecting, setConnecting] = useState(false);
   const [assets, setAssets] = useState<SolAsset[] | null>(null);
   const [assetsError, setAssetsError] = useState<string | null>(null);
   const [chipCopied, setChipCopied] = useState(false);
@@ -292,24 +290,6 @@ export default function PortfolioPage() {
     }
   }
 
-  // ── Phantom connect flow ───────────────────────────────────────
-  async function connectWallet() {
-    const p = getPhantomSolana();
-    if (!p?.isPhantom) {
-      setInstallHint(true);
-      return;
-    }
-    setConnecting(true);
-    try {
-      const resp = await p.connect();
-      setPubkey(resp.publicKey.toString());
-    } catch {
-      /* rejected */
-    } finally {
-      setConnecting(false);
-    }
-  }
-
   async function disconnectWallet() {
     try {
       await getPhantomSolana()?.disconnect();
@@ -341,10 +321,7 @@ export default function PortfolioPage() {
       loadHLData(urlHL);
     }
     const p = getPhantomSolana();
-    if (!p) {
-      setInstallHint(true);
-      return;
-    }
+    if (!p) return;
     p.on("disconnect", () => setPubkey((prev) => (prev ? null : prev)));
     p.connect({ onlyIfTrusted: true })
       .then((resp) => setPubkey(resp.publicKey.toString()))
@@ -735,55 +712,13 @@ export default function PortfolioPage() {
 
   return (
     <>
-      <div
-        id="connect-screen"
-        style={pubkey ? { display: "none" } : undefined}
-      >
-          <div className="phantom-logo">
-            <svg viewBox="0 0 128 128" fill="none">
-              <path
-                d="M110.584 64.9142H99.142C99.142 41.8864 80.6366 23.0625 57.9584 23.0625C35.5556 23.0625 17.2065 41.508 16.8677 64.0735C16.5221 87.0972 35.3756 106 58.2219 106H63.3743C85.6702 106 116.581 88.3047 116.581 66.8896C116.581 65.6864 115.684 64.9142 110.584 64.9142Z"
-                fill="white"
-              />
-            </svg>
-          </div>
-          <div className="connect-title">{t("connectPhantom")}</div>
-          <div className="connect-sub">{t("connectPhantomSub")}</div>
-          <button
-            className="connect-btn"
-            id="connect-btn"
-            disabled={connecting}
-            onClick={connectWallet}
-          >
-            <svg width="16" height="16" viewBox="0 0 128 128" fill="none">
-              <path
-                d="M110.584 64.9142H99.142C99.142 41.8864 80.6366 23.0625 57.9584 23.0625C35.5556 23.0625 17.2065 41.508 16.8677 64.0735C16.5221 87.0972 35.3756 106 58.2219 106H63.3743C85.6702 106 116.581 88.3047 116.581 66.8896C116.581 65.6864 115.684 64.9142 110.584 64.9142Z"
-                fill="white"
-              />
-            </svg>
-            {connecting ? "Connecting…" : " Connect Phantom"}
-          </button>
-          <div
-            className="install-hint"
-            id="install-hint"
-            style={installHint ? { display: "block" } : undefined}
-          >
-            Phantom not detected —{" "}
-            <a
-              href="https://phantom.app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              install Phantom
-            </a>{" "}
-            then refresh.
-          </div>
-        </div>
-
-        <div
-          id="portfolio-screen"
-          style={pubkey ? { display: "block" } : undefined}
-        >
+        {/* Solana wallet view — shown only when Phantom is connected. The old
+            blocking "Connect Phantom" screen is gone; returning users still
+            auto-connect silently (see the mount effect), and everything else
+            on this page runs off the shared global EVM wallet. */}
+        <div id="portfolio-screen" style={{ display: "block" }}>
+          {pubkey && (
+          <>
           <div className="pf-topbar">
             <div className="addr-row">
               <div
@@ -936,8 +871,11 @@ export default function PortfolioPage() {
               )}
             </div>
           </div>
+          </>
+          )}
 
-          {/* EVM / Arbitrum balances */}
+          {/* EVM / Arbitrum balances — driven by the shared global wallet, so
+              it shows independently of Phantom. */}
           <div
             className={`evm-bal-card${evmAddr ? " visible" : ""}`}
             id="evm-bal-card"
