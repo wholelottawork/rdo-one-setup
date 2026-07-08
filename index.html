@@ -512,6 +512,17 @@
               Probabilistic tools, not trade signals. Always combine with price action and your own risk management.
             </div>
           </div>
+
+          <div style="height:1px;background:var(--hl-border)"></div>
+
+          <!-- Nearest Liquidation Zones -->
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <div style="font-size:11px;font-weight:700;color:var(--hl-text-primary)">Nearest Liquidation Zones</div>
+            <div style="font-size:10px;color:var(--hl-text-muted);line-height:1.55">The 2 closest liquidation clusters to the current price — what happens if price reaches them.</div>
+            <div id="lmpClosestBars" style="display:flex;flex-direction:column;gap:7px">
+              <div style="font-size:10px;color:var(--hl-text-muted)">Waiting for data…</div>
+            </div>
+          </div>
         </div>
 
       </div>
@@ -682,6 +693,38 @@
     return '$' + (n/1e3).toFixed(1) + 'K';
   }
 
+  function updateClosestBars(mark, levels, totalOI, totalW) {
+    const el = document.getElementById('lmpClosestBars');
+    if (!el) return;
+    const abovePrice = levels.filter(l => !l.isLong).sort((a, b) => a.price - b.price);
+    const belowPrice = levels.filter(l => l.isLong).sort((a, b) => b.price - a.price);
+    const nearShort = abovePrice[0];
+    const nearLong  = belowPrice[0];
+
+    function card(l, type) {
+      const oiUsd = totalOI * l.weight / totalW * mark;
+      const color = type === 'short' ? '#ff7caa' : '#7cffc0';
+      const dist = (Math.abs(l.price - mark) / mark * 100).toFixed(1);
+      const reaction = type === 'short'
+        ? `If price reaches <b style="color:#e0e0e0">${fmtPx(l.price)}</b>, ~${fmtM(oiUsd)} in short positions get forcibly closed → cascading buy orders, expect a sharp spike upward.`
+        : `If price drops to <b style="color:#e0e0e0">${fmtPx(l.price)}</b>, ~${fmtM(oiUsd)} in long positions get forcibly closed → cascading sell orders, expect a sharp drop.`;
+      return `<div style="background:rgba(255,255,255,0.025);border:1px solid var(--hl-border);border-left:2px solid ${color};border-radius:6px;padding:9px 11px;display:flex;flex-direction:column;gap:5px">
+        <div style="display:flex;align-items:center;gap:7px">
+          <span style="display:inline-block;width:9px;height:9px;background:${color};border-radius:2px;flex-shrink:0"></span>
+          <span style="font-size:11px;font-weight:700;color:${color}">${fmtPx(l.price)}</span>
+          <span style="font-size:10px;color:var(--hl-text-muted);margin-left:auto">${dist}% · ${fmtM(oiUsd)}</span>
+        </div>
+        <div style="font-size:10px;color:var(--hl-text-secondary);line-height:1.55">${reaction}</div>
+      </div>`;
+    }
+
+    let html = '';
+    if (nearShort) html += card(nearShort, 'short');
+    if (nearLong)  html += card(nearLong,  'long');
+    if (!html) html = '<div style="font-size:10px;color:var(--hl-text-muted)">No data available</div>';
+    el.innerHTML = html;
+  }
+
   function getSym() {
     const txt = (document.getElementById('mktSymbol')?.textContent || 'BTC-USDC').split('-')[0];
     return FUT_SYMS.includes(txt) ? txt : lmpSym;
@@ -733,6 +776,7 @@
       </div>`;
     });
     body.innerHTML = html;
+    updateClosestBars(mark, levels, totalOI, totalW);
   }
 
   function renderOiFlow(data) {
