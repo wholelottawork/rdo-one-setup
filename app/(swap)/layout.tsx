@@ -1,5 +1,7 @@
 import type { Metadata } from 'next';
 import { AppProviders } from '@/lib/providers';
+import './swap/swap.css';
+import '../(terminal)/terminal.css';
 
 export const metadata: Metadata = {
   title: 'RDO ONE — Swap',

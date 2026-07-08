@@ -2,7 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from '@/lib/i18n';
-import { RdoNav } from '@/lib/RdoNav';
+import {
+  TerminalShell,
+  TerminalShellProvider,
+} from '@/app/(terminal)/_components/TerminalShell';
+import type { HLNetwork } from '@/lib/hyperliquid';
 import {
   CHAINS, USDC_ARB, USDT_ARB, getProv, type EIP1193,
   loadHLEquity, lifiQuote, lifiExec,
@@ -26,6 +30,9 @@ function selDec(sel: HTMLSelectElement | null) { return parseInt(sel?.options[se
 /* ─── page ───────────────────────────────────────────────────────────── */
 export default function TransferPage() {
   const { t } = useTranslation();
+
+  const [mode, setMode] = useState('hl');
+  const [network, setNetwork] = useState<HLNetwork>('mainnet');
 
   const [tab, setTab] = useState<Tab>('withdraw');
   const [wdSrc, setWdSrc] = useState<WdSrc>('hl');
@@ -191,7 +198,7 @@ export default function TransferPage() {
           setWdProg(p => p ? { ...p, steps: [{ state: 'done', msg: `$${fmt(amt)} USDC submitted to Arbitrum` }, p.steps[1], p.steps[2]] } : p);
 
           const before = await getERC20Bal(prov, USDC_ARB, user);
-          setWdProg(p => p ? { ...p, steps: [p.steps[0], { state: 'active', msg: 'Polling balance every 12s…' }, p.steps[2]] } : p);
+          setWdProg(p => p ? { ...p, steps: [{ state: 'active', msg: 'Polling balance every 12s…' }, p.steps[1], p.steps[2]] } : p);
           await pollBal(prov, USDC_ARB, user, BigInt(Math.round(amt * 1e6 * 0.97)), before, 360000);
           setWdProg(p => p ? { ...p, steps: [p.steps[0], { state: 'done', msg: 'USDC arrived in wallet' }, p.steps[2]] } : p);
 
@@ -461,9 +468,13 @@ export default function TransferPage() {
   const isBtwAster = btwDir === 'aster-to-hl';
 
   return (
-    <>
-      <RdoNav active="transfer" />
-      <main>
+    <TerminalShellProvider network={network}>
+      <TerminalShell
+        initialMode={mode as 'hl' | 'aster'}
+        initialMarket="BTC"
+        network={network}
+        onNetworkChange={setNetwork}
+      >
         <div className="page-hdr">
           <div className="page-title">{t('transferTitle')}</div>
           <div className="page-sub">{t('transferSub')}</div>
@@ -684,8 +695,8 @@ export default function TransferPage() {
             </div>
           </div>
         </div>
-      </main>
-    </>
+      </TerminalShell>
+    </TerminalShellProvider>
   );
 }
 

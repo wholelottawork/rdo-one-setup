@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "@/lib/i18n";
-import { RdoNav } from "@/lib/RdoNav";
+import { TerminalShell, TerminalShellProvider } from "@/app/(terminal)/_components/TerminalShell";
+import { type HLNetwork } from "@/lib/hyperliquid";
 import {
   getPhantomSolana,
   loadSolanaPortfolio,
@@ -114,6 +115,9 @@ export default function PortfolioPage() {
   );
   const [asterApproving, setAsterApproving] = useState(false);
   const [asterApproveMsg, setAsterApproveMsg] = useState<string | null>(null);
+
+  // ── Network state for TerminalShell ──────────────────────────────
+  const [network, setNetwork] = useState<HLNetwork>("mainnet");
 
   // ── Modals ─────────────────────────────────────────────────────
   const [depOpen, setDepOpen] = useState(false);
@@ -819,10 +823,13 @@ export default function PortfolioPage() {
   const totalVal = solTotal + evmTotal;
 
   return (
-    <>
-      <RdoNav active="portfolio" />
-
-      <main>
+    <TerminalShellProvider network={network}>
+      <TerminalShell
+        initialMode={pfMode === "aster" ? "aster" : "hl"}
+        initialMarket="BTC"
+        network={network}
+        onNetworkChange={setNetwork}
+      >
         {/* ══ WALLET SECTION ══ */}
         <div
           id="connect-screen"
@@ -2249,418 +2256,418 @@ export default function PortfolioPage() {
             </div>
           </div>
         </div>
-      </main>
 
-      {/* ── PnL Calendar Modal ── */}
-      <div
-        className={`cal-overlay${calOpen ? " open" : ""}`}
-        id="cal-overlay"
-        onClick={() => setCalOpen(false)}
-      >
-        <div className="cal-modal" onClick={(e) => e.stopPropagation()}>
-          <div className="cal-modal-hdr">
-            <div className="cal-modal-title">
-              PNL CALENDAR
-              <span
-                style={{
-                  padding: "3px 8px",
-                  background: "var(--bg3)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 3,
-                  fontSize: 10,
-                  fontWeight: 600,
-                  letterSpacing: ".5px",
-                  color: "var(--text2)",
-                }}
-              >
-                $ USD
-              </span>
-            </div>
-            <div className="cal-modal-nav">
-              <button
-                className="cal-nav-btn"
-                onClick={() => {
-                  setCalMonth((m) => {
-                    if (m - 1 < 0) {
-                      setCalYear((y) => y - 1);
-                      return 11;
-                    }
-                    return m - 1;
-                  });
-                }}
-              >
-                ‹
-              </button>
-              <span className="cal-month-lbl" id="cal-month-lbl">
-                {calendar.monthLabel}
-              </span>
-              <button
-                className="cal-nav-btn"
-                onClick={() => {
-                  setCalMonth((m) => {
-                    if (m + 1 > 11) {
-                      setCalYear((y) => y + 1);
-                      return 0;
-                    }
-                    return m + 1;
-                  });
-                }}
-              >
-                ›
-              </button>
-              <button
-                className="cal-close-btn"
-                onClick={() => setCalOpen(false)}
-              >
-                ✕
-              </button>
-            </div>
-          </div>
-          <div className="cal-summary">
-            <div className={calendar.monthTotalCls} id="cal-month-total">
-              {calendar.monthTotal}
-            </div>
-            <div className="cal-bar-track">
-              <div
-                className="cal-bar-fill"
-                id="cal-bar-fill"
-                style={{
-                  width: calendar.barPct + "%",
-                  background: calendar.barColor,
-                }}
-              ></div>
-            </div>
-            <div className="cal-winloss">
-              <span style={{ color: "var(--green)" }} id="cal-win-label">
-                {calendar.winLabel}
-              </span>
-              <span style={{ color: "var(--red)" }} id="cal-loss-label">
-                {calendar.lossLabel}
-              </span>
-            </div>
-          </div>
-          <div
-            className="cal-grid"
-            id="cal-grid"
-            dangerouslySetInnerHTML={{
-              __html: hl
-                ? calendar.gridHtml
-                : '<div class="hl-placeholder" style="grid-column:1/-1">Load a wallet to see calendar</div>',
-            }}
-          />
-          <div className="cal-footer">
-            <span>
-              Current Streak:{" "}
-              <strong id="cal-streak">{calendar.streakLabel}</strong>
-            </span>
-            <span
-              id="cal-best-streak"
-              dangerouslySetInnerHTML={{ __html: calendar.bestStreakHtml }}
-            />
-            <span
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 5,
-                fontSize: 9,
-                letterSpacing: ".08em",
-              }}
-            >
-              <span
-                style={{
-                  width: 5,
-                  height: 5,
-                  borderRadius: "50%",
-                  background: "var(--accent)",
-                  display: "inline-block",
-                }}
-              ></span>
-              RDO<span style={{ color: "var(--accent)" }}>ONE</span>
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* ── Deposit / Transfer Modal ── */}
-      <div
-        className={`overlay${depOpen ? " open" : ""}`}
-        id="deposit-modal"
-        onClick={() => {
-          setDepOpen(false);
-          depBack();
-        }}
-      >
+        {/* ── PnL Calendar Modal ── */}
         <div
-          className="modal"
-          onClick={(e) => e.stopPropagation()}
-          style={{ maxWidth: 420 }}
+          className={`cal-overlay${calOpen ? " open" : ""}`}
+          id="cal-overlay"
+          onClick={() => setCalOpen(false)}
         >
-          <div className="modal-hdr">
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <button
-                id="dep-back-btn"
-                onClick={depBack}
-                style={{
-                  display: depStep === "lifi" ? undefined : "none",
-                  background: "transparent",
-                  border: "none",
-                  color: "var(--text2)",
-                  cursor: "pointer",
-                  fontSize: 20,
-                  lineHeight: 1,
-                  padding: "0 4px 0 0",
-                  fontFamily: "inherit",
-                }}
-              >
-                ‹
-              </button>
-              <div className="modal-title" id="dep-modal-title">
-                {depTitle}
-              </div>
-            </div>
-            <button
-              className="modal-x"
-              onClick={() => {
-                setDepOpen(false);
-                depBack();
-              }}
-            >
-              ×
-            </button>
-          </div>
-          {/* Step 1: token picker */}
-          <div
-            id="dep-step-pick"
-            style={{
-              padding: "0 16px 16px",
-              display: depStep === "pick" ? undefined : "none",
-            }}
-          >
-            <div className="xfer-box">
-              <div className="xfer-label">
-                From Tokens
-                <span className="xfer-bal-hint">
-                  <span id="dep-token-bal">
-                    {depToken
-                      ? fmt(depToken.balance, depToken.balance < 1 ? 4 : 2) +
-                        " " +
-                        depToken.symbol
-                      : "—"}
-                  </span>{" "}
-                  <button className="xfer-max-btn" onClick={depMax}>
-                    Max
-                  </button>
+          <div className="cal-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="cal-modal-hdr">
+              <div className="cal-modal-title">
+                PNL CALENDAR
+                <span
+                  style={{
+                    padding: "3px 8px",
+                    background: "var(--bg3)",
+                    border: "1px solid var(--border)",
+                    borderRadius: 3,
+                    fontSize: 10,
+                    fontWeight: 600,
+                    letterSpacing: ".5px",
+                    color: "var(--text2)",
+                  }}
+                >
+                  $ USD
                 </span>
               </div>
-              <div className="xfer-row">
+              <div className="cal-modal-nav">
                 <button
-                  className="xfer-token-btn"
-                  id="dep-token-btn"
-                  onClick={() => setDepListOpen((o) => !o)}
+                  className="cal-nav-btn"
+                  onClick={() => {
+                    setCalMonth((m) => {
+                      if (m - 1 < 0) {
+                        setCalYear((y) => y - 1);
+                        return 11;
+                      }
+                      return m - 1;
+                    });
+                  }}
                 >
-                  <div id="dep-token-icon-wrap">
-                    {depToken?.logo ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        className="xfer-tok-icon"
-                        src={depToken.logo}
-                        alt=""
-                      />
-                    ) : (
-                      <div className="xfer-tok-ph">
-                        {(depToken?.symbol || "S")[0]}
-                      </div>
-                    )}
-                  </div>
-                  <span id="dep-token-sym">{depToken?.symbol ?? "SOL"}</span>
-                  <svg
-                    width="10"
-                    height="10"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M6 9l6 6 6-6" />
-                  </svg>
+                  ‹
                 </button>
-                <div className="xfer-amount-wrap">
-                  <input
-                    type="number"
-                    id="dep-amount"
-                    className="xfer-amount-input"
-                    placeholder="0.00"
-                    value={depAmount}
-                    onChange={(e) => setDepAmount(e.target.value)}
-                  />
-                  <div className="xfer-amount-usd" id="dep-amount-usd">
-                    ${fmt(depUsd)}
-                  </div>
-                </div>
+                <span className="cal-month-lbl" id="cal-month-lbl">
+                  {calendar.monthLabel}
+                </span>
+                <button
+                  className="cal-nav-btn"
+                  onClick={() => {
+                    setCalMonth((m) => {
+                      if (m + 1 > 11) {
+                        setCalYear((y) => y + 1);
+                        return 0;
+                      }
+                      return m + 1;
+                    });
+                  }}
+                >
+                  ›
+                </button>
+                <button
+                  className="cal-close-btn"
+                  onClick={() => setCalOpen(false)}
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+            <div className="cal-summary">
+              <div className={calendar.monthTotalCls} id="cal-month-total">
+                {calendar.monthTotal}
+              </div>
+              <div className="cal-bar-track">
+                <div
+                  className="cal-bar-fill"
+                  id="cal-bar-fill"
+                  style={{
+                    width: calendar.barPct + "%",
+                    background: calendar.barColor,
+                  }}
+                ></div>
+              </div>
+              <div className="cal-winloss">
+                <span style={{ color: "var(--green)" }} id="cal-win-label">
+                  {calendar.winLabel}
+                </span>
+                <span style={{ color: "var(--red)" }} id="cal-loss-label">
+                  {calendar.lossLabel}
+                </span>
               </div>
             </div>
             <div
-              id="dep-token-list"
-              className="dep-tok-list"
-              style={{ display: depListOpen ? undefined : "none" }}
-            >
-              {!assets?.length ? (
-                <div
+              className="cal-grid"
+              id="cal-grid"
+              dangerouslySetInnerHTML={{
+                __html: hl
+                  ? calendar.gridHtml
+                  : '<div class="hl-placeholder" style="grid-column:1/-1">Load a wallet to see calendar</div>',
+              }}
+            />
+            <div className="cal-footer">
+              <span>
+                Current Streak:{" "}
+                <strong id="cal-streak">{calendar.streakLabel}</strong>
+              </span>
+              <span
+                id="cal-best-streak"
+                dangerouslySetInnerHTML={{ __html: calendar.bestStreakHtml }}
+              />
+              <span
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 5,
+                  fontSize: 9,
+                  letterSpacing: ".08em",
+                }}
+              >
+                <span
                   style={{
-                    padding: 16,
-                    color: "var(--text3)",
-                    textAlign: "center",
-                    fontSize: 12,
+                    width: 5,
+                    height: 5,
+                    borderRadius: "50%",
+                    background: "var(--accent)",
+                    display: "inline-block",
+                  }}
+                ></span>
+                RDO<span style={{ color: "var(--accent)" }}>ONE</span>
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Deposit / Transfer Modal ── */}
+        <div
+          className={`overlay${depOpen ? " open" : ""}`}
+          id="deposit-modal"
+          onClick={() => {
+            setDepOpen(false);
+            depBack();
+          }}
+        >
+          <div
+            className="modal"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: 420 }}
+          >
+            <div className="modal-hdr">
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <button
+                  id="dep-back-btn"
+                  onClick={depBack}
+                  style={{
+                    display: depStep === "lifi" ? undefined : "none",
+                    background: "transparent",
+                    border: "none",
+                    color: "var(--text2)",
+                    cursor: "pointer",
+                    fontSize: 20,
+                    lineHeight: 1,
+                    padding: "0 4px 0 0",
+                    fontFamily: "inherit",
                   }}
                 >
-                  Connect wallet to see tokens
+                  ‹
+                </button>
+                <div className="modal-title" id="dep-modal-title">
+                  {depTitle}
                 </div>
-              ) : (
-                assets.map((a, i) => (
-                  <div
-                    className="dep-tok-item"
-                    key={i}
-                    onClick={() => depSelectToken(a)}
+              </div>
+              <button
+                className="modal-x"
+                onClick={() => {
+                  setDepOpen(false);
+                  depBack();
+                }}
+              >
+                ×
+              </button>
+            </div>
+            {/* Step 1: token picker */}
+            <div
+              id="dep-step-pick"
+              style={{
+                padding: "0 16px 16px",
+                display: depStep === "pick" ? undefined : "none",
+              }}
+            >
+              <div className="xfer-box">
+                <div className="xfer-label">
+                  From Tokens
+                  <span className="xfer-bal-hint">
+                    <span id="dep-token-bal">
+                      {depToken
+                        ? fmt(depToken.balance, depToken.balance < 1 ? 4 : 2) +
+                          " " +
+                          depToken.symbol
+                        : "—"}
+                    </span>{" "}
+                    <button className="xfer-max-btn" onClick={depMax}>
+                      Max
+                    </button>
+                  </span>
+                </div>
+                <div className="xfer-row">
+                  <button
+                    className="xfer-token-btn"
+                    id="dep-token-btn"
+                    onClick={() => setDepListOpen((o) => !o)}
                   >
-                    {a.logo ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img className="dep-tok-item-icon" src={a.logo} alt="" />
-                    ) : (
-                      <div className="dep-tok-item-ph">
-                        {(a.symbol || "?")[0]}
-                      </div>
-                    )}
-                    <div className="dep-tok-info">
-                      <div className="dep-tok-sym">{a.symbol}</div>
-                      <div className="dep-tok-name">{a.name}</div>
+                    <div id="dep-token-icon-wrap">
+                      {depToken?.logo ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          className="xfer-tok-icon"
+                          src={depToken.logo}
+                          alt=""
+                        />
+                      ) : (
+                        <div className="xfer-tok-ph">
+                          {(depToken?.symbol || "S")[0]}
+                        </div>
+                      )}
                     </div>
-                    <div className="dep-tok-right">
-                      <div className="dep-tok-bal">
-                        {fmt(a.balance, a.balance < 1 ? 4 : 2)}
-                      </div>
-                      <div className="dep-tok-usd">
-                        {a.value > 0.005 ? "$" + fmt(a.value) : "—"}
-                      </div>
+                    <span id="dep-token-sym">{depToken?.symbol ?? "SOL"}</span>
+                    <svg
+                      width="10"
+                      height="10"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M6 9l6 6 6-6" />
+                    </svg>
+                  </button>
+                  <div className="xfer-amount-wrap">
+                    <input
+                      type="number"
+                      id="dep-amount"
+                      className="xfer-amount-input"
+                      placeholder="0.00"
+                      value={depAmount}
+                      onChange={(e) => setDepAmount(e.target.value)}
+                    />
+                    <div className="xfer-amount-usd" id="dep-amount-usd">
+                      ${fmt(depUsd)}
                     </div>
-                  </div>
-                ))
-              )}
-            </div>
-            <div className="xfer-arrow-row">
-              <div className="xfer-arrow-circle">↓</div>
-            </div>
-            <div className="xfer-box">
-              <div className="xfer-label">To Perps</div>
-              <div className="xfer-to-row">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  className="xfer-to-icon"
-                  src="https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48/logo.png"
-                  alt="USDC"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).style.display = "none";
-                  }}
-                />
-                <div>
-                  <div className="xfer-to-name">USDC</div>
-                  <div className="xfer-to-sub">Hyperliquid Perps</div>
-                </div>
-                <div className="xfer-to-right">
-                  <div className="xfer-to-val" id="dep-to-val">
-                    {fmt(depUsd * 0.995)}
-                  </div>
-                  <div className="xfer-to-usd" id="dep-to-usd">
-                    {depAmtNum ? "~$" + fmt(depUsd * 0.995) : "$0.00"}
                   </div>
                 </div>
               </div>
+              <div
+                id="dep-token-list"
+                className="dep-tok-list"
+                style={{ display: depListOpen ? undefined : "none" }}
+              >
+                {!assets?.length ? (
+                  <div
+                    style={{
+                      padding: 16,
+                      color: "var(--text3)",
+                      textAlign: "center",
+                      fontSize: 12,
+                    }}
+                  >
+                    Connect wallet to see tokens
+                  </div>
+                ) : (
+                  assets.map((a, i) => (
+                    <div
+                      className="dep-tok-item"
+                      key={i}
+                      onClick={() => depSelectToken(a)}
+                    >
+                      {a.logo ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img className="dep-tok-item-icon" src={a.logo} alt="" />
+                      ) : (
+                        <div className="dep-tok-item-ph">
+                          {(a.symbol || "?")[0]}
+                        </div>
+                      )}
+                      <div className="dep-tok-info">
+                        <div className="dep-tok-sym">{a.symbol}</div>
+                        <div className="dep-tok-name">{a.name}</div>
+                      </div>
+                      <div className="dep-tok-right">
+                        <div className="dep-tok-bal">
+                          {fmt(a.balance, a.balance < 1 ? 4 : 2)}
+                        </div>
+                        <div className="dep-tok-usd">
+                          {a.value > 0.005 ? "$" + fmt(a.value) : "—"}
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+              <div className="xfer-arrow-row">
+                <div className="xfer-arrow-circle">↓</div>
+              </div>
+              <div className="xfer-box">
+                <div className="xfer-label">To Perps</div>
+                <div className="xfer-to-row">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    className="xfer-to-icon"
+                    src="https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48/logo.png"
+                    alt="USDC"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.display = "none";
+                    }}
+                  />
+                  <div>
+                    <div className="xfer-to-name">USDC</div>
+                    <div className="xfer-to-sub">Hyperliquid Perps</div>
+                  </div>
+                  <div className="xfer-to-right">
+                    <div className="xfer-to-val" id="dep-to-val">
+                      {fmt(depUsd * 0.995)}
+                    </div>
+                    <div className="xfer-to-usd" id="dep-to-usd">
+                      {depAmtNum ? "~$" + fmt(depUsd * 0.995) : "$0.00"}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <button
+                className="xfer-go-btn"
+                id="dep-go-btn"
+                onClick={depStartTransfer}
+              >
+                Transfer
+              </button>
             </div>
-            <button
-              className="xfer-go-btn"
-              id="dep-go-btn"
-              onClick={depStartTransfer}
+            {/* Step 2: LI.FI bridge */}
+            <div
+              id="dep-step-lifi"
+              style={{
+                display: depStep === "lifi" ? undefined : "none",
+                padding: 0,
+              }}
             >
-              Transfer
-            </button>
+              <iframe
+                id="lifi-deposit-frame"
+                className="lifi-frame"
+                title="Bridge via LI.FI"
+                allow="clipboard-write"
+                src={depFrameSrc || undefined}
+              ></iframe>
+            </div>
           </div>
-          {/* Step 2: LI.FI bridge */}
+        </div>
+
+        {/* ── Swap Modal ── */}
+        <div
+          className={`overlay${swapOpen ? " open" : ""}`}
+          id="swap-modal"
+          onClick={() => setSwapOpen(false)}
+        >
           <div
-            id="dep-step-lifi"
-            style={{
-              display: depStep === "lifi" ? undefined : "none",
-              padding: 0,
-            }}
+            className="modal"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: 520 }}
           >
-            <iframe
-              id="lifi-deposit-frame"
-              className="lifi-frame"
-              title="Bridge via LI.FI"
-              allow="clipboard-write"
-              src={depFrameSrc || undefined}
-            ></iframe>
+            <div className="modal-hdr">
+              <div className="modal-title">Swap</div>
+              <button className="modal-x" onClick={() => setSwapOpen(false)}>
+                ×
+              </button>
+            </div>
+            <div className="modal-body" style={{ padding: 0 }}>
+              <iframe
+                id="lifi-swap-frame"
+                className="lifi-frame"
+                title="Swap via LI.FI"
+                allow="clipboard-write"
+                src={swapSrc || undefined}
+              ></iframe>
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* ── Swap Modal ── */}
-      <div
-        className={`overlay${swapOpen ? " open" : ""}`}
-        id="swap-modal"
-        onClick={() => setSwapOpen(false)}
-      >
+        {/* ── Convert Modal ── */}
         <div
-          className="modal"
-          onClick={(e) => e.stopPropagation()}
-          style={{ maxWidth: 520 }}
+          className={`overlay${convertOpen ? " open" : ""}`}
+          id="convert-modal"
+          onClick={() => setConvertOpen(false)}
         >
-          <div className="modal-hdr">
-            <div className="modal-title">Swap</div>
-            <button className="modal-x" onClick={() => setSwapOpen(false)}>
-              ×
-            </button>
-          </div>
-          <div className="modal-body" style={{ padding: 0 }}>
-            <iframe
-              id="lifi-swap-frame"
-              className="lifi-frame"
-              title="Swap via LI.FI"
-              allow="clipboard-write"
-              src={swapSrc || undefined}
-            ></iframe>
+          <div
+            className="modal"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: 520 }}
+          >
+            <div className="modal-hdr">
+              <div className="modal-title">Convert to USDC</div>
+              <button className="modal-x" onClick={() => setConvertOpen(false)}>
+                ×
+              </button>
+            </div>
+            <div className="modal-body" style={{ padding: 0 }}>
+              <iframe
+                id="lifi-convert-frame"
+                className="lifi-frame"
+                title="Convert via LI.FI"
+                allow="clipboard-write"
+                src={convertSrc || undefined}
+              ></iframe>
+            </div>
           </div>
         </div>
-      </div>
-
-      {/* ── Convert Modal ── */}
-      <div
-        className={`overlay${convertOpen ? " open" : ""}`}
-        id="convert-modal"
-        onClick={() => setConvertOpen(false)}
-      >
-        <div
-          className="modal"
-          onClick={(e) => e.stopPropagation()}
-          style={{ maxWidth: 520 }}
-        >
-          <div className="modal-hdr">
-            <div className="modal-title">Convert to USDC</div>
-            <button className="modal-x" onClick={() => setConvertOpen(false)}>
-              ×
-            </button>
-          </div>
-          <div className="modal-body" style={{ padding: 0 }}>
-            <iframe
-              id="lifi-convert-frame"
-              className="lifi-frame"
-              title="Convert via LI.FI"
-              allow="clipboard-write"
-              src={convertSrc || undefined}
-            ></iframe>
-          </div>
-        </div>
-      </div>
-    </>
+      </TerminalShell>
+    </TerminalShellProvider>
   );
 }

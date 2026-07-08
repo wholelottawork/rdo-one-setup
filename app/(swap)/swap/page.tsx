@@ -1,9 +1,14 @@
 'use client';
 
 import { useSearchParams } from 'next/navigation';
-import { Suspense } from 'react';
+import { Suspense, useState } from 'react';
 import { LiFiWidget, type WidgetConfig } from '@lifi/widget';
 import { ChainType } from '@lifi/sdk';
+import {
+  TerminalShell,
+  TerminalShellProvider,
+} from '@/app/(terminal)/_components/TerminalShell';
+import type { HLNetwork } from '@/lib/hyperliquid';
 
 const ARBITRUM_CHAIN_ID = 42161;
 const USDC_ARBITRUM = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831';
@@ -63,9 +68,20 @@ function SwapPageInner() {
 }
 
 export default function SwapPage() {
+  const [network, setNetwork] = useState<HLNetwork>('mainnet');
+
   return (
     <Suspense fallback={<div className="swap-fallback">Loading…</div>}>
-      <SwapPageInner />
+      <TerminalShellProvider network={network}>
+        <TerminalShell
+          initialMode="hl"
+          initialMarket="BTC"
+          network={network}
+          onNetworkChange={setNetwork}
+        >
+          <SwapPageInner />
+        </TerminalShell>
+      </TerminalShellProvider>
     </Suspense>
   );
 }

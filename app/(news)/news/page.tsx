@@ -3,8 +3,12 @@
 import { useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from '@/lib/i18n';
-import { RdoNav } from '@/lib/RdoNav';
 import { useNews, timeAgo, SOURCE_META, CATEGORIES, type Article } from '@/lib/news';
+import {
+  TerminalShell,
+  TerminalShellProvider,
+} from '@/app/(terminal)/_components/TerminalShell';
+import type { HLNetwork } from '@/lib/hyperliquid';
 
 const PAGE_SIZE = 18;
 
@@ -78,6 +82,7 @@ export default function NewsPage() {
   const [activeCat, setActiveCat] = useState(CATEGORIES[0]);
   const [activeSrcIds, setActiveSrcIds] = useState<Set<string>>(() => new Set(Object.keys(SOURCE_META)));
   const [shown, setShown] = useState(PAGE_SIZE);
+  const [network, setNetwork] = useState<HLNetwork>('mainnet');
 
   const allArticles = useMemo(() => data?.articles ?? [], [data]);
 
@@ -127,10 +132,13 @@ export default function NewsPage() {
   const ok = sourcesTotal - failed.length;
 
   return (
-    <>
-      <RdoNav active="news" />
-
-      <main>
+    <TerminalShellProvider network={network}>
+      <TerminalShell
+        initialMode="hl"
+        initialMarket="BTC"
+        network={network}
+        onNetworkChange={setNetwork}
+      >
         <div className="page-hdr">
           <h1>{t('cryptoNews')}</h1>
           <div className="hdr-right">
@@ -172,7 +180,7 @@ export default function NewsPage() {
         <div id="load-more-wrap" style={{ display: !isLoading && shown < visibleArticles.length ? 'block' : 'none' }}>
           <button className="load-more-btn" onClick={() => setShown(s => Math.min(s + PAGE_SIZE, visibleArticles.length))}>{t('loadMore')}</button>
         </div>
-      </main>
-    </>
+      </TerminalShell>
+    </TerminalShellProvider>
   );
 }
