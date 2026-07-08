@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation, type Lang } from '@/lib/i18n';
 import { useWallet } from '@/lib/wallet';
 import { fmtPrice, fmtAster, fmtLarge, type TradeMode } from '@/lib/markets';
+import type { HLNetwork } from '@/lib/hyperliquid';
 
 export interface DropdownRow {
   sym: string;
@@ -32,14 +33,16 @@ interface Props {
   onModeChange: (mode: TradeMode) => void;
   onSelectMarket: (sym: string) => void;
   onOpenDeposit: () => void;
+  network: HLNetwork;
+  onNetworkChange: (network: HLNetwork) => void;
 }
 
 const fmtFund = (v: number | null) => (v == null ? '—' : `${v >= 0 ? '+' : ''}${v.toFixed(4)}%`);
 const fmtChg = (v: number | null) => (v == null ? '—' : `${v >= 0 ? '+' : ''}${v.toFixed(2)}%`);
 
-export function Header({ mode, market, stats, balance, dropdownRows, onModeChange, onSelectMarket, onOpenDeposit }: Props) {
+export function Header({ mode, market, stats, balance, dropdownRows, onModeChange, onSelectMarket, onOpenDeposit, network, onNetworkChange }: Props) {
   const { t, lang, setLang } = useTranslation();
-  const { address, connect } = useWallet();
+  const { address, connect, disconnect } = useWallet();
   const [popupOpen, setPopupOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
@@ -91,6 +94,25 @@ export function Header({ mode, market, stats, balance, dropdownRows, onModeChang
             <button className={`mode-btn mode-aster${isAster ? ' active' : ''}`} id="modeBtnAster" onClick={() => onModeChange('aster')}>EXTRA</button>
           </div>
           <button className="mode-help-btn" id="modeHelpBtn" onClick={() => setPopupOpen(o => !o)}>?</button>
+
+          {/* Hyperliquid mainnet/testnet toggle — only meaningful in BASIC
+              (HL) mode; Aster has no testnet wiring in this app. */}
+          {!isAster && (
+            <div className="net-switch" title="Hyperliquid network">
+              <button
+                className={`net-btn net-mainnet${network === 'mainnet' ? ' active' : ''}`}
+                onClick={() => onNetworkChange('mainnet')}
+              >
+                MAINNET
+              </button>
+              <button
+                className={`net-btn net-testnet${network === 'testnet' ? ' active' : ''}`}
+                onClick={() => onNetworkChange('testnet')}
+              >
+                TESTNET
+              </button>
+            </div>
+          )}
 
           {/* backdrop for mode popup */}
           <div className={`mode-backdrop${popupOpen ? '' : ' hidden'}`} id="modeBackdrop" onClick={() => setPopupOpen(false)}></div>
@@ -228,6 +250,17 @@ export function Header({ mode, market, stats, balance, dropdownRows, onModeChang
         >
           {address ? address.slice(0, 6) + '...' + address.slice(-4) : t('connect')}
         </button>
+        {address && (
+          <button
+            id="walletDisconnectBtn"
+            className="wallet-disconnect-btn"
+            onClick={disconnect}
+            title={t('disconnect')}
+            aria-label={t('disconnect')}
+          >
+            ✕
+          </button>
+        )}
       </div>
     </header>
   );

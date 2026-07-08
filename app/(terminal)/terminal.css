@@ -134,6 +134,27 @@ body.mode-aster { --hl-accent: #a78bfa; --hl-accent-dark: rgba(139,92,246,0.15);
 }
 .mode-help-btn:hover { border-color: var(--hl-accent); color: var(--hl-accent); }
 
+/* ── NETWORK SWITCHER (Hyperliquid mainnet/testnet) ─────────── */
+.net-switch {
+  display: flex; align-items: center;
+  background: var(--hl-bg-elevated);
+  border: 1px solid var(--hl-border);
+  border-radius: 6px;
+  padding: 2px;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.net-btn {
+  font-family: var(--hl-font); font-size: 10px; font-weight: 700;
+  letter-spacing: 0.5px;
+  padding: 3px 8px; border-radius: 4px; border: none; cursor: pointer;
+  color: var(--hl-text-secondary); background: transparent;
+  transition: all 0.15s;
+}
+.net-btn:hover { color: var(--hl-text-primary); }
+.net-btn.active.net-mainnet { background: var(--hl-accent-dark); color: var(--hl-accent); }
+.net-btn.active.net-testnet { background: rgba(234, 179, 8, 0.15); color: #eab308; }
+
 .mode-popup {
   position: absolute; top: calc(100% + 8px); left: 0;
   background: var(--hl-bg-elevated);
@@ -271,6 +292,14 @@ body.mode-aster { --hl-accent: #a78bfa; --hl-accent-dark: rgba(139,92,246,0.15);
   background: transparent; border: 1px solid var(--hl-border);
   color: var(--hl-text-secondary);
 }
+.wallet-disconnect-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; margin-left: 4px; padding: 0;
+  background: transparent; border: 1px solid var(--hl-border); border-radius: var(--hl-radius);
+  color: var(--hl-text-muted); font-size: 11px; line-height: 1; cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.wallet-disconnect-btn:hover { border-color: var(--hl-sell); color: var(--hl-sell); }
 
 /* ── WORKSPACE ──────────────────────────────────────────────── */
 .workspace {

@@ -11,7 +11,7 @@ import {
   useHLFills, useHLOpenOrders, useHLFunding,
 } from '@/lib/hl-hooks';
 import { useAsterTickers, useAsterFunding, useAsterCandles, useAsterBook, useAsterOpenInterest, useAsterSymbols, useAsterLeverageBrackets } from '@/lib/aster-hooks';
-import { openPosition, closePosition, cancelOrder, getL2Book, type OrderBook } from '@/lib/hyperliquid';
+import { openPosition, closePosition, cancelOrder, getL2Book, type OrderBook, type HLNetwork } from '@/lib/hyperliquid';
 import { fmtPrice, fmtAster, fmtLarge, type TradeMode } from '@/lib/markets';
 import { Header, type DropdownRow, type HeaderStats } from './_components/Header';
 import { XTracker } from './_components/XTracker';
@@ -56,15 +56,19 @@ function TerminalPageInner() {
   const params = useSearchParams();
   const requestedMode: TradeMode = params.get('mode') === 'aster' ? 'aster' : 'hl';
   const initialMarket = params.get('sym')?.toUpperCase() || 'BTC';
+  const initialNetwork: HLNetwork = params.get('net') === 'testnet' ? 'testnet' : 'mainnet';
+  const [network, setNetwork] = useState<HLNetwork>(initialNetwork);
 
   return (
-    <HLSocketProvider>
-      <Terminal initialMode={requestedMode} initialMarket={initialMarket} />
+    <HLSocketProvider network={network}>
+      <Terminal initialMode={requestedMode} initialMarket={initialMarket} network={network} onNetworkChange={setNetwork} />
     </HLSocketProvider>
   );
 }
 
-function Terminal({ initialMode, initialMarket }: { initialMode: TradeMode; initialMarket: string }) {
+function Terminal({
+  initialMode, initialMarket, network, onNetworkChange,
+}: { initialMode: TradeMode; initialMarket: string; network: HLNetwork; onNetworkChange: (n: HLNetwork) => void }) {
   const [mode, setMode] = useState<TradeMode>(initialMode);
   const [market, setMarket] = useState(initialMarket);
   const [intervalMinutes, setIntervalMinutes] = useState(1);
@@ -98,9 +102,9 @@ function Terminal({ initialMode, initialMarket }: { initialMode: TradeMode; init
   }, []);
 
   // ── Market data ────────────────────────────────────────────────
-  const { data: hlMeta } = useHLMeta();
-  const { data: hlTickers } = useHLTickers();
-  const { data: hlCandles } = useHLCandles(market, intervalMinutes);
+  const { data: hlMeta } = useHLMeta(network);
+  const { data: hlTickers } = useHLTickers(network);
+  const { data: hlCandles } = useHLCandles(market, intervalMinutes, network);
   const { data: asterSymbols } = useAsterSymbols();
   const { data: asterTickers } = useAsterTickers();
   const { data: asterFunding } = useAsterFunding();
@@ -131,11 +135,11 @@ function Terminal({ initialMode, initialMarket }: { initialMode: TradeMode; init
   useEffect(() => {
     if (isAster) return;
     let stale = false;
-    getL2Book(market).then(book => { if (!stale) setHlBook(book); });
+    getL2Book(market, network).then(book => { if (!stale) setHlBook(book); });
     return () => { stale = true; };
-  }, [market, isAster]);
+  }, [market, isAster, network]);
   const onHLBook = useCallback((book: OrderBook) => setHlBook(book), []);
-  useHLBookStream(isAster ? '' : market, onHLBook);
+  useHLBookStream(isAster ? '' : market, onHLBook, network);
   const book = isAster ? (asterBook ?? { asks: [], bids: [] }) : hlBook;
 
   // Trades feed (HL only, current market)
@@ -147,11 +151,11 @@ function Terminal({ initialMode, initialMarket }: { initialMode: TradeMode; init
   }, [isAster, market, onTrade, subscribeTrades]);
 
   // ── Wallet-gated account data ──────────────────────────────────
-  const { data: balance = 0 } = useHLBalance(address);
-  const { data: positions = [] } = useHLPositions(address);
-  const { data: fills = [] } = useHLFills(address, true);
-  const { data: openOrders = [] } = useHLOpenOrders(address, true);
-  const { data: fundingHistory = [] } = useHLFunding(address, true);
+  const { data: balance = 0 } = useHLBalance(address, network);
+  const { data: positions = [] } = useHLPositions(address, network);
+  const { data: fills = [] } = useHLFills(address, true, network);
+  const { data: openOrders = [] } = useHLOpenOrders(address, true, network);
+  const { data: fundingHistory = [] } = useHLFunding(address, true, network);
 
   const currentPosition = positions.find(p => p.symbol === market);
   const totalUnrealizedPnl = positions.reduce((s, p) => s + p.pnl, 0);
@@ -257,10 +261,10 @@ function Terminal({ initialMode, initialMarket }: { initialMode: TradeMode; init
       const { ethers } = await import('ethers');
       const signer = await new ethers.BrowserProvider(provider as never).getSigner();
       const px = livePrice ?? 0;
-      const result = await openPosition({ symbol: market, sizeDollars: sizeNum * px, leverage, isLong: isBuy, signer });
+      const result = await openPosition({ symbol: market, sizeDollars: sizeNum * px, leverage, isLong: isBuy, signer, network });
       if (result.status === 'ok') {
         showToast(`${isBuy ? 'Long' : 'Short'} ${market} opened`, 'ok');
-        setTimeout(() => queryClient.invalidateQueries({ queryKey: ['hl', 'positions', address] }), 2000);
+        setTimeout(() => queryClient.invalidateQueries({ queryKey: ['hl', 'positions', address, network] }), 2000);
       } else {
         flashError(result.response ?? 'Order failed');
       }
@@ -286,10 +290,10 @@ function Terminal({ initialMode, initialMarket }: { initialMode: TradeMode; init
     try {
       const { ethers } = await import('ethers');
       const signer = await new ethers.BrowserProvider(provider as never).getSigner();
-      const result = await closePosition({ symbol: p.symbol, size: p.size, isLong: p.isLong, signer });
+      const result = await closePosition({ symbol: p.symbol, size: p.size, isLong: p.isLong, signer, network });
       if (result.status === 'ok') {
         showToast('Position closed', 'ok');
-        setTimeout(() => queryClient.invalidateQueries({ queryKey: ['hl', 'positions', address] }), 2000);
+        setTimeout(() => queryClient.invalidateQueries({ queryKey: ['hl', 'positions', address, network] }), 2000);
       } else {
         showToast(result.response ?? 'Close failed', 'err');
       }
@@ -305,10 +309,10 @@ function Terminal({ initialMode, initialMarket }: { initialMode: TradeMode; init
     try {
       const { ethers } = await import('ethers');
       const signer = await new ethers.BrowserProvider(provider as never).getSigner();
-      const result = await cancelOrder({ oid, symbol, signer });
+      const result = await cancelOrder({ oid, symbol, signer, network });
       if (result.status === 'ok') {
         showToast('Order cancelled', 'ok');
-        queryClient.invalidateQueries({ queryKey: ['hl', 'openOrders', address] });
+        queryClient.invalidateQueries({ queryKey: ['hl', 'openOrders', address, network] });
       } else {
         showToast(result.response ?? 'Cancel failed', 'err');
       }
@@ -329,6 +333,8 @@ function Terminal({ initialMode, initialMarket }: { initialMode: TradeMode; init
           onModeChange={changeMode}
           onSelectMarket={selectMarket}
           onOpenDeposit={() => setDepositOpen(true)}
+          network={network}
+          onNetworkChange={onNetworkChange}
         />
 
         {/* ══ WORKSPACE ══ */}

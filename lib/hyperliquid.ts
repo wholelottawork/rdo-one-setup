@@ -4,8 +4,17 @@
 // the backend never holds keys.
 
 const HL_API = '/api/hl';
+const HL_TESTNET_API = '/api/hl-testnet';
 export const BUILDER_ADDRESS = '0x0000000000000000000000000000000000000000'; // ← replace with your treasury wallet
 export const BUILDER_FEE = 1000; // tenths of bps → 0.10%
+
+/** Every HL call below takes this as a trailing param, default 'mainnet' — no
+ * existing call site needs to change to keep current (mainnet) behavior. */
+export type HLNetwork = 'mainnet' | 'testnet';
+
+function hlApiBase(network: HLNetwork): string {
+  return network === 'testnet' ? HL_TESTNET_API : HL_API;
+}
 
 const assetIndexMap: Record<string, number> = {};
 
@@ -77,8 +86,8 @@ export interface OrderBook {
   bids: OrderBookLevel[];
 }
 
-async function hlInfo<T>(body: Record<string, unknown>): Promise<T> {
-  const res = await fetch(`${HL_API}/info`, {
+async function hlInfo<T>(body: Record<string, unknown>, network: HLNetwork = 'mainnet'): Promise<T> {
+  const res = await fetch(`${hlApiBase(network)}/info`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -86,11 +95,11 @@ async function hlInfo<T>(body: Record<string, unknown>): Promise<T> {
   return res.json();
 }
 
-export async function getMetaAndAssetCtxs(): Promise<Map<string, AssetCtx> | null> {
+export async function getMetaAndAssetCtxs(network: HLNetwork = 'mainnet'): Promise<Map<string, AssetCtx> | null> {
   try {
     const data = await hlInfo<[{ universe: Array<{ name: string }> }, Array<Record<string, unknown>>]>({
       type: 'metaAndAssetCtxs',
-    });
+    }, network);
     const universe = data[0]?.universe ?? [];
     const ctxs = data[1] ?? [];
 
@@ -113,12 +122,12 @@ export async function getMetaAndAssetCtxs(): Promise<Map<string, AssetCtx> | nul
   }
 }
 
-export async function loadBalance(evmAddress: string): Promise<number> {
+export async function loadBalance(evmAddress: string, network: HLNetwork = 'mainnet'): Promise<number> {
   try {
     const data = await hlInfo<{ marginSummary?: { accountValue?: string } }>({
       type: 'clearinghouseState',
       user: evmAddress,
-    });
+    }, network);
     return parseFloat(data.marginSummary?.accountValue ?? '0');
   } catch {
     return 0;
@@ -138,9 +147,9 @@ interface ClearinghouseState {
   }>;
 }
 
-export async function getPositions(evmAddress: string): Promise<Position[]> {
+export async function getPositions(evmAddress: string, network: HLNetwork = 'mainnet'): Promise<Position[]> {
   try {
-    const data = await hlInfo<ClearinghouseState>({ type: 'clearinghouseState', user: evmAddress });
+    const data = await hlInfo<ClearinghouseState>({ type: 'clearinghouseState', user: evmAddress }, network);
     return (data.assetPositions ?? [])
       .filter(p => parseFloat(p.position.szi) !== 0)
       .map(p => ({
@@ -157,9 +166,9 @@ export async function getPositions(evmAddress: string): Promise<Position[]> {
   }
 }
 
-export async function getUserFills(evmAddress: string): Promise<Fill[]> {
+export async function getUserFills(evmAddress: string, network: HLNetwork = 'mainnet'): Promise<Fill[]> {
   try {
-    const data = await hlInfo<Array<Record<string, unknown>>>({ type: 'userFills', user: evmAddress });
+    const data = await hlInfo<Array<Record<string, unknown>>>({ type: 'userFills', user: evmAddress }, network);
     return (Array.isArray(data) ? data : []).map(f => ({
       coin: String(f.coin),
       side: f.side === 'B' ? 'Buy' : 'Sell',
@@ -177,9 +186,9 @@ export async function getUserFills(evmAddress: string): Promise<Fill[]> {
   }
 }
 
-export async function getOpenOrders(evmAddress: string): Promise<OpenOrder[]> {
+export async function getOpenOrders(evmAddress: string, network: HLNetwork = 'mainnet'): Promise<OpenOrder[]> {
   try {
-    const data = await hlInfo<Array<Record<string, unknown>>>({ type: 'openOrders', user: evmAddress });
+    const data = await hlInfo<Array<Record<string, unknown>>>({ type: 'openOrders', user: evmAddress }, network);
     return (Array.isArray(data) ? data : []).map(o => ({
       coin: String(o.coin),
       side: o.side === 'B' ? 'Buy' : 'Sell',
@@ -194,12 +203,12 @@ export async function getOpenOrders(evmAddress: string): Promise<OpenOrder[]> {
   }
 }
 
-export async function getFundingHistory(evmAddress: string): Promise<FundingEntry[]> {
+export async function getFundingHistory(evmAddress: string, network: HLNetwork = 'mainnet'): Promise<FundingEntry[]> {
   try {
     const data = await hlInfo<Array<Record<string, unknown>> | { fundingHistory?: Array<Record<string, unknown>> }>({
       type: 'userFundingHistory',
       user: evmAddress,
-    });
+    }, network);
     const rows = Array.isArray(data) ? data : (data.fundingHistory ?? []);
     return rows.map(f => ({
       coin: String(f.coin),
@@ -213,9 +222,9 @@ export async function getFundingHistory(evmAddress: string): Promise<FundingEntr
   }
 }
 
-export async function getMarketPrice(symbol: string): Promise<number> {
+export async function getMarketPrice(symbol: string, network: HLNetwork = 'mainnet'): Promise<number> {
   try {
-    const mids = await hlInfo<Record<string, string>>({ type: 'allMids' });
+    const mids = await hlInfo<Record<string, string>>({ type: 'allMids' }, network);
     return parseFloat(mids[symbol] ?? '0');
   } catch {
     return 0;
@@ -228,14 +237,14 @@ function ivStr(m: number): string {
   return '1d';
 }
 
-export async function getCandles(symbol: string, interval: number, count = 200): Promise<Candle[]> {
+export async function getCandles(symbol: string, interval: number, count = 200, network: HLNetwork = 'mainnet'): Promise<Candle[]> {
   try {
     const ms = interval * 60 * 1000;
     const start = Date.now() - ms * count;
     const data = await hlInfo<Array<Record<string, unknown>>>({
       type: 'candleSnapshot',
       req: { coin: symbol, interval: ivStr(interval), startTime: start, endTime: Date.now() },
-    });
+    }, network);
     if (!Array.isArray(data)) return [];
     return data.map(c => ({
       t: Number(c.t), o: +String(c.o), h: +String(c.h), l: +String(c.l), c: +String(c.c), v: +String(c.v),
@@ -245,12 +254,12 @@ export async function getCandles(symbol: string, interval: number, count = 200):
   }
 }
 
-export async function getL2Book(symbol: string): Promise<OrderBook> {
+export async function getL2Book(symbol: string, network: HLNetwork = 'mainnet'): Promise<OrderBook> {
   try {
     const data = await hlInfo<{ levels?: [Array<{ px: string; sz: string }>, Array<{ px: string; sz: string }>] }>({
       type: 'l2Book',
       coin: symbol,
-    });
+    }, network);
     return {
       asks: (data.levels?.[1] ?? []).slice(0, 12).map(l => ({ px: +l.px, sz: +l.sz })),
       bids: (data.levels?.[0] ?? []).slice(0, 12).map(l => ({ px: +l.px, sz: +l.sz })),
@@ -334,10 +343,20 @@ export interface Signer {
   signTypedData(domain: unknown, types: unknown, value: unknown): Promise<string>;
 }
 
-export async function signAction(signer: Signer, wireAction: MpValue, nonce: number) {
+/**
+ * EIP-712 domain/source for HL's "phantom agent" L1 action signing (orders,
+ * cancels). Per Hyperliquid's own SDK (hyperliquid-python-sdk
+ * utils/signing.py: l1_payload/construct_phantom_agent), the domain chainId
+ * is ALWAYS 1337 for both networks — mainnet vs testnet is distinguished
+ * purely by the `source` field ('a' vs 'b'), not by chainId. (This app
+ * previously hardcoded chainId: 42161 with source always 'a', which is
+ * wrong for testnet and — per the SDK — not the documented value for
+ * mainnet either.)
+ */
+export async function signAction(signer: Signer, wireAction: MpValue, nonce: number, network: HLNetwork = 'mainnet') {
   const hash = await computeActionHash(wireAction, nonce);
   const domain = {
-    name: 'Exchange', version: '1', chainId: 42161,
+    name: 'Exchange', version: '1', chainId: 1337,
     verifyingContract: '0x0000000000000000000000000000000000000000',
   };
   const types = {
@@ -346,7 +365,8 @@ export async function signAction(signer: Signer, wireAction: MpValue, nonce: num
       { name: 'connectionId', type: 'bytes32' },
     ],
   };
-  const rawSig = await signer.signTypedData(domain, types, { source: 'a', connectionId: hash });
+  const source = network === 'mainnet' ? 'a' : 'b';
+  const rawSig = await signer.signTypedData(domain, types, { source, connectionId: hash });
   return {
     r: rawSig.slice(0, 66),
     s: '0x' + rawSig.slice(66, 130),
@@ -360,10 +380,11 @@ interface TradeParams {
   leverage: number;
   isLong: boolean;
   signer: Signer;
+  network?: HLNetwork;
 }
 
-export async function openPosition({ symbol, sizeDollars, isLong, signer }: TradeParams) {
-  const price = await getMarketPrice(symbol);
+export async function openPosition({ symbol, sizeDollars, isLong, signer, network = 'mainnet' }: TradeParams) {
+  const price = await getMarketPrice(symbol, network);
   if (!price) throw new Error('Cannot fetch price for ' + symbol);
 
   const sz = parseFloat((sizeDollars / price).toFixed(8));
@@ -385,8 +406,8 @@ export async function openPosition({ symbol, sizeDollars, isLong, signer }: Trad
   };
 
   const nonce = Date.now();
-  const signature = await signAction(signer, wireAction, nonce);
-  const res = await fetch(`${HL_API}/exchange`, {
+  const signature = await signAction(signer, wireAction, nonce, network);
+  const res = await fetch(`${hlApiBase(network)}/exchange`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: wireAction, nonce, signature }),
@@ -395,9 +416,9 @@ export async function openPosition({ symbol, sizeDollars, isLong, signer }: Trad
 }
 
 export async function closePosition(
-  { symbol, size, isLong, signer }: { symbol: string; size: number; isLong: boolean; signer: Signer },
+  { symbol, size, isLong, signer, network = 'mainnet' }: { symbol: string; size: number; isLong: boolean; signer: Signer; network?: HLNetwork },
 ) {
-  const price = await getMarketPrice(symbol);
+  const price = await getMarketPrice(symbol, network);
   if (!price) throw new Error('Cannot fetch price for ' + symbol);
   const slip = 0.003;
 
@@ -416,8 +437,8 @@ export async function closePosition(
   };
 
   const nonce = Date.now();
-  const signature = await signAction(signer, wireAction, nonce);
-  const res = await fetch(`${HL_API}/exchange`, {
+  const signature = await signAction(signer, wireAction, nonce, network);
+  const res = await fetch(`${hlApiBase(network)}/exchange`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: wireAction, nonce, signature }),
@@ -425,14 +446,14 @@ export async function closePosition(
   return res.json();
 }
 
-export async function cancelOrder({ oid, symbol, signer }: { oid: number; symbol: string; signer: Signer }) {
+export async function cancelOrder({ oid, symbol, signer, network = 'mainnet' }: { oid: number; symbol: string; signer: Signer; network?: HLNetwork }) {
   const wireAction = {
     type: 'cancel',
     cancels: [{ a: assetIndexMap[symbol] ?? 0, o: oid }],
   };
   const nonce = Date.now();
-  const signature = await signAction(signer, wireAction, nonce);
-  const res = await fetch(`${HL_API}/exchange`, {
+  const signature = await signAction(signer, wireAction, nonce, network);
+  const res = await fetch(`${hlApiBase(network)}/exchange`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: wireAction, nonce, signature }),
@@ -451,11 +472,11 @@ export interface HLTickerStat {
 }
 
 /** Powers the market dropdown table — ported from main.js's fetchAllMids(). */
-export async function getHLTickers(): Promise<Record<string, HLTickerStat>> {
+export async function getHLTickers(network: HLNetwork = 'mainnet'): Promise<Record<string, HLTickerStat>> {
   try {
     const data = await hlInfo<[{ universe: Array<{ name: string; maxLeverage?: number }> }, Array<Record<string, unknown>>]>({
       type: 'metaAndAssetCtxs',
-    });
+    }, network);
     const universe = data[0]?.universe ?? [];
     const ctxs = data[1] ?? [];
     const out: Record<string, HLTickerStat> = {};
@@ -488,19 +509,25 @@ export async function getHLTickers(): Promise<Record<string, HLTickerStat>> {
  * account in this migration — verify carefully (small amount first) before
  * relying on it, per Hyperliquid's "HyperliquidTransaction:Withdraw" spec.
  */
-export async function hlWithdraw({ destination, amount, signer }: { destination: string; amount: number; signer: Signer }) {
+export async function hlWithdraw(
+  { destination, amount, signer, network = 'mainnet' }: { destination: string; amount: number; signer: Signer; network?: HLNetwork },
+) {
   const nonce = Date.now();
+  // signatureChainId is fixed at 0x66eee (421614, Arbitrum Sepolia) for both
+  // networks per HL's SDK — it's just the wallet-signing chain, unrelated to
+  // which HL environment the action targets. hyperliquidChain is what
+  // actually routes/scopes the action to mainnet vs testnet.
   const action = {
     type: 'withdraw3',
-    hyperliquidChain: 'Mainnet',
-    signatureChainId: '0xa4b1',
+    hyperliquidChain: network === 'mainnet' ? 'Mainnet' : 'Testnet',
+    signatureChainId: '0x66eee',
     destination,
     amount: floatToWire(amount),
     time: nonce,
   };
 
   const domain = {
-    name: 'HyperliquidSignTransaction', version: '1', chainId: 42161,
+    name: 'HyperliquidSignTransaction', version: '1', chainId: 421614,
     verifyingContract: '0x0000000000000000000000000000000000000000',
   };
   const types = {
@@ -518,7 +545,7 @@ export async function hlWithdraw({ destination, amount, signer }: { destination:
     v: parseInt(rawSig.slice(130, 132), 16),
   };
 
-  const res = await fetch(`${HL_API}/exchange`, {
+  const res = await fetch(`${hlApiBase(network)}/exchange`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action, nonce, signature }),
@@ -526,9 +553,12 @@ export async function hlWithdraw({ destination, amount, signer }: { destination:
   return res.json();
 }
 
-// In prod: use the backend WS relay. In dev: connect direct (no CORS on WS).
-// Mirrors hlWsUrl() in the original src/trading.js.
-export function hlWsUrl(): string {
+// In prod: mainnet uses the backend WS relay; in dev, connect direct (no CORS
+// on WS). Testnet always connects direct — it's low volume/test-only, same
+// reasoning as the /hl-testnet REST proxy (server/routes/proxy.js), so no
+// relay has been built for it.
+export function hlWsUrl(network: HLNetwork = 'mainnet'): string {
+  if (network === 'testnet') return 'wss://api.hyperliquid-testnet.xyz/ws';
   if (process.env.NODE_ENV === 'production' && typeof window !== 'undefined') {
     const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     return `${proto}//${window.location.host}/ws`;

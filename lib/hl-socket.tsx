@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { hlWsUrl, type OrderBook } from './hyperliquid';
+import { hlWsUrl, type OrderBook, type HLNetwork } from './hyperliquid';
 
 export interface Trade {
   px: number;
@@ -32,7 +32,7 @@ const HLSocketContext = createContext<HLSocketValue | null>(null);
  * the last one unmounts — so switching to *any* market HL lists (not just a
  * pre-picked subset) gets a live trades feed, not just the top N.
  */
-export function HLSocketProvider({ children }: { children: React.ReactNode }) {
+export function HLSocketProvider({ children, network = 'mainnet' }: { children: React.ReactNode; network?: HLNetwork }) {
   const [status, setStatus] = useState<HLConnStatus>('connecting');
   const [prices, setPrices] = useState<Record<string, number>>({});
   const tradeListeners = useRef(new Map<string, Set<(t: Trade) => void>>());
@@ -43,7 +43,7 @@ export function HLSocketProvider({ children }: { children: React.ReactNode }) {
     let reconnectTimer: ReturnType<typeof setTimeout>;
 
     function connect() {
-      const ws = new WebSocket(hlWsUrl());
+      const ws = new WebSocket(hlWsUrl(network));
       wsRef.current = ws;
 
       ws.onopen = () => {
@@ -89,13 +89,14 @@ export function HLSocketProvider({ children }: { children: React.ReactNode }) {
       ws.onerror = () => ws.close();
     }
 
+    setPrices({}); // stale mainnet/testnet prices shouldn't linger across a network switch
     connect();
     return () => {
       alive = false;
       clearTimeout(reconnectTimer);
       wsRef.current?.close();
     };
-  }, []);
+  }, [network]);
 
   const subscribeTrades = useCallback((symbol: string, cb: (t: Trade) => void) => {
     const isNewCoin = !tradeListeners.current.has(symbol);
@@ -137,7 +138,7 @@ export function useHLSocket() {
  * socket per active market, not multiplexed through HLSocketProvider).
  * `onBook` is called on every update; pass a stable (useCallback'd) fn.
  */
-export function useHLBookStream(symbol: string, onBook: (book: OrderBook) => void) {
+export function useHLBookStream(symbol: string, onBook: (book: OrderBook) => void, network: HLNetwork = 'mainnet') {
   const onBookRef = useRef(onBook);
   onBookRef.current = onBook;
 
@@ -147,7 +148,7 @@ export function useHLBookStream(symbol: string, onBook: (book: OrderBook) => voi
     let ws: WebSocket;
 
     function connect() {
-      ws = new WebSocket(hlWsUrl());
+      ws = new WebSocket(hlWsUrl(network));
       ws.onopen = () => ws.send(JSON.stringify({ method: 'subscribe', subscription: { type: 'l2Book', coin: symbol } }));
       ws.onmessage = ({ data }) => {
         try {
@@ -172,5 +173,5 @@ export function useHLBookStream(symbol: string, onBook: (book: OrderBook) => voi
       clearTimeout(timer);
       ws?.close();
     };
-  }, [symbol]);
+  }, [symbol, network]);
 }
