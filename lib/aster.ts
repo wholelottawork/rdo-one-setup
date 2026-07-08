@@ -1,4 +1,11 @@
-import type { Candle, OrderBook } from './hyperliquid';
+import type { Candle, OrderBook, Signer } from './hyperliquid';
+
+// Our one shared Aster Pro API agent (server/lib/aster-auth.js holds the
+// matching private key) — every user of this app approves this SAME address
+// once via approveAsterAgent() below, after which our backend can read/trade
+// for their account by including `user: <their address>` on each signed
+// call. This is the "Aster Code" builder pattern, not a per-user key.
+export const ASTER_AGENT_ADDRESS = '0xdA480541aDB8D00E4783E5180CE70D3Da52D99F9';
 
 export interface AsterTicker {
   symbol: string;
@@ -135,14 +142,17 @@ export interface AsterAccountInfo {
 }
 
 /**
- * Real account snapshot for OUR configured Aster agent (server/lib/aster-auth.js)
- * — NOT a lookup by arbitrary address. Aster's signed endpoints only return
- * data for whichever account the registered agent is approved on; there is no
- * public "look up any address's positions" endpoint the way Hyperliquid has.
+ * Real account snapshot for `userAddress` via our shared Pro API agent
+ * (server/lib/aster-auth.js holds the agent's key) — requires that address
+ * to have approved our agent first (see approveAsterAgent). Unlike
+ * Hyperliquid, Aster has no permissionless "look up any address" endpoint;
+ * every signed call must carry an explicit `user` param naming the account,
+ * or Aster has no way to know which of our (potentially many) approved
+ * users' data to return.
  */
-export async function getAsterAccount(): Promise<AsterAccountInfo | null> {
+export async function getAsterAccount(userAddress: string): Promise<AsterAccountInfo | null> {
   try {
-    const res = await fetch('/api/aster-signed/fapi/v3/accountWithJoinMargin');
+    const res = await fetch(`/api/aster-signed/fapi/v3/accountWithJoinMargin?user=${userAddress}`);
     const data = await res.json();
     if (!data || typeof data !== 'object' || !Array.isArray(data.positions)) return null;
     return {
@@ -177,7 +187,7 @@ const INCOME_WINDOW_MS = 6.9 * 24 * 60 * 60 * 1000; // just under Aster's 7-day-
 const INCOME_BATCH = 5;
 
 /**
- * Realized PnL history for our agent's account via GET /fapi/v3/income
+ * Realized PnL history for `userAddress` via GET /fapi/v3/income
  * (incomeType=REALIZED_PNL) — covers every symbol in one logical fetch,
  * unlike /fapi/v3/userTrades which requires a single mandatory `symbol` and
  * can't answer "all of this account's trades." The tradeoff: income entries
@@ -189,7 +199,7 @@ const INCOME_BATCH = 5;
  * range is chunked into windows and fetched in small batches to stay well
  * under Aster's request-weight limit regardless of how far back we look.
  */
-export async function getAsterIncomeHistory(sinceMs: number): Promise<AsterIncomeEntry[]> {
+export async function getAsterIncomeHistory(sinceMs: number, userAddress: string): Promise<AsterIncomeEntry[]> {
   const now = Date.now();
   const windows: Array<{ start: number; end: number }> = [];
   for (let end = now; end > sinceMs; end -= INCOME_WINDOW_MS) {
@@ -201,7 +211,7 @@ export async function getAsterIncomeHistory(sinceMs: number): Promise<AsterIncom
     const batch = windows.slice(i, i + INCOME_BATCH);
     const results = await Promise.all(batch.map(async ({ start, end }) => {
       try {
-        const res = await fetch(`/api/aster-signed/fapi/v3/income?incomeType=REALIZED_PNL&startTime=${start}&endTime=${end}&limit=1000`);
+        const res = await fetch(`/api/aster-signed/fapi/v3/income?incomeType=REALIZED_PNL&startTime=${start}&endTime=${end}&limit=1000&user=${userAddress}`);
         const data = await res.json();
         return Array.isArray(data) ? data : [];
       } catch {
@@ -224,25 +234,72 @@ export async function getAsterIncomeHistory(sinceMs: number): Promise<AsterIncom
 
 // Open interest per symbol (USD notional) — ported from main.js fetchAsterOI().
 // Binance-style futures APIs (Aster included) have no bulk OI endpoint, only
-// one symbol per call. Now that the symbol list is the full live exchange
-// (500+ pairs, not a hand-picked 20), firing all of them at once with
-// Promise.all would mean 500+ simultaneous requests to Aster's real API —
-// risking their rate limit (x-mbx-used-weight-1m) for every user of this
-// site. Fetch in small concurrent batches instead so the request rate stays
-// reasonable regardless of how many symbols Aster lists.
-const OI_BATCH_SIZE = 15;
-
+// one symbol per call. With the full live symbol list (500+ pairs, not a
+// hand-picked 20), issuing one browser-facing request per symbol single-
+// handedly exhausted our own backend's rate limiter (200 req/60s per IP) —
+// so the fan-out now happens server-side in one call (see the
+// /aster-oi-bulk route in server/routes/proxy.js, which still batches its
+// own calls to Aster the same way this used to client-side).
 export async function getAsterOpenInterest(symbols: string[], prices: Record<string, number>): Promise<Record<string, number>> {
-  const out: Record<string, number> = {};
-  for (let i = 0; i < symbols.length; i += OI_BATCH_SIZE) {
-    const batch = symbols.slice(i, i + OI_BATCH_SIZE);
-    await Promise.all(batch.map(async sym => {
-      try {
-        const res = await fetch(`/api/aster-fapi/fapi/v1/openInterest?symbol=${sym}USDT`);
-        const d = await res.json();
-        out[sym] = parseFloat(d.openInterest ?? 0) * (prices[sym] || 0);
-      } catch { /* skip symbol */ }
-    }));
+  if (symbols.length === 0) return {};
+  try {
+    const res = await fetch('/api/aster-oi-bulk', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ symbols }),
+    });
+    const data: Record<string, number> = await res.json();
+    const out: Record<string, number> = {};
+    Object.entries(data).forEach(([sym, oi]) => { out[sym] = oi * (prices[sym] || 0); });
+    return out;
+  } catch {
+    return {};
   }
-  return out;
+}
+
+/**
+ * One-time approval letting our shared Aster Pro API agent (ASTER_AGENT_ADDRESS,
+ * private key in server/.env — see server/lib/aster-auth.js) read and trade
+ * on `userAddress`'s behalf. Signed by the user's OWN wallet client-side —
+ * this call is PUBLIC/unauthenticated on Aster's side and never touches our
+ * server's key. canWithdraw is hardcoded false: the shared agent should never
+ * be able to move funds out of a user's account, only trade with them.
+ *
+ * Field order in the signed message is significant — confirmed empirically
+ * that Aster rejects the same values signed in any order other than exactly
+ * this one (alphabetical order fails with "Signature check failed").
+ */
+export async function approveAsterAgent(userAddress: string, signer: Signer): Promise<{ ok: boolean; message: string }> {
+  const nonce = Date.now() * 1000; // microseconds, per Aster's V3 nonce convention
+  const expired = Date.now() + 365 * 24 * 60 * 60 * 1000; // 1 year validity
+  const chainId = 56; // BSC — required for EVM addresses per Aster's docs, NOT the usual 1666 domain chainId used elsewhere
+  const fields = {
+    user: userAddress,
+    nonce: String(nonce),
+    agentName: 'RDOONE',
+    agentAddress: ASTER_AGENT_ADDRESS,
+    expired: String(expired),
+    signatureChainId: String(chainId),
+    canSpotTrade: 'false',
+    canPerpTrade: 'true',
+    canWithdraw: 'false',
+    ipWhitelist: '',
+  };
+  const msg = new URLSearchParams(fields).toString();
+
+  const domain = { name: 'AsterSignTransaction', version: '1', chainId, verifyingContract: '0x0000000000000000000000000000000000000000' };
+  const types = { Message: [{ name: 'msg', type: 'string' }] };
+
+  try {
+    const signature = await signer.signTypedData(domain, types, { msg });
+    const res = await fetch('/api/aster-register-agent', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...fields, signature }),
+    });
+    const data = await res.json();
+    return { ok: data.code === 200, message: data.msg ?? 'Unknown response' };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : 'Request failed' };
+  }
 }

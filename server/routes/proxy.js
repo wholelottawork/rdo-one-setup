@@ -114,6 +114,42 @@ export default async function proxyRoutes(fastify) {
     });
   });
 
+  // Aster has no bulk Open Interest endpoint (confirmed against both the V1
+  // and V3 docs) — only one symbol per call. With ~600 live Aster symbols,
+  // having the BROWSER fire one request per symbol single-handedly blew
+  // through our own rate limiter (200 req/60s per IP) on its own, well
+  // before counting anything else the app does. This collapses that into
+  // ONE client-facing request; we still stagger the upstream Aster calls
+  // server-side in small batches, same as before — this only fixes how many
+  // requests count against *our* limiter, not upstream call volume.
+  const OI_BULK_BATCH = 15;
+  // Aster itself rate-limits at 2400 req/min per IP — with ~600 symbols,
+  // caching each one for only 5s meant a full OI refresh cycle (every 90s
+  // client-side, see useAsterOpenInterest) sent ~600 fresh upstream requests
+  // nearly every time, which is what actually tripped Aster's own limiter
+  // (as opposed to ours, fixed earlier by batching client→server). OI
+  // doesn't need sub-minute freshness, so cache well past the 90s client
+  // interval — most refresh cycles now hit Redis instead of Aster at all,
+  // regardless of how many users/tabs are polling concurrently.
+  const OI_CACHE_TTL = 120;
+  fastify.post("/aster-oi-bulk", async (req) => {
+    const symbols = Array.isArray(req.body?.symbols) ? req.body.symbols : [];
+    const out = {};
+    for (let i = 0; i < symbols.length; i += OI_BULK_BATCH) {
+      const batch = symbols.slice(i, i + OI_BULK_BATCH);
+      await Promise.all(batch.map(async (sym) => {
+        try {
+          const cacheKey = `aster:oi:${sym}`;
+          const d = await withCache(fastify.redis, cacheKey, OI_CACHE_TTL, () =>
+            fetchJSON(`https://fapi.asterdex.com/fapi/v1/openInterest?symbol=${sym}USDT`, { headers: ASTER_HEADERS }),
+          );
+          out[sym] = parseFloat(d.openInterest ?? 0);
+        } catch { /* skip symbol */ }
+      }));
+    }
+    return out;
+  });
+
   // ── Aster Pro API V3 — signed endpoints (TRADE/USER_DATA/USER_STREAM) ──────
   // Never cached: each call needs a fresh, strictly-increasing nonce, and the
   // response is account-specific. See server/lib/aster-auth.js for the
@@ -153,6 +189,28 @@ export default async function proxyRoutes(fastify) {
       headers: { "Content-Type": "application/x-www-form-urlencoded", ...ASTER_HEADERS },
       body: signedQuery,
     });
+  });
+
+  // registerAndApproveAgent is PUBLIC (unauthenticated) and signed by the
+  // END USER's own wallet client-side, not by our agent — this route never
+  // touches ASTER_SIGNER_PRIVATE_KEY, it's a plain form-urlencoded
+  // passthrough carrying whatever signature the browser already produced.
+  //
+  // Uses a raw fetch (not the shared fetchJSON helper) because fetchJSON
+  // throws away the response body on non-2xx status, replacing it with a
+  // generic "HTTP 400" — Aster always returns a real {code, msg} body even
+  // on failure (e.g. "Signature check failed"), and the frontend needs that
+  // actual message, not a swallowed one.
+  fastify.post("/aster-register-agent", async (req, reply) => {
+    const body = new URLSearchParams(req.body || {}).toString();
+    const res = await fetch("https://fapi.asterdex.com/fapi/v3/registerAndApproveAgent", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", ...ASTER_HEADERS },
+      body,
+    });
+    const data = await res.json().catch(() => ({ code: res.status, msg: "Non-JSON response from Aster" }));
+    reply.code(res.status >= 400 && res.status < 600 ? 200 : res.status); // forward Aster's own {code,msg} body either way; the frontend checks data.code, not HTTP status
+    return data;
   });
 
   // ── LI.FI API ─────────────────────────────────────────────────────────────
