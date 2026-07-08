@@ -432,8 +432,9 @@
         </div>
 
         <!-- Guide panel -->
-        <div id="lmpGuide" style="display:flex;flex-direction:column;flex:1;overflow-y:scroll;padding:12px 14px 16px;gap:12px;min-width:0;scrollbar-width:thin;scrollbar-color:var(--hl-border) transparent;border-top:1px solid var(--hl-border)">
-          <div style="font-size:10px;font-weight:700;color:var(--hl-text-muted);text-transform:uppercase;letter-spacing:.06em;padding-bottom:5px;border-bottom:1px solid var(--hl-border)">How to read</div>
+        <div id="lmpGuide" style="display:flex;flex-direction:column;flex:1;min-width:0">
+          <div class="lmp-hdr"><span class="lmp-title">How to read</span></div>
+          <div style="display:flex;flex-direction:column;overflow-y:scroll;flex:1;padding:12px 14px 16px;gap:12px;scrollbar-width:thin;scrollbar-color:var(--hl-border) transparent">
 
           <!-- Nearest Liquidation Zones -->
           <div style="display:flex;flex-direction:column;gap:6px">
@@ -526,6 +527,7 @@
               <div style="display:flex;gap:8px;align-items:center"><span style="color:#ff7caa;font-weight:700;min-width:76px">BEAR</span><span style="color:var(--hl-text-secondary)">3+ bearish signals aligned — bias short</span></div>
             </div>
           </div>
+          </div><!-- end scroll wrapper -->
 
         </div>
 
