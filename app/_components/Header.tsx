@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { useTranslation, type Lang } from '@/lib/i18n';
 import { useWallet } from '@/lib/wallet';
 import { fmtPrice, fmtAster, fmtLarge, type TradeMode } from '@/lib/markets';
@@ -150,12 +151,12 @@ export function Header({ mode, market, stats, balance, dropdownRows, onModeChang
         <div className="hdr-div"></div>
 
         <nav className="hdr-nav">
-          <a className={`hdr-nav-link${activePage === 'trade' ? ' active' : ''}`} href="/">{t('trade')}</a>
-          <a className={`hdr-nav-link${activePage === 'markets' ? ' active' : ''}`} href="/markets">{t('markets')}</a>
-          <a className={`hdr-nav-link${activePage === 'news' ? ' active' : ''}`} href="/news">{t('news')}</a>
-          <a className={`hdr-nav-link${activePage === 'portfolio' ? ' active' : ''}`} href="/portfolio">{t('portfolio')}</a>
-          <a className={`hdr-nav-link${activePage === 'transfer' ? ' active' : ''}`} href="/transfer">{t('transfer')}</a>
-          <a className={`hdr-nav-link${activePage === 'swap' ? ' active' : ''}`} href="/swap">{t('swap')}</a>
+          <Link className={`hdr-nav-link${activePage === 'trade' ? ' active' : ''}`} href="/">{t('trade')}</Link>
+          <Link className={`hdr-nav-link${activePage === 'markets' ? ' active' : ''}`} href="/markets">{t('markets')}</Link>
+          <Link className={`hdr-nav-link${activePage === 'news' ? ' active' : ''}`} href="/news">{t('news')}</Link>
+          <Link className={`hdr-nav-link${activePage === 'portfolio' ? ' active' : ''}`} href="/portfolio">{t('portfolio')}</Link>
+          <Link className={`hdr-nav-link${activePage === 'transfer' ? ' active' : ''}`} href="/transfer">{t('transfer')}</Link>
+          <Link className={`hdr-nav-link${activePage === 'swap' ? ' active' : ''}`} href="/swap">{t('swap')}</Link>
         </nav>
 
         <div className="hdr-div"></div>
