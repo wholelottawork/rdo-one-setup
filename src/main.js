@@ -504,6 +504,14 @@ function renderOrderBook(sym, { asks, bids }) {
   const bidsEl = document.getElementById('obBids');
   if (bidsEl) bidsEl.innerHTML = cumBids.map(r => row('bid', r)).join('');
 
+  const totalVol = ca + cb || 1;
+  const bidPct = (cb / totalVol * 100).toFixed(1);
+  const askPct = (ca / totalVol * 100).toFixed(1);
+  const ratioBid = document.getElementById('obRatioBid');
+  const ratioAsk = document.getElementById('obRatioAsk');
+  if (ratioBid) { ratioBid.style.width = bidPct + '%'; ratioBid.textContent = `B ${bidPct}%`; }
+  if (ratioAsk) { ratioAsk.textContent = `${askPct}% S`; }
+
   const bestAsk = sortedAsks[0]?.px ?? 0;
   const bestBid = sortedBids[0]?.px ?? 0;
   if (bestAsk && bestBid) {
