@@ -35,14 +35,15 @@ interface Props {
   onOpenDeposit: () => void;
   network: HLNetwork;
   onNetworkChange: (network: HLNetwork) => void;
+  activePage?: string;
 }
 
 const fmtFund = (v: number | null) => (v == null ? '—' : `${v >= 0 ? '+' : ''}${v.toFixed(4)}%`);
 const fmtChg = (v: number | null) => (v == null ? '—' : `${v >= 0 ? '+' : ''}${v.toFixed(2)}%`);
 
-export function Header({ mode, market, stats, balance, dropdownRows, onModeChange, onSelectMarket, onOpenDeposit, network, onNetworkChange }: Props) {
+export function Header({ mode, market, stats, balance, dropdownRows, onModeChange, onSelectMarket, onOpenDeposit, network, onNetworkChange, activePage = 'trade' }: Props) {
   const { t, lang, setLang } = useTranslation();
-  const { address, connect, disconnect } = useWallet();
+  const { address, connect, disconnect, checked } = useWallet();
   const [popupOpen, setPopupOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
@@ -146,12 +147,12 @@ export function Header({ mode, market, stats, balance, dropdownRows, onModeChang
         <div className="hdr-div"></div>
 
         <nav className="hdr-nav">
-          <a className="hdr-nav-link active" href="/">{t('trade')}</a>
-          <a className="hdr-nav-link" href="/markets">{t('markets')}</a>
-          <a className="hdr-nav-link" href="/news">{t('news')}</a>
-          <a className="hdr-nav-link" href="/portfolio">{t('portfolio')}</a>
-          <a className="hdr-nav-link" href="/transfer">{t('transfer')}</a>
-          <a className="hdr-nav-link" href="/swap">{t('swap')}</a>
+          <a className={`hdr-nav-link${activePage === 'trade' ? ' active' : ''}`} href="/">{t('trade')}</a>
+          <a className={`hdr-nav-link${activePage === 'markets' ? ' active' : ''}`} href="/markets">{t('markets')}</a>
+          <a className={`hdr-nav-link${activePage === 'news' ? ' active' : ''}`} href="/news">{t('news')}</a>
+          <a className={`hdr-nav-link${activePage === 'portfolio' ? ' active' : ''}`} href="/portfolio">{t('portfolio')}</a>
+          <a className={`hdr-nav-link${activePage === 'transfer' ? ' active' : ''}`} href="/transfer">{t('transfer')}</a>
+          <a className={`hdr-nav-link${activePage === 'swap' ? ' active' : ''}`} href="/swap">{t('swap')}</a>
         </nav>
 
         <div className="hdr-div"></div>
@@ -247,8 +248,9 @@ export function Header({ mode, market, stats, balance, dropdownRows, onModeChang
           id="walletBtn"
           className={`wallet-btn${address ? ' connected' : ''}`}
           onClick={() => { if (!address) connect(); }}
+          disabled={!checked}
         >
-          {address ? address.slice(0, 6) + '...' + address.slice(-4) : t('connect')}
+          {!checked ? '…' : address ? address.slice(0, 6) + '...' + address.slice(-4) : t('connect')}
         </button>
         {address && (
           <button

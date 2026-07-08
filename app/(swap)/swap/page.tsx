@@ -74,6 +74,7 @@ export default function SwapPage() {
     <Suspense fallback={<div className="swap-fallback">Loading…</div>}>
       <TerminalShellProvider network={network}>
         <TerminalShell
+          activePage="swap"
           initialMode="hl"
           initialMarket="BTC"
           network={network}

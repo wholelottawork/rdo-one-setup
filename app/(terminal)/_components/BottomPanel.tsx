@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from '@/lib/i18n';
 import { fmtPrice, fmtSize, type TradeMode } from '@/lib/markets';
 import type { Position, Fill, OpenOrder, FundingEntry } from '@/lib/hyperliquid';
@@ -26,47 +26,6 @@ interface Props {
 export function BottomPanel({ mode, address, positions, fills, openOrders, funding, livePrices, onClosePosition, onCancelOrder, onTabData }: Props) {
   const { t } = useTranslation();
   const [tab, setTab] = useState<Tab>('positions');
-  const handleRef = useRef<HTMLDivElement>(null);
-
-  // main.js initBtmResize() — drag adjusts the --btm CSS variable
-  useEffect(() => {
-    const handle = handleRef.current;
-    if (!handle) return;
-    const root = document.documentElement;
-    const MIN = 60, MAX = 480;
-    let dragging = false, startY = 0, startH = 0;
-
-    const onDown = (e: MouseEvent) => {
-      dragging = true;
-      startY = e.clientY;
-      startH = parseInt(getComputedStyle(root).getPropertyValue('--btm')) || 175;
-      handle.classList.add('dragging');
-      document.body.style.cursor = 'ns-resize';
-      document.body.style.userSelect = 'none';
-      e.preventDefault();
-    };
-    const onMove = (e: MouseEvent) => {
-      if (!dragging) return;
-      const h = Math.min(MAX, Math.max(MIN, startH + (startY - e.clientY)));
-      root.style.setProperty('--btm', h + 'px');
-    };
-    const onUp = () => {
-      if (!dragging) return;
-      dragging = false;
-      handle.classList.remove('dragging');
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-    };
-
-    handle.addEventListener('mousedown', onDown);
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
-    return () => {
-      handle.removeEventListener('mousedown', onDown);
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
-    };
-  }, []);
 
   const selectTab = (next: Tab) => {
     setTab(next);
@@ -86,19 +45,14 @@ export function BottomPanel({ mode, address, positions, fills, openOrders, fundi
   const modeCls = mode === 'aster' ? 'pos-mode-extra' : 'pos-mode-basic';
 
   return (
-    <>
-      {/* ══ VERTICAL RESIZE HANDLE ══ */}
-      <div className="btm-resize-handle" id="btmResizeHandle" ref={handleRef}></div>
+    <section className="btm-panel">
+      <div className="btm-tabs">
+        {TABS.map(([key, label]) => (
+          <button key={key} className={`btm-tab${tab === key ? ' active' : ''}`} onClick={() => selectTab(key)}>{label}</button>
+        ))}
+      </div>
 
-      {/* ══ BOTTOM PANEL ══ */}
-      <section className="btm-panel">
-        <div className="btm-tabs">
-          {TABS.map(([key, label]) => (
-            <button key={key} className={`btm-tab${tab === key ? ' active' : ''}`} onClick={() => selectTab(key)}>{label}</button>
-          ))}
-        </div>
-
-        <div className="btm-content">
+      <div className="btm-content">
           {/* POSITIONS */}
           <div id="btPositions" className={`btm-pane${tab === 'positions' ? '' : ' hidden'}`}>
             <div className="btm-col-hdr">
@@ -236,6 +190,5 @@ export function BottomPanel({ mode, address, positions, fills, openOrders, fundi
           </div>
         </div>
       </section>
-    </>
   );
 }

@@ -229,7 +229,7 @@ export default function MarketsPage() {
 
   return (
     <TerminalShellProvider network={network}>
-      <TerminalShell initialMode={perpMode} initialMarket="BTC" network={network} onNetworkChange={setNetwork}>
+      <TerminalShell activePage="markets" initialMode={perpMode} initialMarket="BTC" network={network} onNetworkChange={setNetwork}>
         {/* ─── Ticker bar ─── */}
         <div className="ticker-wrap">
           <div className="ticker-track" id="ticker">

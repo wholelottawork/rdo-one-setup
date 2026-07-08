@@ -1,18 +1,21 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useWallet } from '@/lib/wallet';
 import { useToast } from '@/lib/toast';
 import { HLSocketProvider, useHLSocket } from '@/lib/hl-socket';
-import { useHLMeta, useHLTickers } from '@/lib/hl-hooks';
+import { useHLMeta, useHLTickers, useHLBalance, useHLPositions, useHLFills, useHLOpenOrders, useHLFunding } from '@/lib/hl-hooks';
 import {
   useAsterTickers, useAsterFunding, useAsterSymbols, useAsterLeverageBrackets,
+  useAsterBalance, useAsterPositions, useAsterFills, useAsterOpenOrders, useAsterFundingHistory,
 } from '@/lib/aster-hooks';
 import { fmtPrice, fmtAster, fmtLarge, type TradeMode } from '@/lib/markets';
 import { Header, type DropdownRow, type HeaderStats } from './Header';
 import { XTracker } from './XTracker';
 import { StatusBar } from './StatusBar';
+import { BottomPanel } from './BottomPanel';
+import { BottomPanelShell } from './BottomPanelShell';
 import type { HLNetwork } from '@/lib/hyperliquid';
 
 // countdown() — verbatim from main.js (time to next 8h funding boundary)
@@ -34,7 +37,9 @@ interface Props {
   initialMarket?: string;
   network?: HLNetwork;
   onNetworkChange?: (n: HLNetwork) => void;
-  hideBottomPanel?: boolean;
+  activePage?: string;
+  /** Optional custom bottom panel content. If provided, replaces the default
+   *  account-data bottom panel (used by the terminal page for trading actions). */
   bottomPanel?: React.ReactNode;
 }
 
@@ -48,7 +53,7 @@ export function TerminalShell({
   initialMarket = 'BTC',
   network = 'mainnet',
   onNetworkChange,
-  hideBottomPanel = true,
+  activePage = 'trade',
   bottomPanel,
 }: Props) {
   const [mode, setMode] = useState<TradeMode>(initialMode);
@@ -62,6 +67,37 @@ export function TerminalShell({
   const { status, prices: wsPrices } = useHLSocket();
 
   const isAster = mode === 'aster';
+
+  // ── Wallet-gated account data (for bottom panel) ───────────────
+  // Hyperliquid
+  const { data: hlBalance = 0 } = useHLBalance(address, network);
+  const { data: hlPositions = [] } = useHLPositions(address, network);
+  const { data: hlFills = [] } = useHLFills(address, true, network);
+  const { data: hlOpenOrders = [] } = useHLOpenOrders(address, true, network);
+  const { data: hlFundingHistory = [] } = useHLFunding(address, true, network);
+
+  // Aster
+  const { data: asterBalance = 0 } = useAsterBalance(address);
+  const { data: asterPositions = [] } = useAsterPositions(address);
+  const { data: asterFills = [] } = useAsterFills(address, true);
+  const { data: asterOpenOrders = [] } = useAsterOpenOrders(address, true);
+  const { data: asterFundingHistory = [] } = useAsterFundingHistory(address, true);
+
+  // Use mode-appropriate data for bottom panel
+  const balance = isAster ? asterBalance : hlBalance;
+  const positions = isAster ? asterPositions : hlPositions;
+  const fills = isAster ? asterFills : hlFills;
+  const openOrders = isAster ? asterOpenOrders : hlOpenOrders;
+  const funding = isAster ? asterFundingHistory : hlFundingHistory;
+
+  // ── Trading actions (redirect to trade page for non-terminal pages) ─
+  const handleClosePosition = useCallback((index: number) => {
+    showToast('Manage positions on the Trade page', '');
+  }, [showToast]);
+
+  const handleCancelOrder = useCallback((oid: number, symbol: string) => {
+    showToast('Manage orders on the Trade page', '');
+  }, [showToast]);
 
   // body.mode-aster re-themes the whole page (accent → purple)
   useEffect(() => {
@@ -187,6 +223,7 @@ export function TerminalShell({
           onOpenDeposit={() => setDepositOpen(true)}
           network={network}
           onNetworkChange={onNetworkChange ?? (() => {})}
+          activePage={activePage}
         />
 
         {/* ══ WORKSPACE ══ */}
@@ -197,7 +234,22 @@ export function TerminalShell({
           </div>
         </div>
 
-        {!hideBottomPanel && bottomPanel}
+        <BottomPanelShell>
+          {bottomPanel ?? (
+            <BottomPanel
+              mode={mode}
+              address={address}
+              positions={positions}
+              fills={fills}
+              openOrders={openOrders}
+              funding={funding}
+              livePrices={livePrices}
+              onClosePosition={handleClosePosition}
+              onCancelOrder={handleCancelOrder}
+              onTabData={() => {}}
+            />
+          )}
+        </BottomPanelShell>
 
         <StatusBar status={status} />
       </div>

@@ -134,6 +134,7 @@ export default function NewsPage() {
   return (
     <TerminalShellProvider network={network}>
       <TerminalShell
+        activePage="news"
         initialMode="hl"
         initialMarket="BTC"
         network={network}

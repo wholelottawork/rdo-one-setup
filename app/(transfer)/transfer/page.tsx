@@ -470,6 +470,7 @@ export default function TransferPage() {
   return (
     <TerminalShellProvider network={network}>
       <TerminalShell
+        activePage="transfer"
         initialMode={mode as 'hl' | 'aster'}
         initialMarket="BTC"
         network={network}

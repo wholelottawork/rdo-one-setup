@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useToast } from './toast';
 
 interface EIP1193Provider {
@@ -27,6 +27,7 @@ export function getSolanaProvider(): unknown | null {
 interface WalletContextValue {
   address: string | null;
   isConnecting: boolean;
+  checked: boolean;
   connect: () => Promise<string | null>;
   disconnect: () => void;
 }
@@ -36,7 +37,21 @@ const WalletContext = createContext<WalletContextValue | null>(null);
 export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [address, setAddress] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [checked, setChecked] = useState(false);
   const showToast = useToast();
+
+  // On mount: check if wallet is already connected (survives page navigations)
+  useEffect(() => {
+    const provider = getEVMProvider();
+    if (!provider) {
+      setChecked(true);
+      return;
+    }
+    provider.request({ method: 'eth_accounts' }).then((accounts) => {
+      const accs = accounts as string[];
+      if (accs?.[0]) setAddress(accs[0]);
+    }).catch(() => { /* silent */ }).finally(() => setChecked(true));
+  }, []);
 
   const connect = useCallback(async () => {
     const provider = getEVMProvider();
@@ -61,8 +76,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const disconnect = useCallback(() => setAddress(null), []);
 
   const value = useMemo(
-    () => ({ address, isConnecting, connect, disconnect }),
-    [address, isConnecting, connect, disconnect],
+    () => ({ address, isConnecting, checked, connect, disconnect }),
+    [address, isConnecting, checked, connect, disconnect],
   );
 
   return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>;

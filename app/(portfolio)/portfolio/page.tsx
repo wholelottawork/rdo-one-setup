@@ -825,6 +825,7 @@ export default function PortfolioPage() {
   return (
     <TerminalShellProvider network={network}>
       <TerminalShell
+        activePage="portfolio"
         initialMode={pfMode === "aster" ? "aster" : "hl"}
         initialMarket="BTC"
         network={network}

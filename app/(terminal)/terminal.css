@@ -316,6 +316,7 @@ body.mode-aster { --hl-accent: #a78bfa; --hl-accent-dark: rgba(139,92,246,0.15);
   overflow-y: auto;
   background: var(--hl-bg-page);
   border-right: 1px solid var(--hl-border);
+  padding: 16px 20px;
 }
 
 /* ── X TRACKER ──────────────────────────────────────────────── */
@@ -738,6 +739,51 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
 }
 .btm-resize-handle:hover,
 .btm-resize-handle.dragging { background: var(--hl-accent); }
+
+/* Collapse/expand button on the resize handle */
+.btm-collapse-btn {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 18px;
+  background: var(--hl-bg-elevated);
+  border: 1px solid var(--hl-border);
+  border-radius: 3px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: all 0.15s;
+  z-index: 10;
+}
+.btm-collapse-btn:hover {
+  border-color: var(--hl-accent);
+  background: var(--hl-bg-overlay);
+}
+.btm-collapse-icon {
+  display: block;
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-bottom: 5px solid var(--hl-text-muted);
+  transition: transform 0.2s ease, border-color 0.15s;
+}
+.btm-collapse-icon.collapsed {
+  transform: rotate(180deg);
+}
+.btm-collapse-btn:hover .btm-collapse-icon {
+  border-bottom-color: var(--hl-text-primary);
+}
+
+/* Collapsed bottom panel */
+.btm-panel.collapsed .btm-content,
+.btm-panel.collapsed .btm-tabs {
+  display: none;
+}
 
 /* ── BOTTOM PANEL ───────────────────────────────────────────── */
 .btm-panel {

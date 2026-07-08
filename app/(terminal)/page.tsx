@@ -25,6 +25,7 @@ import { ChartColumn } from './_components/ChartColumn';
 import { TradesColumn } from './_components/TradesColumn';
 import { TradePanel } from './_components/TradePanel';
 import { BottomPanel } from './_components/BottomPanel';
+import { BottomPanelShell } from './_components/BottomPanelShell';
 import { StatusBar } from './_components/StatusBar';
 import { DepositModal } from './_components/DepositModal';
 
@@ -455,18 +456,20 @@ function Terminal({
           />
         </div>
 
-        <BottomPanel
-          mode={mode}
-          address={address}
-          positions={positions}
-          fills={fills}
-          openOrders={openOrders}
-          funding={funding}
-          livePrices={livePrices}
-          onClosePosition={handleClosePosition}
-          onCancelOrder={handleCancelOrder}
-          onTabData={() => {}}
-        />
+        <BottomPanelShell>
+          <BottomPanel
+            mode={mode}
+            address={address}
+            positions={positions}
+            fills={fills}
+            openOrders={openOrders}
+            funding={funding}
+            livePrices={livePrices}
+            onClosePosition={handleClosePosition}
+            onCancelOrder={handleCancelOrder}
+            onTabData={() => {}}
+          />
+        </BottomPanelShell>
 
         <StatusBar status={status} />
       </div>
