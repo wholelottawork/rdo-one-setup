@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
 export type Lang = 'en' | 'ru' | 'zh';
 
@@ -263,7 +263,16 @@ interface I18nContextValue {
 const I18nContext = createContext<I18nContextValue | null>(null);
 
 export function I18nProvider({ children }: { children: React.ReactNode }) {
-  const [lang, setLangState] = useState<Lang>(readStoredLang);
+  // Start 'en' (what the server renders) so the first client render matches the
+  // SSR HTML — reading the stored lang in the initializer would re-render every
+  // translated string differently on the client and cause a hydration mismatch.
+  // The stored language is applied in the mount effect below (client only).
+  const [lang, setLangState] = useState<Lang>('en');
+
+  useEffect(() => {
+    const stored = readStoredLang();
+    if (stored !== 'en') setLangState(stored);
+  }, []);
 
   const setLang = useCallback((next: Lang) => {
     if (!T[next]) return;

@@ -37,19 +37,25 @@ const WalletContext = createContext<WalletContextValue | null>(null);
 const LS_KEY = 'wallet_address';
 
 export function WalletProvider({ children }: { children: React.ReactNode }) {
-  // Read from localStorage synchronously on first render so the address is
-  // available immediately — no flash of "Connect" while we check the wallet.
-  const [address, setAddress] = useState<string | null>(() => {
-    if (typeof window === 'undefined') return null;
-    try { return localStorage.getItem(LS_KEY); } catch { return null; }
-  });
+  // Start null so the first client render matches the server's (which has no
+  // localStorage) — reading the stored address in the useState initializer
+  // instead would make the initial client tree differ from the SSR HTML and
+  // trigger a hydration mismatch. The stored address is restored in the mount
+  // effect below (client-only), one frame later.
+  const [address, setAddress] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [checked, setChecked] = useState(false);
   const showToast = useToast();
 
-  // On mount: verify the wallet is still connected (in case user disconnected
-  // outside the app). If not, clear the stored address.
+  // On mount (client only): optimistically restore the last-known address for
+  // an instant repaint, then verify against the wallet — in case the user
+  // disconnected outside the app — clearing it if no account is authorized.
   useEffect(() => {
+    try {
+      const stored = localStorage.getItem(LS_KEY);
+      if (stored) setAddress(stored);
+    } catch { /* silent */ }
+
     const provider = getEVMProvider();
     if (!provider) {
       setChecked(true);
