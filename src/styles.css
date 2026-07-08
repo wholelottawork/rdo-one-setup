@@ -588,25 +588,25 @@ body.mode-aster { --hl-accent: #a78bfa; --hl-accent-dark: rgba(139,92,246,0.15);
   position: absolute; top: 2px; right: 0; bottom: 2px;
   opacity: 0.22; pointer-events: none; border-radius: 2px 0 0 2px;
 }
-.ob-row.ask .ob-depth { background: var(--hl-sell); }
-.ob-row.bid .ob-depth { background: var(--hl-buy); }
+.ob-row.ask .ob-depth { background: #ed7088; }
+.ob-row.bid .ob-depth { background: #1fa67d; }
 .ob-price, .ob-sz, .ob-total { font-size: 11px; position: relative; z-index: 1; }
 .ob-sz    { text-align: right; color: var(--hl-text-soft); }
 .ob-total { text-align: right; color: var(--hl-text-muted); }
-.ob-row.ask .ob-price { color: var(--hl-sell); }
-.ob-row.bid .ob-price { color: var(--hl-buy); }
+.ob-row.ask .ob-price { color: #ed7088; }
+.ob-row.bid .ob-price { color: #1fa67d; }
 
 .ob-ratio {
   display: flex; height: 22px; flex-shrink: 0;
   border-top: 1px solid var(--hl-border); font-size: 10px; font-weight: 700; overflow: hidden;
 }
 .ob-ratio-bid {
-  background: rgba(124,255,192,0.15); color: var(--hl-buy);
+  background: rgba(31,166,125,0.18); color: #1fa67d;
   display: flex; align-items: center; padding-left: 7px;
   transition: width 0.3s; white-space: nowrap; overflow: hidden;
 }
 .ob-ratio-ask {
-  background: rgba(255,124,170,0.15); color: var(--hl-sell);
+  background: rgba(237,112,136,0.18); color: #ed7088;
   display: flex; align-items: center; justify-content: flex-end; padding-right: 7px;
   flex: 1; transition: width 0.3s; white-space: nowrap; overflow: hidden;
 }
