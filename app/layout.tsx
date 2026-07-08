@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import { AppProviders } from '@/lib/providers';
 import { HLSocketProvider } from '@/lib/hl-socket';
+import { ShellProvider } from '@/app/_components/ShellContext';
+import { ShellWrapper } from '@/app/_components/ShellWrapper';
 import './terminal.css';
 
 export const metadata: Metadata = {
@@ -8,7 +10,9 @@ export const metadata: Metadata = {
 };
 
 /** Single root layout shared by ALL pages.
- *  Providers mount once and persist across client-side navigations. */
+ *  ShellProvider + ShellWrapper mount once and persist across navigations,
+ *  so header stats, market selection, mode, network, and bottom panel
+ *  state are all preserved when switching pages. */
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
@@ -20,7 +24,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <AppProviders>
           <HLSocketProvider network="mainnet">
-            {children}
+            <ShellProvider>
+              <ShellWrapper>
+                {children}
+              </ShellWrapper>
+            </ShellProvider>
           </HLSocketProvider>
         </AppProviders>
       </body>

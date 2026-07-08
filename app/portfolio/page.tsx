@@ -4,8 +4,6 @@ import './portfolio.css';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "@/lib/i18n";
-import { TerminalShell } from "@/app/_components/TerminalShell";
-import { type HLNetwork } from "@/lib/hyperliquid";
 import {
   getPhantomSolana,
   loadSolanaPortfolio,
@@ -117,9 +115,6 @@ export default function PortfolioPage() {
   );
   const [asterApproving, setAsterApproving] = useState(false);
   const [asterApproveMsg, setAsterApproveMsg] = useState<string | null>(null);
-
-  // ── Network state for TerminalShell ──────────────────────────────
-  const [network, setNetwork] = useState<HLNetwork>("mainnet");
 
   // ── Modals ─────────────────────────────────────────────────────
   const [depOpen, setDepOpen] = useState(false);
@@ -825,18 +820,11 @@ export default function PortfolioPage() {
   const totalVal = solTotal + evmTotal;
 
   return (
-      <TerminalShell
-        activePage="portfolio"
-        initialMode={pfMode === "aster" ? "aster" : "hl"}
-        initialMarket="BTC"
-        network={network}
-        onNetworkChange={setNetwork}
+    <>
+      <div
+        id="connect-screen"
+        style={pubkey ? { display: "none" } : undefined}
       >
-        {/* ══ WALLET SECTION ══ */}
-        <div
-          id="connect-screen"
-          style={pubkey ? { display: "none" } : undefined}
-        >
           <div className="phantom-logo">
             <svg viewBox="0 0 128 128" fill="none">
               <path
@@ -2669,6 +2657,6 @@ export default function PortfolioPage() {
             </div>
           </div>
         </div>
-      </TerminalShell>
+    </>
   );
 }

@@ -4,7 +4,6 @@ import './markets.css';
 
 import { useMemo, useState } from 'react';
 import { useTranslation } from '@/lib/i18n';
-import { TerminalShell } from '@/app/_components/TerminalShell';
 import {
   TICKER_SYMBOLS, useBinanceTicker, useBtcKlines, useCgGlobal, useCgTrending,
   useCgCoinsMarkets, useFearGreed,
@@ -12,9 +11,6 @@ import {
 import { useHLTickers } from '@/lib/hl-hooks';
 import { useAsterTickers, useAsterFunding, useAsterOpenInterest, useAsterSymbols, useAsterLeverageBrackets } from '@/lib/aster-hooks';
 import { type TradeMode } from '@/lib/markets';
-import type { HLNetwork } from '@/lib/hyperliquid';
-
-// ─── Helpers — verbatim from public/markets.html ─────────────────────────────
 const LABEL: Record<string, string> = Object.fromEntries(TICKER_SYMBOLS.map(s => [s, s.replace('USDT', '')]));
 
 function fmtLarge(n: number | null | undefined): string {
@@ -113,7 +109,6 @@ export default function MarketsPage() {
   const { data: hlTickers } = useHLTickers();
 
   const [perpMode, setPerpMode] = useState<TradeMode>('hl');
-  const [network, setNetwork] = useState<HLNetwork>('mainnet');
   const { data: asterSymbols } = useAsterSymbols();
   const { data: asterTickers } = useAsterTickers();
   const { data: asterFunding } = useAsterFunding();
@@ -230,8 +225,8 @@ export default function MarketsPage() {
   const fgVal = fg?.value;
 
   return (
-      <TerminalShell activePage="markets" initialMode={perpMode} initialMarket="BTC" network={network} onNetworkChange={setNetwork}>
-        {/* ─── Ticker bar ─── */}
+    <>
+      {/* ─── Ticker bar ─── */}
         <div className="ticker-wrap">
           <div className="ticker-track" id="ticker">
             {[0, 1].map(rep => TICKER_SYMBOLS.map(s => {
@@ -488,6 +483,6 @@ export default function MarketsPage() {
             )}
           </div>
         </div>
-      </TerminalShell>
+    </>
   );
 }

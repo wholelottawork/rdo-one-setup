@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { createContext, useContext, useState, useCallback, useMemo, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useWallet } from '@/lib/wallet';
 import { useToast } from '@/lib/toast';
@@ -11,14 +11,9 @@ import {
   useAsterBalance, useAsterPositions, useAsterFills, useAsterOpenOrders, useAsterFundingHistory,
 } from '@/lib/aster-hooks';
 import { fmtPrice, fmtAster, fmtLarge, type TradeMode } from '@/lib/markets';
-import { Header, type DropdownRow, type HeaderStats } from './Header';
-import { XTracker } from './XTracker';
-import { StatusBar } from './StatusBar';
-import { BottomPanel } from './BottomPanel';
-import { BottomPanelShell } from './BottomPanelShell';
-import type { HLNetwork } from '@/lib/hyperliquid';
+import type { HLNetwork, Position, Fill, OpenOrder, FundingEntry } from '@/lib/hyperliquid';
+import type { HLConnStatus } from '@/lib/hl-socket';
 
-// countdown() — verbatim from main.js (time to next 8h funding boundary)
 function countdown(): string {
   const now = new Date();
   const next = new Date(now);
@@ -31,35 +26,55 @@ function countdown(): string {
   return `${h}:${m}:${s}`;
 }
 
-interface Props {
-  children: React.ReactNode;
-  initialMode?: TradeMode;
-  initialMarket?: string;
-  network?: HLNetwork;
-  onNetworkChange?: (n: HLNetwork) => void;
-  activePage?: string;
-  /** Optional custom bottom panel content. If provided, replaces the default
-   *  account-data bottom panel (used by the terminal page for trading actions). */
-  bottomPanel?: React.ReactNode;
+export interface HeaderStats {
+  mark: string;
+  change: string;
+  changeUp: boolean;
+  volume: string;
+  funding: string;
 }
 
-/** Shared terminal shell used by ALL pages (trade, markets, news, portfolio,
- *  transfer, swap). Provides the consistent layout: Header (with mode/network
- *  toggles), XTracker sidebar, center content area, optional bottom panel,
- *  and status bar. Only the center content changes per page. */
-export function TerminalShell({
-  children,
-  initialMode = 'hl',
-  initialMarket = 'BTC',
-  network = 'mainnet',
-  onNetworkChange,
-  activePage = 'trade',
-  bottomPanel,
-}: Props) {
-  const [mode, setMode] = useState<TradeMode>(initialMode);
-  const [market, setMarket] = useState(initialMarket);
+export interface DropdownRow {
+  sym: string;
+  lev: string;
+  price: string;
+  chgPct: number | null;
+  fund8h: number | null;
+  vol: number | null;
+  oi: number | null;
+}
+
+interface ShellContextValue {
+  mode: TradeMode;
+  setMode: (m: TradeMode) => void;
+  market: string;
+  setMarket: (m: string) => void;
+  network: HLNetwork;
+  setNetwork: (n: HLNetwork) => void;
+  isAster: boolean;
+  clockTick: number;
+  headerStats: HeaderStats;
+  dropdownRows: DropdownRow[];
+  livePrices: Record<string, number>;
+  livePrice: number | undefined;
+  balance: number;
+  positions: Position[];
+  fills: Fill[];
+  openOrders: OpenOrder[];
+  funding: FundingEntry[];
+  address: string | null;
+  status: HLConnStatus;
+  handleClosePosition: (index: number) => void;
+  handleCancelOrder: (oid: number, symbol: string) => void;
+}
+
+const ShellContext = createContext<ShellContextValue | null>(null);
+
+export function ShellProvider({ children }: { children: React.ReactNode }) {
+  const [mode, setMode] = useState<TradeMode>('hl');
+  const [market, setMarket] = useState('BTC');
+  const [network, setNetwork] = useState<HLNetwork>('mainnet');
   const [clockTick, setClockTick] = useState(0);
-  const [depositOpen, setDepositOpen] = useState(false);
 
   const { address } = useWallet();
   const showToast = useToast();
@@ -68,29 +83,25 @@ export function TerminalShell({
 
   const isAster = mode === 'aster';
 
-  // ── Wallet-gated account data (for bottom panel) ───────────────
-  // Hyperliquid
+  // ── Wallet-gated account data ──────────────────────────────────
   const { data: hlBalance = 0 } = useHLBalance(address, network);
   const { data: hlPositions = [] } = useHLPositions(address, network);
   const { data: hlFills = [] } = useHLFills(address, true, network);
   const { data: hlOpenOrders = [] } = useHLOpenOrders(address, true, network);
   const { data: hlFundingHistory = [] } = useHLFunding(address, true, network);
 
-  // Aster
   const { data: asterBalance = 0 } = useAsterBalance(address);
   const { data: asterPositions = [] } = useAsterPositions(address);
   const { data: asterFills = [] } = useAsterFills(address, true);
   const { data: asterOpenOrders = [] } = useAsterOpenOrders(address, true);
   const { data: asterFundingHistory = [] } = useAsterFundingHistory(address, true);
 
-  // Use mode-appropriate data for bottom panel
   const balance = isAster ? asterBalance : hlBalance;
   const positions = isAster ? asterPositions : hlPositions;
   const fills = isAster ? asterFills : hlFills;
   const openOrders = isAster ? asterOpenOrders : hlOpenOrders;
   const funding = isAster ? asterFundingHistory : hlFundingHistory;
 
-  // ── Trading actions (redirect to trade page for non-terminal pages) ─
   const handleClosePosition = useCallback((index: number) => {
     showToast('Manage positions on the Trade page', '');
   }, [showToast]);
@@ -99,19 +110,19 @@ export function TerminalShell({
     showToast('Manage orders on the Trade page', '');
   }, [showToast]);
 
-  // body.mode-aster re-themes the whole page (accent → purple)
+  // body.mode-aster re-themes
   useEffect(() => {
     document.body.classList.toggle('mode-aster', isAster);
     return () => document.body.classList.remove('mode-aster');
   }, [isAster]);
 
-  // per-second tick for the funding countdown
+  // per-second tick
   useEffect(() => {
     const id = setInterval(() => setClockTick(t => t + 1), 1000);
     return () => clearInterval(id);
   }, []);
 
-  // ── Market data (needed for Header dropdown and stats) ─────────
+  // ── Market data ────────────────────────────────────────────────
   const { data: hlMeta } = useHLMeta(network);
   const { data: hlTickers } = useHLTickers(network);
   const { data: asterSymbols } = useAsterSymbols();
@@ -180,7 +191,7 @@ export function TerminalShell({
           chgPct: ticker ? ticker.priceChangePercent : null,
           fund8h: asterFunding?.[sym] ?? null,
           vol: ticker?.quoteVolume ?? null,
-          oi: null, // OI is expensive to fetch for all symbols; skip in header dropdown
+          oi: null,
         };
       });
     }
@@ -198,61 +209,22 @@ export function TerminalShell({
     });
   }, [isAster, asterSymbols, asterTickers, asterFunding, asterLeverage, hlTickers, livePrices]);
 
-  function changeMode(next: TradeMode) {
-    if (next === mode) return;
-    setMode(next);
-    setMarket('BTC');
-    setDepositOpen(false);
-  }
+  const value = useMemo(() => ({
+    mode, setMode, market, setMarket, network, setNetwork, isAster, clockTick,
+    headerStats, dropdownRows, livePrices, livePrice, balance,
+    positions, fills, openOrders, funding, address, status,
+    handleClosePosition, handleCancelOrder,
+  }), [
+    mode, market, network, isAster, clockTick, headerStats, dropdownRows,
+    livePrices, livePrice, balance, positions, fills, openOrders, funding,
+    address, status, handleClosePosition, handleCancelOrder,
+  ]);
 
-  function selectMarket(sym: string) {
-    setMarket(sym);
-  }
+  return <ShellContext.Provider value={value}>{children}</ShellContext.Provider>;
+}
 
-  return (
-    <>
-      <div id="app">
-        <Header
-          mode={mode}
-          market={market}
-          stats={headerStats}
-          balance={0}
-          dropdownRows={dropdownRows}
-          onModeChange={changeMode}
-          onSelectMarket={selectMarket}
-          onOpenDeposit={() => setDepositOpen(true)}
-          network={network}
-          onNetworkChange={onNetworkChange ?? (() => {})}
-          activePage={activePage}
-        />
-
-        {/* ══ WORKSPACE ══ */}
-        <div className="workspace">
-          <XTracker market={market} />
-          <div className="page-content-area">
-            {children}
-          </div>
-        </div>
-
-        <BottomPanelShell>
-          {bottomPanel ?? (
-            <BottomPanel
-              mode={mode}
-              address={address}
-              positions={positions}
-              fills={fills}
-              openOrders={openOrders}
-              funding={funding}
-              livePrices={livePrices}
-              onClosePosition={handleClosePosition}
-              onCancelOrder={handleCancelOrder}
-              onTabData={() => {}}
-            />
-          )}
-        </BottomPanelShell>
-
-        <StatusBar status={status} />
-      </div>
-    </>
-  );
+export function useShell() {
+  const ctx = useContext(ShellContext);
+  if (!ctx) throw new Error('useShell must be used within ShellProvider');
+  return ctx;
 }

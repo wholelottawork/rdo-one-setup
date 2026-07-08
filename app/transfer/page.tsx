@@ -5,11 +5,6 @@ import './transfer.css';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from '@/lib/i18n';
 import {
-  TerminalShell,
-  
-} from '@/app/_components/TerminalShell';
-import type { HLNetwork } from '@/lib/hyperliquid';
-import {
   CHAINS, USDC_ARB, USDT_ARB, getProv, type EIP1193,
   loadHLEquity, lifiQuote, lifiExec,
   hlWithdrawRaw, asterWithdrawRaw, asterDepositAddr,
@@ -34,7 +29,6 @@ export default function TransferPage() {
   const { t } = useTranslation();
 
   const [mode, setMode] = useState('hl');
-  const [network, setNetwork] = useState<HLNetwork>('mainnet');
 
   const [tab, setTab] = useState<Tab>('withdraw');
   const [wdSrc, setWdSrc] = useState<WdSrc>('hl');
@@ -470,17 +464,11 @@ export default function TransferPage() {
   const isBtwAster = btwDir === 'aster-to-hl';
 
   return (
-      <TerminalShell
-        activePage="transfer"
-        initialMode={mode as 'hl' | 'aster'}
-        initialMarket="BTC"
-        network={network}
-        onNetworkChange={setNetwork}
-      >
-        <div className="page-hdr">
-          <div className="page-title">{t('transferTitle')}</div>
-          <div className="page-sub">{t('transferSub')}</div>
-        </div>
+    <>
+      <div className="page-hdr">
+        <div className="page-title">{t('transferTitle')}</div>
+        <div className="page-sub">{t('transferSub')}</div>
+      </div>
 
         <div className="xfr-tabs">
           {(['withdraw', 'send', 'between'] as Tab[]).map((tabKey) => (
@@ -697,7 +685,7 @@ export default function TransferPage() {
             </div>
           </div>
         </div>
-      </TerminalShell>
+    </>
   );
 }
 
