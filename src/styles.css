@@ -279,7 +279,7 @@ body.mode-aster { --hl-accent: #a78bfa; --hl-accent-dark: rgba(139,92,246,0.15);
 .lmp-title { font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--hl-text-secondary); }
 .lmp-sym-pills { display: flex; gap: 3px; margin-left: auto; }
 .lmp-sym-pill {
-  padding: 2px 7px; border-radius: 4px; font-size: 10px; font-weight: 700;
+  padding: 3px 9px; border-radius: 5px; font-size: 12px; font-weight: 700;
   cursor: pointer; background: var(--hl-bg-overlay); color: var(--hl-text-secondary);
   border: none; font-family: var(--hl-font); transition: all 0.1s;
 }
