@@ -435,6 +435,17 @@
         <div id="lmpGuide" style="display:flex;flex-direction:column;flex:1;overflow-y:scroll;padding:12px 14px 16px;gap:12px;min-width:0;scrollbar-width:thin;scrollbar-color:var(--hl-border) transparent">
           <div style="font-size:10px;font-weight:700;color:var(--hl-text-muted);text-transform:uppercase;letter-spacing:.06em;padding-bottom:5px;border-bottom:1px solid var(--hl-border)">How to read</div>
 
+          <!-- Nearest Liquidation Zones -->
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <div style="font-size:11px;font-weight:700;color:var(--hl-text-primary)">Nearest Liquidation Zones</div>
+            <div style="font-size:10px;color:var(--hl-text-muted);line-height:1.55">The 2 closest liquidation clusters to the current price — what happens if price reaches them.</div>
+            <div id="lmpClosestBars" style="display:flex;flex-direction:column;gap:7px">
+              <div style="font-size:10px;color:var(--hl-text-muted)">Waiting for data…</div>
+            </div>
+          </div>
+
+          <div style="height:1px;background:var(--hl-border)"></div>
+
           <!-- Liq Map guide -->
           <div style="display:flex;flex-direction:column;gap:6px">
             <div style="font-size:11px;font-weight:700;color:var(--hl-text-primary)">Liquidation Map</div>
@@ -447,14 +458,14 @@
                   <span style="display:inline-block;width:11px;height:11px;background:#ff7caa;border-radius:2px;flex-shrink:0"></span>
                   <b style="color:var(--hl-text-primary)">Pink bars (above price)</b>
                 </div>
-                <div style="font-size:10px;color:var(--hl-text-secondary);line-height:1.55;padding-left:19px">Short positions. Price rising into these triggers their liquidation, injecting cascading buy orders into the market.</div>
+                <div style="font-size:10px;color:var(--hl-text-secondary);line-height:1.55;padding-left:0">Short positions. Price rising into these triggers their liquidation, injecting cascading buy orders into the market.</div>
               </div>
               <div style="display:flex;flex-direction:column;gap:3px">
                 <div style="display:flex;align-items:center;gap:8px;font-size:10.5px">
                   <span style="display:inline-block;width:11px;height:11px;background:#7cffc0;border-radius:2px;flex-shrink:0"></span>
                   <b style="color:var(--hl-text-primary)">Green bars (below price)</b>
                 </div>
-                <div style="font-size:10px;color:var(--hl-text-secondary);line-height:1.55;padding-left:19px">Long positions. Price falling into these forces liquidation, injecting cascading sell orders into the market.</div>
+                <div style="font-size:10px;color:var(--hl-text-secondary);line-height:1.55;padding-left:0">Long positions. Price falling into these forces liquidation, injecting cascading sell orders into the market.</div>
               </div>
             </div>
             <div style="font-size:10px;color:var(--hl-text-muted);margin-top:2px;line-height:1.6">
@@ -519,16 +530,6 @@
             </div>
           </div>
 
-          <div style="height:1px;background:var(--hl-border)"></div>
-
-          <!-- Nearest Liquidation Zones -->
-          <div style="display:flex;flex-direction:column;gap:6px">
-            <div style="font-size:11px;font-weight:700;color:var(--hl-text-primary)">Nearest Liquidation Zones</div>
-            <div style="font-size:10px;color:var(--hl-text-muted);line-height:1.55">The 2 closest liquidation clusters to the current price — what happens if price reaches them.</div>
-            <div id="lmpClosestBars" style="display:flex;flex-direction:column;gap:7px">
-              <div style="font-size:10px;color:var(--hl-text-muted)">Waiting for data…</div>
-            </div>
-          </div>
         </div>
 
       </div>
