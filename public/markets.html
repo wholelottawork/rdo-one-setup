@@ -20,13 +20,13 @@
     ::-webkit-scrollbar-thumb{background:var(--bg3);border-radius:3px}
 
     /* ─── Nav ─────────────────────────────────────────────────────────── */
-    #rdo-nav{position:fixed;top:0;left:0;right:0;height:var(--nav);background:var(--bg);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;padding:0 16px;z-index:1000}
+    #rdo-nav{position:fixed;top:0;left:0;right:0;height:var(--nav);min-height:var(--nav);max-height:var(--nav);overflow:hidden;background:var(--bg);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;padding:0 24px;z-index:1000}
     .nav-logo{font-size:13px;font-weight:800;letter-spacing:.5px;color:#f5f1ea;flex-shrink:0}
     .nav-logo span{color:var(--accent)}
     .nav-div{width:1px;height:18px;background:var(--border);margin:0 4px;flex-shrink:0}
-    #rdo-nav a{font-size:12px;font-weight:500;color:var(--text3);padding:4px 10px;border-radius:4px;transition:color .12s,background .12s;flex-shrink:0}
-    #rdo-nav a:hover{color:var(--text);background:var(--bg2)}
-    #rdo-nav a.active{color:var(--accent)}
+    #rdo-nav a{font-size:12px;font-weight:500;color:var(--text3);padding:5px 12px;border-radius:7px;transition:color .12s,background .12s;flex-shrink:0}
+    #rdo-nav a:hover{color:var(--text);background:#1a1a1a}
+    #rdo-nav a.active{color:var(--text);background:#1f1f1f;font-weight:600}
 
     /* ─── Ticker ───────────────────────────────────────────────────────── */
     .ticker-wrap{margin-top:var(--nav);overflow:hidden;background:var(--bg2);border-bottom:1px solid var(--border);height:34px;display:flex;align-items:center}
@@ -41,7 +41,7 @@
     @keyframes scroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
 
     /* ─── Layout ───────────────────────────────────────────────────────── */
-    main{max-width:1440px;margin:0 auto;padding:20px 16px 40px}
+    main{max-width:1440px;margin:0 auto;padding:0 24px 40px;padding-top:calc(var(--nav) + 8px)}
     h1{font-size:18px;font-weight:700;letter-spacing:-.03em;margin-bottom:16px}
 
     /* ─── Stat cards ───────────────────────────────────────────────────── */
@@ -136,6 +136,38 @@
     .conv-arrow{font-size:20px;color:var(--text3);text-align:center}
     .conv-result{flex:1;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:9px 10px;border-radius:var(--r);font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;min-width:0}
 
+    /* ─── Futures Analysis ─────────────────────────────────────────────────── */
+    .fut-wrap{display:grid;grid-template-columns:1fr 320px;gap:10px;margin-bottom:16px}
+    @media(max-width:900px){.fut-wrap{grid-template-columns:1fr}}
+    .fut-left,.fut-right{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;display:flex;flex-direction:column}
+    .fut-hdr{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex-shrink:0}
+    .fut-title{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--text3)}
+    .fut-tabs{display:flex;gap:2px;margin-left:auto}
+    .fut-tab{padding:4px 10px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;color:var(--text3);background:none;border:none;transition:color .1s,background .1s;font-family:inherit}
+    .fut-tab.active{background:var(--bg3);color:var(--text)}
+    .sym-pills{display:flex;gap:4px}
+    .sym-pill{padding:3px 8px;border-radius:4px;font-size:10px;font-weight:700;cursor:pointer;background:var(--bg3);color:var(--text3);border:none;transition:color .1s,background .1s;font-family:inherit}
+    .sym-pill.active{background:var(--accent);color:#000}
+    .liq-map-body{padding:12px 14px;height:280px;display:flex;flex-direction:column;gap:3px;overflow:hidden}
+    .liq-map-loading{display:flex;align-items:center;justify-content:center;height:100%;color:var(--text3);font-size:12px}
+    .liq-bar-row{display:flex;align-items:center;gap:6px;height:16px;flex-shrink:0}
+    .liq-price{font-size:9px;color:var(--text3);min-width:64px;text-align:right;flex-shrink:0;font-variant-numeric:tabular-nums}
+    .liq-bar-wrap{flex:1;height:7px;background:rgba(255,255,255,.04);border-radius:2px;overflow:hidden}
+    .liq-bar-fill{height:100%;border-radius:2px}
+    .liq-mark-line{border-top:1px dashed var(--accent);margin:2px 0;flex-shrink:0}
+    .liq-oi-tag{font-size:9px;color:var(--text3);min-width:44px;text-align:right;flex-shrink:0;font-variant-numeric:tabular-nums}
+    .ai-body{padding:10px 12px;display:flex;flex-direction:column;gap:6px;flex:1;overflow-y:auto}
+    .ai-signal{background:var(--bg3);border-radius:var(--r);padding:8px 10px;flex-shrink:0}
+    .ai-sig-hdr{display:flex;align-items:center;gap:6px;margin-bottom:3px}
+    .ai-sig-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+    .ai-sig-name{font-size:11px;font-weight:600;color:var(--text)}
+    .ai-sig-val{font-size:11px;font-weight:700;margin-left:auto;font-variant-numeric:tabular-nums}
+    .ai-sig-body{font-size:10px;color:var(--text3);line-height:1.4}
+    .ai-verdict{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-top:1px solid var(--border);flex-shrink:0}
+    .ai-verdict-lbl{font-size:11px;color:var(--text3)}
+    .ai-verdict-val{font-size:13px;font-weight:700;letter-spacing:.02em}
+    .inflow-body{padding:12px 14px;height:280px;overflow-y:auto}
+
     /* ─── Skeleton ──────────────────────────────────────────────────────── */
     .sk{background:var(--bg3);border-radius:3px;animation:pulse 1.5s ease-in-out infinite;display:inline-block}
     @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
@@ -209,6 +241,33 @@
   <div class="mkt-stats-wrap">
     <div class="mkt-stats-hdr" data-i18n="marketStats">Market Statistics</div>
     <div id="mkt-stats-body"><div style="padding:16px;color:var(--text3);font-size:12px">Loading…</div></div>
+  </div>
+
+  <!-- Futures Analysis: Liq Map + AI Signals -->
+  <div class="fut-wrap">
+    <div class="fut-left">
+      <div class="fut-hdr">
+        <span class="fut-title">Liquidation Map</span>
+        <div class="sym-pills" id="fut-sym-pills"></div>
+        <div class="fut-tabs" id="fut-tabs">
+          <button class="fut-tab active" data-tab="liqmap">Liq Map</button>
+          <button class="fut-tab" data-tab="inflow">OI Flow</button>
+        </div>
+      </div>
+      <div id="liqmap-body" class="liq-map-body"><div class="liq-map-loading">Loading…</div></div>
+      <div id="inflow-body" class="inflow-body" style="display:none"><div class="liq-map-loading">Loading…</div></div>
+    </div>
+    <div class="fut-right">
+      <div class="fut-hdr">
+        <span class="fut-title">AI Signals</span>
+        <span style="font-size:10px;color:var(--text3);margin-left:auto" id="ai-sym-lbl">BTC</span>
+      </div>
+      <div class="ai-body" id="ai-body"><div style="color:var(--text3);font-size:12px;text-align:center;padding:20px">Loading…</div></div>
+      <div class="ai-verdict" id="ai-verdict" style="display:none">
+        <span class="ai-verdict-lbl">AI Signal</span>
+        <span class="ai-verdict-val" id="ai-verdict-val">—</span>
+      </div>
+    </div>
   </div>
 
   <!-- Trending + Top Gainers -->
@@ -717,9 +776,186 @@ function initHLTable() {
   el('hl-search').addEventListener('input', e => { hlQuery = e.target.value; renderHLTable(); });
 }
 
+// ─── Futures Analysis (Liq Map + AI) ────────────────────────────────────────
+const FUT_SYMS = ['BTC','ETH','SOL','BNB','XRP'];
+let futSym = 'BTC';
+let futTab = 'liqmap';
+let futData = null;
+
+async function fetchFutData(sym) {
+  const B = '/fapi';
+  const s = sym + 'USDT';
+  try {
+    const [ticker, oiData, lsRatio, takerRatio, oiHist] = await Promise.all([
+      fetch(`${B}/fapi/v1/ticker/24hr?symbol=${s}`).then(r => r.json()),
+      fetch(`${B}/fapi/v1/openInterest?symbol=${s}`).then(r => r.json()),
+      fetch(`${B}/futures/data/globalLongShortAccountRatio?symbol=${s}&period=5m&limit=1`).then(r => r.json()),
+      fetch(`${B}/futures/data/takerlongshortRatio?symbol=${s}&period=5m&limit=1`).then(r => r.json()),
+      fetch(`${B}/futures/data/openInterestHist?symbol=${s}&period=5m&limit=12`).then(r => r.json()),
+    ]);
+    return { sym, ticker, oiData, lsRatio, takerRatio, oiHist };
+  } catch(e) { console.error('futData:', e); return null; }
+}
+
+function renderLiqMap(data) {
+  const body = el('liqmap-body');
+  if (!body) return;
+  if (!data) { body.innerHTML = '<div class="liq-map-loading">No data</div>'; return; }
+  const mark = parseFloat(data.ticker.lastPrice) || 0;
+  const totalOI = parseFloat(data.oiData.openInterest) || 0;
+  const LEVELS = 20, RANGE = 0.15;
+  const step = (mark * RANGE * 2) / LEVELS;
+  const levels = [];
+  for (let i = 0; i < LEVELS; i++) {
+    const price = mark * (1 - RANGE) + i * step;
+    const d = Math.abs(price - mark) / mark;
+    const weight = Math.exp(-d * 12) + Math.exp(-Math.pow(d - 0.07, 2) * 200) * 0.6;
+    levels.push({ price, weight, isLong: price < mark });
+  }
+  const maxW = Math.max(...levels.map(l => l.weight));
+  const totalW = levels.reduce((s, l) => s + l.weight, 0);
+  const reversed = [...levels].reverse();
+  const markIdx = reversed.findIndex(l => l.price <= mark);
+  let html = '';
+  reversed.forEach((l, i) => {
+    const pct = (l.weight / maxW * 100).toFixed(0);
+    const oiEst = (totalOI * l.weight / totalW * mark / 1e6).toFixed(1);
+    const color = l.isLong ? 'var(--green)' : 'var(--red)';
+    if (i === markIdx) html += '<div class="liq-mark-line"></div>';
+    html += `<div class="liq-bar-row">
+      <span class="liq-price">${fmtPx(l.price)}</span>
+      <div class="liq-bar-wrap"><div class="liq-bar-fill" style="width:${pct}%;background:${color}"></div></div>
+      <span class="liq-oi-tag">$${oiEst}M</span>
+    </div>`;
+  });
+  body.innerHTML = html;
+}
+
+function renderInflow(data) {
+  const body = el('inflow-body');
+  if (!body) return;
+  if (!data?.oiHist?.length) { body.innerHTML = '<div class="liq-map-loading">No data</div>'; return; }
+  const hist = data.oiHist;
+  const px = parseFloat(data.ticker.lastPrice) || 0;
+  const rows = [...hist].reverse().map((h, i, arr) => {
+    const oi = parseFloat(h.sumOpenInterest);
+    const prev = arr[i + 1];
+    const delta = prev ? oi - parseFloat(prev.sumOpenInterest) : 0;
+    const cls = delta >= 0 ? 'up' : 'dn';
+    const time = new Date(h.timestamp).toLocaleTimeString('en-US', { hour:'2-digit', minute:'2-digit' });
+    const oiUsd = oi * px;
+    const deltaUsd = delta * px;
+    return `<div class="mst-row"><span class="mst-lbl">${time}</span><span class="mst-val">${fmtHL(oiUsd)}<span class="${cls}" style="font-size:10px">${delta >= 0 ? '+' : ''}${fmtHL(Math.abs(deltaUsd))}</span></span></div>`;
+  }).join('');
+  body.innerHTML = `<div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;padding:0 0 8px">OI Flow — 5m intervals</div>${rows}`;
+}
+
+function renderAISignals(data) {
+  const body = el('ai-body');
+  const verdictEl = el('ai-verdict');
+  const verdictValEl = el('ai-verdict-val');
+  const symLbl = el('ai-sym-lbl');
+  if (!body) return;
+  if (!data) { body.innerHTML = '<div style="color:var(--text3);font-size:12px;text-align:center;padding:20px">No data</div>'; return; }
+  if (symLbl) symLbl.textContent = data.sym;
+  const mark = parseFloat(data.ticker.lastPrice) || 0;
+  const ch24 = parseFloat(data.ticker.priceChangePercent) || 0;
+  const ls = data.lsRatio?.[0];
+  const lr = ls ? parseFloat(ls.longAccount) : 0.5;
+  const sr = ls ? parseFloat(ls.shortAccount) : 0.5;
+  const taker = data.takerRatio?.[0];
+  const takerBuy = taker ? parseFloat(taker.buyVol) / (parseFloat(taker.sellVol) || 1) : 1;
+  const fr = parseFloat(data.ticker.lastFundingRate || 0) * 100;
+  const hist = data.oiHist || [];
+  const oiFirst = hist.length ? parseFloat(hist[0].sumOpenInterest) : 0;
+  const oiLast  = hist.length ? parseFloat(hist[hist.length - 1].sumOpenInterest) : 0;
+  const oiTrend = oiFirst ? (oiLast - oiFirst) / oiFirst * 100 : 0;
+  const signals = [
+    {
+      name: 'Long/Short Ratio', bull: lr <= 0.52,
+      val: `${(lr*100).toFixed(1)}% L / ${(sr*100).toFixed(1)}% S`,
+      body: lr > 0.52 ? 'Longs crowded — watch for squeeze' : 'Shorts heavy — squeeze fuel building',
+    },
+    {
+      name: 'Taker Flow', bull: takerBuy >= 1,
+      val: `Buy ${(takerBuy/(1+takerBuy)*100).toFixed(0)}%`,
+      body: takerBuy >= 1 ? 'Takers buying aggressively — bullish' : 'Takers selling into bids — bearish',
+    },
+    {
+      name: 'Funding', bull: Math.abs(fr) < 0.03,
+      val: `${fr >= 0 ? '+' : ''}${fr.toFixed(4)}%`,
+      body: Math.abs(fr) < 0.03 ? 'Neutral — no leverage extreme' : fr > 0 ? 'Longs paying — crowded longs' : 'Shorts paying — bearish excess',
+    },
+    {
+      name: 'OI Momentum', bull: oiTrend > 0,
+      val: `${oiTrend >= 0 ? '+' : ''}${oiTrend.toFixed(2)}%`,
+      body: oiTrend > 0 ? `OI rising ${oiTrend.toFixed(2)}% — new money in` : `OI falling ${Math.abs(oiTrend).toFixed(2)}% — unwinding`,
+    },
+    {
+      name: '24h Price', bull: ch24 >= 0,
+      val: `${ch24 >= 0 ? '+' : ''}${ch24.toFixed(2)}%`,
+      body: ch24 >= 0 ? 'Bullish trend — continuation bias' : 'Bearish trend — continuation bias',
+    },
+  ];
+  const bullCount = signals.filter(s => s.bull).length;
+  const verdict = bullCount >= 4 ? 'STRONG BULL' : bullCount >= 3 ? 'BULL LEAN' : bullCount === 2 ? 'NEUTRAL' : bullCount === 1 ? 'BEAR LEAN' : 'STRONG BEAR';
+  const vc = bullCount >= 3 ? 'var(--green)' : bullCount === 2 ? 'var(--text3)' : 'var(--red)';
+  body.innerHTML = signals.map(s => `
+    <div class="ai-signal">
+      <div class="ai-sig-hdr">
+        <div class="ai-sig-dot" style="background:${s.bull?'var(--green)':'var(--red)'}"></div>
+        <span class="ai-sig-name">${s.name}</span>
+        <span class="ai-sig-val" style="color:${s.bull?'var(--green)':'var(--red)'}">${s.val}</span>
+      </div>
+      <div class="ai-sig-body">${s.body}</div>
+    </div>`).join('');
+  if (verdictEl) verdictEl.style.display = 'flex';
+  if (verdictValEl) { verdictValEl.textContent = verdict; verdictValEl.style.color = vc; }
+}
+
+async function refreshFut() {
+  const data = await fetchFutData(futSym);
+  futData = data;
+  if (futTab === 'liqmap') renderLiqMap(data);
+  else renderInflow(data);
+  renderAISignals(data);
+}
+
+function initFut() {
+  const pillsEl = el('fut-sym-pills');
+  if (pillsEl) {
+    pillsEl.innerHTML = FUT_SYMS.map(s =>
+      `<button class="sym-pill${s===futSym?' active':''}" data-sym="${s}">${s}</button>`
+    ).join('');
+    pillsEl.addEventListener('click', e => {
+      const btn = e.target.closest('.sym-pill');
+      if (!btn) return;
+      futSym = btn.dataset.sym;
+      pillsEl.querySelectorAll('.sym-pill').forEach(b => b.classList.toggle('active', b === btn));
+      refreshFut();
+    });
+  }
+  const tabsEl = el('fut-tabs');
+  if (tabsEl) {
+    tabsEl.addEventListener('click', e => {
+      const btn = e.target.closest('.fut-tab');
+      if (!btn) return;
+      futTab = btn.dataset.tab;
+      tabsEl.querySelectorAll('.fut-tab').forEach(b => b.classList.toggle('active', b === btn));
+      const lb = el('liqmap-body'), ib = el('inflow-body');
+      if (lb) lb.style.display = futTab === 'liqmap' ? '' : 'none';
+      if (ib) ib.style.display = futTab === 'inflow' ? '' : 'none';
+      if (futData) { if (futTab === 'liqmap') renderLiqMap(futData); else renderInflow(futData); }
+    });
+  }
+  refreshFut();
+  setInterval(refreshFut, 30_000);
+}
+
 async function init() {
   buildTicker();
   initHLTable();
+  initFut();
   fetchHLPerps();
 
   // Stagger fetches to respect CoinGecko rate limits

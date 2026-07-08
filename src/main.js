@@ -548,6 +548,7 @@ const btmPaneMap = {
   'trade-history': 'btTradeHistory',
   'funding':       'btFunding',
   'order-history': 'btOrderHistory',
+  'liq-map':       'btLiqMap',
 };
 
 function bindBtmTabs() {
@@ -555,8 +556,10 @@ function bindBtmTabs() {
     btn.addEventListener('click', async () => {
       document.querySelectorAll('.btm-tab').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      Object.values(btmPaneMap).forEach(id => document.getElementById(id).classList.add('hidden'));
-      document.getElementById(btmPaneMap[btn.dataset.bt]).classList.remove('hidden');
+      Object.values(btmPaneMap).forEach(id => { const el = document.getElementById(id); if (el) { el.classList.add('hidden'); el.style.display = ''; } });
+      const activePane = document.getElementById(btmPaneMap[btn.dataset.bt]);
+      if (activePane) { activePane.classList.remove('hidden'); if (btn.dataset.bt === 'liq-map') activePane.style.display = 'flex'; }
+      if (btn.dataset.bt === 'liq-map') window.lmpOpen?.();
 
       // Load data for tabs that need it
       const addr = getEVMAddress();

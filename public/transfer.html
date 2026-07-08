@@ -25,15 +25,15 @@
     ::-webkit-scrollbar-thumb{background:var(--bg3);border-radius:3px}
     input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
 
-    #rdo-nav{position:fixed;top:0;left:0;right:0;height:var(--nav);background:var(--bg);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;padding:0 16px;z-index:1000}
+    #rdo-nav{position:fixed;top:0;left:0;right:0;height:var(--nav);min-height:var(--nav);max-height:var(--nav);overflow:hidden;background:var(--bg);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;padding:0 24px;z-index:1000}
     .nav-logo{font-size:13px;font-weight:800;letter-spacing:.5px;color:#f5f1ea;flex-shrink:0}
     .nav-logo span{color:var(--accent)}
     .nav-div{width:1px;height:18px;background:var(--border);margin:0 4px;flex-shrink:0}
-    #rdo-nav a{font-size:12px;font-weight:500;color:var(--text3);padding:4px 10px;border-radius:4px;transition:color .12s,background .12s;flex-shrink:0}
-    #rdo-nav a:hover{color:var(--text);background:var(--bg2)}
-    #rdo-nav a.active{color:var(--accent)}
+    #rdo-nav a{font-size:12px;font-weight:500;color:var(--text3);padding:5px 12px;border-radius:7px;transition:color .12s,background .12s;flex-shrink:0}
+    #rdo-nav a:hover{color:var(--text);background:#1a1a1a}
+    #rdo-nav a.active{color:var(--text);background:#1f1f1f;font-weight:600}
 
-    main{max-width:600px;margin:0 auto;padding:0 20px 60px;padding-top:calc(var(--nav) + 28px)}
+    main{max-width:600px;margin:0 auto;padding:0 24px 60px;padding-top:calc(var(--nav) + 8px)}
     .page-hdr{margin-bottom:24px}
     .page-title{font-size:20px;font-weight:800;letter-spacing:.5px;margin-bottom:3px}
     .page-sub{font-size:12px;color:var(--text3)}
