@@ -4,11 +4,11 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"next dev -p 3002\" \"npm --prefix server run dev\" --names \"next,server\" --prefix-colors cyan,magenta",
-    "dev:frontend": "next dev -p 3002",
-    "dev:server": "npm --prefix server run dev",
-    "build": "next build",
-    "start": "next start -p 5176",
+    "dev": "node init && concurrently \"next dev -p 3002\" \"npm --prefix server run dev\" --names \"next,server\" --prefix-colors cyan,magenta",
+    "dev:frontend": "node init && next dev -p 3002",
+    "dev:server": "node init && npm --prefix server run dev",
+    "build": "node init && next build",
+    "start": "node init && next start -p 5176",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
