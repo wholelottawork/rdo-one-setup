@@ -1499,7 +1499,7 @@ export default function PortfolioPage() {
                   </span>
                 </div>
                 <div
-                  className="livePerps-val-eq"
+                  className="perps-val-eq"
                   id="pv-equity"
                   style={
                     livePerps &&
@@ -1516,7 +1516,7 @@ export default function PortfolioPage() {
                       ? "$" + fmt(livePerps.equity)
                       : "—"}
                 </div>
-                <div className="livePerps-val-sub" id="pv-upnl-row">
+                <div className="perps-val-sub" id="pv-upnl-row">
                   Unrealized PnL:{" "}
                   <span
                     id="pv-upnl"
@@ -1540,8 +1540,8 @@ export default function PortfolioPage() {
                         : "—"}
                   </span>
                 </div>
-                <div className="livePerps-val-rows">
-                  <div className="livePerps-val-row">
+                <div className="perps-val-rows">
+                  <div className="perps-val-row">
                     <span>Position Value</span>
                     <span id="pv-ntl">
                       {livePerps === "loading"
@@ -1551,7 +1551,7 @@ export default function PortfolioPage() {
                           : "—"}
                     </span>
                   </div>
-                  <div className="livePerps-val-row">
+                  <div className="perps-val-row">
                     <span>Available Margin</span>
                     <span id="pv-avail">
                       {livePerps === "loading"
@@ -1561,7 +1561,7 @@ export default function PortfolioPage() {
                           : "—"}
                     </span>
                   </div>
-                  <div className="livePerps-val-row">
+                  <div className="perps-val-row">
                     <span>Margin Used</span>
                     <span id="pv-margin-used">
                       {livePerps === "loading"
@@ -1571,7 +1571,7 @@ export default function PortfolioPage() {
                           : "—"}
                     </span>
                   </div>
-                  <div className="livePerps-val-row">
+                  <div className="perps-val-row">
                     <span>Account Leverage</span>
                     <span id="pv-lev">
                       {livePerps === "loading"
@@ -1595,7 +1595,7 @@ export default function PortfolioPage() {
                         : "none",
                   }}
                 >
-                  <div className="livePerps-val-pos-hdr">Open Positions</div>
+                  <div className="perps-val-pos-hdr">Open Positions</div>
                   <div id="pv-positions">
                     {livePerps &&
                       livePerps !== "loading" &&
@@ -1618,13 +1618,13 @@ export default function PortfolioPage() {
                   </div>
                 </div>
                 <div
-                  className="livePerps-val-placeholder"
+                  className="perps-val-placeholder"
                   id="pv-placeholder"
                   style={{ display: livePerps ? "none" : undefined }}
                 >
                   {livePerps === "error"
-                    ? "Failed to load livePerps data."
-                    : "Load a Hyperliquid wallet to see livePerps portfolio."}
+                    ? "Failed to load perps data."
+                    : "Load a Hyperliquid wallet to see perps portfolio."}
                 </div>
                 <button className="perps-dep-btn" onClick={openPerpsDeposit}>
                   <svg
