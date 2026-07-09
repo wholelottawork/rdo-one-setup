@@ -167,19 +167,36 @@ export default function PortfolioPage() {
   async function loadPerpsPortfolio(address: string) {
     setPerps("loading");
     try {
-      const res = await fetch(HL_API, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "clearinghouseState", user: address }),
-      });
+      // Hyperliquid uses a unified account: a single USDC balance backs both
+      // spot and perps. clearinghouseState only reports the perp-margin portion
+      // (0 when funds sit in the unified/spot balance), so we also pull spot
+      // stablecoins and fold them into the equity/available figures — otherwise
+      // a wallet holding USDC in spot but no open perps shows a misleading $0.
+      const [res, spotRes] = await Promise.all([
+        fetch(HL_API, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ type: "clearinghouseState", user: address }),
+        }),
+        fetch(HL_API, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ type: "spotClearinghouseState", user: address }),
+        }),
+      ]);
       if (!res.ok) throw new Error("HTTP " + res.status);
       const data = await res.json();
+      const spotData = spotRes.ok ? await spotRes.json() : {};
+      const HL_STABLES = new Set(["USDC", "USDT", "USDT0", "USDE", "USDH", "USD"]);
+      const spotUsd = ((spotData.balances ?? []) as Array<{ coin: string; total: string }>)
+        .reduce((s, b) => (HL_STABLES.has(b.coin) ? s + parseFloat(b.total ?? "0") : s), 0);
       const ms = data.crossMarginSummary || data.marginSummary || {};
-      const equity = parseFloat(ms.accountValue ?? 0);
+      const perpEquity = parseFloat(ms.accountValue ?? 0);
+      const equity = perpEquity + spotUsd;
       const ntl = parseFloat(ms.totalNtlPos ?? 0);
       const marginUsed = parseFloat(ms.totalMarginUsed ?? 0);
-      const rawUsd = parseFloat(ms.totalRawUsd ?? equity);
-      const upnl = equity - rawUsd;
+      const rawUsd = parseFloat(ms.totalRawUsd ?? perpEquity);
+      const upnl = perpEquity - rawUsd;
       const avail = Math.max(0, equity - marginUsed);
       const lev = marginUsed > 0 ? (ntl / equity).toFixed(2) + "x" : "0.00x";
       const positions = (

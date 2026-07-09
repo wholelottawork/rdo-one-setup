@@ -122,13 +122,42 @@ export async function getMetaAndAssetCtxs(network: HLNetwork = 'mainnet'): Promi
   }
 }
 
-export async function loadBalance(evmAddress: string, network: HLNetwork = 'mainnet'): Promise<number> {
+// USD-stablecoin spot balances that count as tradable collateral under
+// Hyperliquid's unified account model — a single USDC balance backs both spot
+// and perps (USDC is universal collateral; USDT backs CASH perps). See
+// https://hyperliquid.gitbook.io/hyperliquid-docs/trading/account-abstraction-modes
+const HL_SPOT_STABLES = new Set(['USDC', 'USDT', 'USDT0', 'USDE', 'USDH', 'USD']);
+
+/** Total USD value of stablecoin spot balances (the unified-account collateral). */
+export async function loadSpotUsd(evmAddress: string, network: HLNetwork = 'mainnet'): Promise<number> {
   try {
-    const data = await hlInfo<{ marginSummary?: { accountValue?: string } }>({
-      type: 'clearinghouseState',
+    const data = await hlInfo<{ balances?: Array<{ coin: string; total: string }> }>({
+      type: 'spotClearinghouseState',
       user: evmAddress,
     }, network);
-    return parseFloat(data.marginSummary?.accountValue ?? '0');
+    return (data.balances ?? []).reduce(
+      (sum, b) => (HL_SPOT_STABLES.has(b.coin) ? sum + parseFloat(b.total ?? '0') : sum),
+      0,
+    );
+  } catch {
+    return 0;
+  }
+}
+
+// Under unified accounts clearinghouseState.accountValue only reflects the
+// perp-margin portion (it reads 0 when funds sit in the unified/spot balance),
+// so the true tradable balance is the perp equity PLUS spot stablecoins — the
+// docs say to read spot balances for the account-wide trading balance.
+export async function loadBalance(evmAddress: string, network: HLNetwork = 'mainnet'): Promise<number> {
+  try {
+    const [data, spotUsd] = await Promise.all([
+      hlInfo<{ marginSummary?: { accountValue?: string } }>({
+        type: 'clearinghouseState',
+        user: evmAddress,
+      }, network),
+      loadSpotUsd(evmAddress, network),
+    ]);
+    return parseFloat(data.marginSummary?.accountValue ?? '0') + spotUsd;
   } catch {
     return 0;
   }
