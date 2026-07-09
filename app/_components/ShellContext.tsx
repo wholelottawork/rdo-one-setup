@@ -13,6 +13,9 @@ import {
 import { fmtPrice, fmtAster, fmtLarge, type TradeMode } from '@/lib/markets';
 import type { HLNetwork, Position, Fill, OpenOrder, FundingEntry } from '@/lib/hyperliquid';
 import type { HLConnStatus } from '@/lib/hl-socket';
+import { closePosition, cancelOrder } from '@/lib/hyperliquid';
+import { asterClosePosition, asterCancelOrder } from '@/lib/aster';
+import { getEVMProvider } from '@/lib/wallet';
 
 function countdown(): string {
   const now = new Date();
@@ -102,13 +105,75 @@ export function ShellProvider({ children }: { children: React.ReactNode }) {
   const openOrders = isAster ? asterOpenOrders : hlOpenOrders;
   const funding = isAster ? asterFundingHistory : hlFundingHistory;
 
-  const handleClosePosition = useCallback((index: number) => {
-    showToast('Manage positions on the Trade page', '');
-  }, [showToast]);
+  const handleClosePosition = useCallback(async (index: number) => {
+    if (!address) return;
+    const p = positions[index];
+    if (!p) return;
 
-  const handleCancelOrder = useCallback((oid: number, symbol: string) => {
-    showToast('Manage orders on the Trade page', '');
-  }, [showToast]);
+    try {
+      if (isAster) {
+        const result = await asterClosePosition({
+          symbol: p.symbol,
+          size: p.size,
+          isLong: p.isLong,
+          userAddress: address,
+        });
+        if (result.status === 'ok') {
+          showToast('Position closed', 'ok');
+          setTimeout(() => {
+            queryClient.invalidateQueries({ queryKey: ['aster', 'positions', address] });
+            queryClient.invalidateQueries({ queryKey: ['aster', 'balance', address] });
+          }, 2000);
+        } else {
+          showToast(result.response ?? 'Close failed', 'err');
+        }
+      } else {
+        const provider = getEVMProvider();
+        if (!provider) return;
+        const { ethers } = await import('ethers');
+        const signer = await new ethers.BrowserProvider(provider as never).getSigner();
+        const result = await closePosition({ symbol: p.symbol, size: p.size, isLong: p.isLong, signer, network });
+        if (result.status === 'ok') {
+          showToast('Position closed', 'ok');
+          setTimeout(() => queryClient.invalidateQueries({ queryKey: ['hl', 'positions', address, network] }), 2000);
+        } else {
+          showToast(result.response ?? 'Close failed', 'err');
+        }
+      }
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : 'Close failed', 'err');
+    }
+  }, [address, positions, isAster, network, showToast, queryClient]);
+
+  const handleCancelOrder = useCallback(async (oid: number, symbol: string) => {
+    if (!address) return;
+
+    try {
+      if (isAster) {
+        const result = await asterCancelOrder({ oid, symbol, userAddress: address });
+        if (result.status === 'ok') {
+          showToast('Order cancelled', 'ok');
+          queryClient.invalidateQueries({ queryKey: ['aster', 'openOrders', address] });
+        } else {
+          showToast(result.response ?? 'Cancel failed', 'err');
+        }
+      } else {
+        const provider = getEVMProvider();
+        if (!provider) return;
+        const { ethers } = await import('ethers');
+        const signer = await new ethers.BrowserProvider(provider as never).getSigner();
+        const result = await cancelOrder({ oid, symbol, signer, network });
+        if (result.status === 'ok') {
+          showToast('Order cancelled', 'ok');
+          queryClient.invalidateQueries({ queryKey: ['hl', 'openOrders', address, network] });
+        } else {
+          showToast(result.response ?? 'Cancel failed', 'err');
+        }
+      }
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : 'Cancel failed', 'err');
+    }
+  }, [address, isAster, network, showToast, queryClient]);
 
   // body.mode-aster re-themes
   useEffect(() => {
