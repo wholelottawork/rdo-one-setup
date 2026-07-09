@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "@/lib/i18n";
 import { useWallet, getEVMProvider } from "@/lib/wallet";
 import { useShell } from "@/app/_components/ShellContext";
+import { useHLSocket } from "@/lib/hl-socket";
 import {
   getPhantomSolana,
   loadSolanaPortfolio,
@@ -54,14 +55,26 @@ interface EIP1193 {
   isPhantom?: boolean;
 }
 
+interface PerpsPos {
+  coin: string;
+  szi: number; // signed size: >0 long, <0 short
+  entryPx: number;
+  isLong: boolean;
+  upnl: number;
+}
+
 interface PerpsState {
   equity: number;
+  // Equity minus unrealized PnL at snapshot time (spot + perp margin) — the
+  // static base we add live uPnL onto as prices stream, so the displayed
+  // equity ticks with the open position instead of sitting at the last fetch.
+  equityExUpnl: number;
   upnl: number;
   ntl: number;
   avail: number;
   marginUsed: number;
   lev: string;
-  positions: Array<{ coin: string; isLong: boolean; upnl: number }>;
+  positions: PerpsPos[];
 }
 
 export default function PortfolioPage() {
@@ -75,6 +88,9 @@ export default function PortfolioPage() {
   // below stay unchanged; only the connect/disconnect/switch handlers differ.
   const { address: evmAddr, connect, disconnect } = useWallet();
   const { mode: pfMode } = useShell();
+  // Live HL mark prices (allMids), streamed app-wide — used to tick the perps
+  // equity/uPnL between REST snapshots.
+  const { prices: hlLivePrices } = useHLSocket();
 
   // ── Wallet / assets state ──────────────────────────────────────
   const [pubkey, setPubkey] = useState<string | null>(null);
@@ -197,20 +213,23 @@ export default function PortfolioPage() {
       const marginUsed = parseFloat(ms.totalMarginUsed ?? 0);
       const rawUsd = parseFloat(ms.totalRawUsd ?? perpEquity);
       const upnl = perpEquity - rawUsd;
+      const equityExUpnl = equity - upnl; // spot + perp margin, no uPnL
       const avail = Math.max(0, equity - marginUsed);
       const lev = marginUsed > 0 ? (ntl / equity).toFixed(2) + "x" : "0.00x";
-      const positions = (
+      const positions: PerpsPos[] = (
         (data.assetPositions || []) as Array<{
-          position: { coin: string; szi: string; unrealizedPnl?: string };
+          position: { coin: string; szi: string; entryPx?: string; unrealizedPnl?: string };
         }>
       )
         .filter((p) => parseFloat(p.position?.szi ?? "0") !== 0)
         .map((p) => ({
           coin: p.position.coin,
+          szi: parseFloat(p.position.szi),
+          entryPx: parseFloat(p.position.entryPx ?? "0"),
           isLong: parseFloat(p.position.szi) > 0,
           upnl: parseFloat(p.position.unrealizedPnl ?? "0"),
         }));
-      setPerps({ equity, upnl, ntl, avail, marginUsed, lev, positions });
+      setPerps({ equity, equityExUpnl, upnl, ntl, avail, marginUsed, lev, positions });
     } catch {
       setPerps("error");
     }
@@ -658,6 +677,32 @@ export default function PortfolioPage() {
       : "0.00x";
     return { ntl, lev };
   }, [asterAccount]);
+
+  // Live-streamed perps snapshot: takes the last REST snapshot and re-derives
+  // equity / uPnL / position value from the streaming HL mark price (allMids),
+  // so the balance fluctuates tick-by-tick with the open position instead of
+  // sitting static until the next refresh. Falls back to the snapshot's own
+  // numbers for any coin we don't yet have a live price for.
+  const livePerps = useMemo(() => {
+    if (!perps || perps === "loading" || perps === "error") return perps;
+    if (perps.positions.length === 0) return perps;
+    let liveUpnl = 0;
+    let liveNtl = 0;
+    const positions = perps.positions.map((p) => {
+      const px = hlLivePrices[p.coin] || p.entryPx;
+      const up = p.szi * (px - p.entryPx);
+      liveUpnl += up;
+      liveNtl += Math.abs(p.szi) * px;
+      return { ...p, upnl: up };
+    });
+    const equity = perps.equityExUpnl + liveUpnl;
+    const avail = Math.max(0, equity - perps.marginUsed);
+    const lev =
+      perps.marginUsed > 0 && equity > 0
+        ? (liveNtl / equity).toFixed(2) + "x"
+        : "0.00x";
+    return { ...perps, equity, upnl: liveUpnl, ntl: liveNtl, avail, lev, positions };
+  }, [perps, hlLivePrices]);
 
   // ── Deposit modal helpers ──────────────────────────────────────
   function openDeposit() {
@@ -1454,85 +1499,85 @@ export default function PortfolioPage() {
                   </span>
                 </div>
                 <div
-                  className="perps-val-eq"
+                  className="livePerps-val-eq"
                   id="pv-equity"
                   style={
-                    perps &&
-                    perps !== "loading" &&
-                    perps !== "error" &&
-                    perps.equity < 0
+                    livePerps &&
+                    livePerps !== "loading" &&
+                    livePerps !== "error" &&
+                    livePerps.equity < 0
                       ? { color: "var(--red)" }
                       : undefined
                   }
                 >
-                  {perps === "loading"
+                  {livePerps === "loading"
                     ? "…"
-                    : perps && perps !== "error"
-                      ? "$" + fmt(perps.equity)
+                    : livePerps && livePerps !== "error"
+                      ? "$" + fmt(livePerps.equity)
                       : "—"}
                 </div>
-                <div className="perps-val-sub" id="pv-upnl-row">
+                <div className="livePerps-val-sub" id="pv-upnl-row">
                   Unrealized PnL:{" "}
                   <span
                     id="pv-upnl"
                     style={
-                      perps && perps !== "loading" && perps !== "error"
+                      livePerps && livePerps !== "loading" && livePerps !== "error"
                         ? {
                             color:
-                              perps.upnl > 0
+                              livePerps.upnl > 0
                                 ? "var(--green)"
-                                : perps.upnl < 0
+                                : livePerps.upnl < 0
                                   ? "var(--red)"
                                   : "var(--text3)",
                           }
                         : undefined
                     }
                   >
-                    {perps === "loading"
+                    {livePerps === "loading"
                       ? "…"
-                      : perps && perps !== "error"
-                        ? (perps.upnl >= 0 ? "+" : "") + "$" + fmt(perps.upnl)
+                      : livePerps && livePerps !== "error"
+                        ? (livePerps.upnl >= 0 ? "+" : "") + "$" + fmt(livePerps.upnl)
                         : "—"}
                   </span>
                 </div>
-                <div className="perps-val-rows">
-                  <div className="perps-val-row">
+                <div className="livePerps-val-rows">
+                  <div className="livePerps-val-row">
                     <span>Position Value</span>
                     <span id="pv-ntl">
-                      {perps === "loading"
+                      {livePerps === "loading"
                         ? "…"
-                        : perps && perps !== "error"
-                          ? "$" + fmt(perps.ntl)
+                        : livePerps && livePerps !== "error"
+                          ? "$" + fmt(livePerps.ntl)
                           : "—"}
                     </span>
                   </div>
-                  <div className="perps-val-row">
+                  <div className="livePerps-val-row">
                     <span>Available Margin</span>
                     <span id="pv-avail">
-                      {perps === "loading"
+                      {livePerps === "loading"
                         ? "…"
-                        : perps && perps !== "error"
-                          ? "$" + fmt(perps.avail)
+                        : livePerps && livePerps !== "error"
+                          ? "$" + fmt(livePerps.avail)
                           : "—"}
                     </span>
                   </div>
-                  <div className="perps-val-row">
+                  <div className="livePerps-val-row">
                     <span>Margin Used</span>
                     <span id="pv-margin-used">
-                      {perps === "loading"
+                      {livePerps === "loading"
                         ? "…"
-                        : perps && perps !== "error"
-                          ? "$" + fmt(perps.marginUsed)
+                        : livePerps && livePerps !== "error"
+                          ? "$" + fmt(livePerps.marginUsed)
                           : "—"}
                     </span>
                   </div>
-                  <div className="perps-val-row">
+                  <div className="livePerps-val-row">
                     <span>Account Leverage</span>
                     <span id="pv-lev">
-                      {perps === "loading"
+                      {livePerps === "loading"
                         ? "…"
-                        : perps && perps !== "error"
-                          ? perps.lev
+                        : livePerps && livePerps !== "error"
+                          ? livePerps.lev
                           : "—"}
                     </span>
                   </div>
@@ -1542,20 +1587,20 @@ export default function PortfolioPage() {
                   style={{
                     marginTop: 12,
                     display:
-                      perps &&
-                      perps !== "loading" &&
-                      perps !== "error" &&
-                      perps.positions.length
+                      livePerps &&
+                      livePerps !== "loading" &&
+                      livePerps !== "error" &&
+                      livePerps.positions.length
                         ? "block"
                         : "none",
                   }}
                 >
-                  <div className="perps-val-pos-hdr">Open Positions</div>
+                  <div className="livePerps-val-pos-hdr">Open Positions</div>
                   <div id="pv-positions">
-                    {perps &&
-                      perps !== "loading" &&
-                      perps !== "error" &&
-                      perps.positions.slice(0, 6).map((p, i) => (
+                    {livePerps &&
+                      livePerps !== "loading" &&
+                      livePerps !== "error" &&
+                      livePerps.positions.slice(0, 6).map((p, i) => (
                         <div className="pv-pos-row" key={i}>
                           <span>
                             <span className="pv-pos-coin">{p.coin}</span>
@@ -1573,13 +1618,13 @@ export default function PortfolioPage() {
                   </div>
                 </div>
                 <div
-                  className="perps-val-placeholder"
+                  className="livePerps-val-placeholder"
                   id="pv-placeholder"
-                  style={{ display: perps ? "none" : undefined }}
+                  style={{ display: livePerps ? "none" : undefined }}
                 >
-                  {perps === "error"
-                    ? "Failed to load perps data."
-                    : "Load a Hyperliquid wallet to see perps portfolio."}
+                  {livePerps === "error"
+                    ? "Failed to load livePerps data."
+                    : "Load a Hyperliquid wallet to see livePerps portfolio."}
                 </div>
                 <button className="perps-dep-btn" onClick={openPerpsDeposit}>
                   <svg
