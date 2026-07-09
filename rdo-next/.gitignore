@@ -1,0 +1,15 @@
+# Next.js
+.next/
+out/
+
+# Dependencies
+node_modules/
+
+# Env files — NEVER commit these to this public repo
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db

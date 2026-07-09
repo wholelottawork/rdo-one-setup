@@ -1,0 +1,1549 @@
+'use client';
+
+import { useEffect } from 'react';
+
+export default function TradingTerminal() {
+  useEffect(() => {
+    // Dynamically import all modules after mount (browser-only)
+    async function init() {
+      const { showToast }       = await import('@/lib/toast');
+      const {
+        connectWallet, connectExtension, connectAntarctic,
+        closeWalletModal, closeWalletModalForce,
+        getEVMAddress, getEVMProvider,
+      }                         = await import('@/lib/wallet');
+      const {
+        loadBalance, getPositions, getMarketPrice,
+        getCandles, openPosition, closePosition, cancelOrder,
+        startPriceStream, getMetaAndAssetCtxs,
+        getUserFills, getOpenOrders, getFundingHistory,
+        getL2Book, startBookStream,
+      }                         = await import('@/lib/trading');
+      const { initChart, setCandles, pushTick } = await import('@/lib/chart');
+      const { t, setLang, getLang, applyTranslations } = await import('@/lib/i18n');
+
+      const HL_MARKETS = [
+        'BTC','ETH','SOL','BNB','XRP','ADA','AVAX','DOGE','LINK','DOT',
+        'UNI','ATOM','LTC','PEPE','WIF','BONK','JUP','ARB','OP','SUI',
+        'APT','INJ','SEI','TIA','GMX','PENDLE','BLUR','SHIB','FLOKI',
+        'NEAR','FTM','MATIC','SAND','MANA','AXS','ENJ','CHZ','RUNE',
+        'LDO','CRV','AAVE','MKR','SNX','COMP','1INCH','IMX','FIL','AR',
+      ];
+      const ASTER_CRYPTO_MARKETS = [
+        'BTC','ETH','SOL','BNB','XRP','DOGE','AVAX','ADA','LINK','DOT',
+        'SUI','APT','INJ','ARB','OP','PEPE','WIF','NEAR','ATOM','UNI',
+      ];
+      const ASTER_MARKETS  = [...ASTER_CRYPTO_MARKETS];
+      const ASTER_API      = '/aster-fapi';
+      let currentMode      = 'hl';
+      let currentMarket    = 'BTC';
+      let currentIv        = 1;
+      let isBuy            = true;
+      let livePrices: Record<string,number>      = {};
+      let metaCtxs: Record<string,any>           = {};
+      let marketLev: Record<string,number>       = {};
+      let recentTrades: any[]                    = [];
+      let stopBook: any                          = null;
+      const asterStats: Record<string,any>       = {};
+      const hlStats:    Record<string,any>       = {};
+
+      // ── helpers ────────────────────────────────────────────────
+      function fmt(p: number, sym?: string) {
+        if (!p) return '—';
+        if (p >= 10000) return p.toLocaleString('en-US', { maximumFractionDigits: 0 });
+        if (p >= 100)   return p.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        if (p >= 1)     return p.toLocaleString('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 4 });
+        return p.toLocaleString('en-US', { minimumFractionDigits: 5, maximumFractionDigits: 6 });
+      }
+      function fmtSz(n: number) {
+        if (!n) return '0';
+        if (n >= 1000) return n.toLocaleString('en-US', { maximumFractionDigits: 2 });
+        if (n >= 1)    return n.toFixed(4);
+        return n.toFixed(6);
+      }
+      function fmtLarge(n: number) {
+        if (n >= 1e9) return (n / 1e9).toFixed(2) + 'B';
+        if (n >= 1e6) return (n / 1e6).toFixed(2) + 'M';
+        if (n >= 1e3) return (n / 1e3).toFixed(2) + 'K';
+        return n.toFixed(2);
+      }
+      function fmtAster(n: number, sym?: string) {
+        if (isNaN(n) || n === 0) return '—';
+        if (n >= 1000) return n.toLocaleString('en-US', { maximumFractionDigits: 1 });
+        if (n >= 1)    return n.toFixed(2);
+        return n.toPrecision(4);
+      }
+      function ivLabel(iv: number) {
+        if (iv < 60)   return iv + 'm';
+        if (iv < 1440) return (iv / 60) + 'h';
+        return '1D';
+      }
+      function countdown() {
+        const now  = new Date();
+        const next = new Date(now);
+        next.setUTCHours(Math.ceil((now.getUTCHours() + 1) / 8) * 8, 0, 0, 0);
+        if (next <= now) next.setUTCHours(next.getUTCHours() + 8);
+        const diff = +next - +now;
+        const h = Math.floor(diff / 3600000).toString().padStart(2, '0');
+        const m = Math.floor((diff % 3600000) / 60000).toString().padStart(2, '0');
+        const s = Math.floor((diff % 60000) / 1000).toString().padStart(2, '0');
+        return `${h}:${m}:${s}`;
+      }
+
+      // ── mode switch ────────────────────────────────────────────
+      async function switchMode(mode: string) {
+        if (mode === currentMode) return;
+        currentMode = mode;
+        const hlBtn    = document.getElementById('modeBtnHL');
+        const asterBtn = document.getElementById('modeBtnAster');
+        if (mode === 'aster') {
+          hlBtn?.classList.remove('active');
+          asterBtn?.classList.add('active');
+          document.body.classList.add('mode-aster');
+          const levInput = document.getElementById('levInput') as HTMLInputElement;
+          if (levInput) { levInput.max = '200'; levInput.value = String(Math.min(parseInt(levInput.value), 200)); }
+          const feeEl = document.getElementById('stFee');
+          if (feeEl) feeEl.textContent = '0.0400% Taker / 0.0000% Maker';
+          currentMarket = 'BTC';
+          const mktSym = document.getElementById('mktSymbol');
+          if (mktSym) mktSym.textContent = 'BTC-USDT';
+          const sUnit = document.getElementById('sizeUnit');
+          if (sUnit) sUnit.textContent = 'BTC';
+          recentTrades = [];
+          const tl = document.getElementById('tradesList');
+          if (tl) tl.innerHTML = '<div style="color:var(--hl-text-muted);font-size:11px;padding:8px;text-align:center">Aster live trades streaming coming soon</div>';
+          rebuildDropdown();
+          await loadMarket(currentMarket);
+          fetchAsterMids(); fetchAsterFunding(); fetchAsterOI();
+        } else {
+          asterBtn?.classList.remove('active');
+          hlBtn?.classList.add('active');
+          document.body.classList.remove('mode-aster');
+          const levInput = document.getElementById('levInput') as HTMLInputElement;
+          if (levInput) { levInput.max = '50'; levInput.value = String(Math.min(parseInt(levInput.value), 50)); }
+          const feeEl = document.getElementById('stFee');
+          if (feeEl) feeEl.textContent = '0.0450% / 0.0150%';
+          currentMarket = 'BTC';
+          const mktSym = document.getElementById('mktSymbol');
+          if (mktSym) mktSym.textContent = 'BTC-USDC';
+          const sUnit = document.getElementById('sizeUnit');
+          if (sUnit) sUnit.textContent = 'BTC';
+          rebuildDropdown();
+          await loadMarket(currentMarket);
+          loadMeta();
+        }
+        const cl = document.getElementById('chartLabel');
+        if (cl) cl.textContent = `${currentMarket}${mode === 'aster' ? 'USDT' : 'USD'} · ${ivLabel(currentIv)} · RDO ONE`;
+        updateTradeBtn();
+      }
+
+      function rebuildDropdown() {
+        const markets = currentMode === 'aster' ? ASTER_MARKETS : HL_MARKETS;
+        const list    = document.getElementById('mktList');
+        if (list) renderMarketList(markets, list);
+      }
+
+      async function fetchAsterMids() {
+        if (currentMode !== 'aster') return;
+        try {
+          const res  = await fetch(`${ASTER_API}/fapi/v1/ticker/24hr`);
+          const data = await res.json();
+          if (!Array.isArray(data)) return;
+          data.forEach((tk: any) => {
+            const sym = tk.symbol?.replace('USDT','');
+            if (!sym) return;
+            const price = parseFloat(tk.lastPrice ?? 0);
+            if (price > 0) livePrices[sym] = price;
+            asterStats[sym] = asterStats[sym] || {};
+            asterStats[sym].chgPct = parseFloat(tk.priceChangePercent ?? 0);
+            asterStats[sym].vol    = parseFloat(tk.quoteVolume ?? 0);
+            const priceEl = document.getElementById(`mprice-${sym}`);
+            if (priceEl) priceEl.textContent = fmtAster(price, sym);
+          });
+          const ticker = data.find((tk: any) => tk.symbol === currentMarket + 'USDT');
+          if (ticker) updateAsterHeaderStats(ticker);
+        } catch {}
+        setTimeout(fetchAsterMids, 5000);
+      }
+
+      async function fetchAsterFunding() {
+        if (currentMode !== 'aster') return;
+        try {
+          const res  = await fetch(`${ASTER_API}/fapi/v1/premiumIndex`);
+          const data = await res.json();
+          if (!Array.isArray(data)) return;
+          data.forEach((tk: any) => {
+            const sym = tk.symbol?.replace('USDT','');
+            if (!sym) return;
+            asterStats[sym] = asterStats[sym] || {};
+            asterStats[sym].fund8h = parseFloat(tk.lastFundingRate ?? 0) * 100;
+          });
+          rebuildDropdown();
+        } catch {}
+        setTimeout(fetchAsterFunding, 30000);
+      }
+
+      async function fetchAsterOI() {
+        if (currentMode !== 'aster') return;
+        try {
+          await Promise.all(ASTER_MARKETS.map(async sym => {
+            const res = await fetch(`${ASTER_API}/fapi/v1/openInterest?symbol=${sym}USDT`);
+            const d   = await res.json();
+            const oi  = parseFloat(d.openInterest ?? 0);
+            asterStats[sym] = asterStats[sym] || {};
+            asterStats[sym].oi = oi * (livePrices[sym] || 0);
+          }));
+          rebuildDropdown();
+        } catch {}
+        setTimeout(fetchAsterOI, 30000);
+      }
+
+      function updateAsterHeaderStats(ticker: any) {
+        const px   = parseFloat(ticker.lastPrice  ?? 0);
+        const open = parseFloat(ticker.openPrice  ?? px);
+        const chg  = px - open;
+        const pct  = open ? (chg / open) * 100 : 0;
+        const vol  = parseFloat(ticker.quoteVolume ?? 0);
+        const sm   = document.getElementById('statMark');
+        if (sm) sm.textContent = fmtAster(px, currentMarket);
+        const chgEl = document.getElementById('statChange');
+        if (chgEl) {
+          chgEl.textContent = `${chg >= 0 ? '+' : ''}${fmtAster(chg, currentMarket)} / ${chg >= 0 ? '+' : ''}${pct.toFixed(2)}%`;
+          chgEl.className   = 'hdr-stat-val ' + (chg >= 0 ? 'up' : 'down');
+        }
+        const sv = document.getElementById('statVolume');
+        if (sv) sv.textContent = '$' + fmtLarge(vol);
+        const sf = document.getElementById('statFunding');
+        if (sf) sf.textContent = '— / —';
+      }
+
+      async function getAsterCandles(symbol: string, intervalMin: number, count = 200) {
+        const ivMap: Record<number,string> = { 1:'1m', 3:'3m', 5:'5m', 15:'15m', 60:'1h', 240:'4h', 1440:'1d' };
+        const iv    = ivMap[intervalMin] || '1m';
+        try {
+          const res  = await fetch(`${ASTER_API}/fapi/v1/klines?symbol=${symbol}USDT&interval=${iv}&limit=${count}`);
+          const data = await res.json();
+          if (!Array.isArray(data)) return [];
+          return data.map((c: any) => ({ t: c[0], o: +c[1], h: +c[2], l: +c[3], c: +c[4], v: +c[5] }));
+        } catch { return []; }
+      }
+
+      async function getAsterBook(symbol: string) {
+        try {
+          const res  = await fetch(`${ASTER_API}/fapi/v1/depth?symbol=${symbol}USDT&limit=20`);
+          const data = await res.json();
+          return {
+            asks: (data.asks || []).map(([px,sz]: any) => ({ px: +px, sz: +sz })),
+            bids: (data.bids || []).map(([px,sz]: any) => ({ px: +px, sz: +sz })),
+          };
+        } catch { return { asks: [], bids: [] }; }
+      }
+
+      // ── market data ────────────────────────────────────────────
+      async function loadMeta() {
+        const data = await getMetaAndAssetCtxs();
+        if (!data) return;
+        data.forEach((ctx: any, sym: string) => { metaCtxs[sym] = ctx; });
+        updateHeaderStats();
+      }
+
+      function updateHeaderStats() {
+        const ctx = metaCtxs[currentMarket];
+        if (!ctx) return;
+        const px   = livePrices[currentMarket] ?? 0;
+        const open = ctx.prevDayPx ?? px;
+        const chg  = px - open;
+        const pct  = open ? (chg / open) * 100 : 0;
+        const sm = document.getElementById('statMark');
+        if (sm) sm.textContent = fmt(px, currentMarket);
+        const chgEl = document.getElementById('statChange');
+        if (chgEl) {
+          chgEl.textContent = `${chg >= 0 ? '+' : ''}${fmt(chg, currentMarket)} / ${chg >= 0 ? '+' : ''}${pct.toFixed(2)}%`;
+          chgEl.className   = 'hdr-stat-val ' + (chg >= 0 ? 'up' : 'down');
+        }
+        const sv = document.getElementById('statVolume');
+        if (sv) sv.textContent = '$' + fmtLarge(ctx.dayNtlVlm ?? 0);
+        const sf = document.getElementById('statFunding');
+        if (sf) sf.textContent = (ctx.funding * 100).toFixed(4) + '% / ' + countdown();
+      }
+
+      async function fetchAllMids() {
+        try {
+          const r = await fetch('/api/hl/info', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type: 'metaAndAssetCtxs' }),
+          });
+          const [meta, ctxs] = await r.json();
+          meta.universe.forEach((asset: any, i: number) => {
+            const sym   = asset.name;
+            const ctx   = ctxs[i] ?? {};
+            const price = parseFloat(ctx.markPx ?? 0);
+            if (asset.maxLeverage) marketLev[sym] = asset.maxLeverage;
+            if (!price) return;
+            livePrices[sym] = price;
+            const prev = parseFloat(ctx.prevDayPx ?? price);
+            hlStats[sym] = {
+              chgPct: prev ? (price - prev) / prev * 100 : 0,
+              vol:    parseFloat(ctx.dayNtlVlm  ?? 0),
+              fund8h: parseFloat(ctx.funding    ?? 0) * 100,
+              oi:     parseFloat(ctx.openInterest ?? 0) * price,
+            };
+            const priceEl = document.getElementById(`mprice-${sym}`);
+            if (priceEl) priceEl.textContent = fmt(price, sym);
+            const levEl = document.getElementById(`mlev-${sym}`);
+            if (levEl) levEl.textContent = asset.maxLeverage + 'x';
+          });
+        } catch {}
+        setTimeout(fetchAllMids, 5000);
+      }
+
+      function renderMarketList(markets: string[], list: HTMLElement) {
+        const dd       = document.getElementById('mktDropdown');
+        if (dd) dd.classList.add('mkt-wide');
+        const isAster   = currentMode === 'aster';
+        const mktSuffix = isAster ? '-USDT' : '-USDC';
+        const getLev    = (sym: string) => isAster ? '200x' : (marketLev[sym] ? marketLev[sym] + 'x' : '');
+        const getPrice  = (sym: string) => livePrices[sym] ? (isAster ? fmtAster(livePrices[sym], sym) : fmt(livePrices[sym], sym)) : '—';
+        const fmtFund   = (v: any) => v == null ? '—' : `${v >= 0 ? '+' : ''}${v.toFixed(4)}%`;
+        const fmtChg    = (v: any) => v == null ? '—' : `${v >= 0 ? '+' : ''}${v.toFixed(2)}%`;
+        const colHdr = `<div class="mkt-col-hdr">
+          <span>${t('market')}</span><span>${t('lastPrice')}</span><span>${t('change24hShort')}</span><span>${t('funding8h')}</span><span>${t('volume')}</span><span>${t('openInterest')}</span>
+        </div>`;
+        list.innerHTML = colHdr + markets.map(sym => {
+          const s = (isAster ? asterStats : hlStats)[sym] || {};
+          const chgCls  = (s.chgPct ?? 0) >= 0 ? 'up' : 'dn';
+          const fundCls = (s.fund8h ?? 0) >= 0 ? 'up' : 'dn';
+          return `<div class="mkt-item mkt-item-wide" data-sym="${sym}">
+            <span class="mkt-item-name">${sym}${mktSuffix}<span class="mkt-item-lev" id="mlev-${sym}">${getLev(sym)}</span></span>
+            <span class="mkt-item-price" id="mprice-${sym}">${getPrice(sym)}</span>
+            <span class="${chgCls}">${fmtChg(s.chgPct)}</span>
+            <span class="${fundCls}">${fmtFund(s.fund8h)}</span>
+            <span>${s.vol != null ? '$' + fmtLarge(s.vol) : '—'}</span>
+            <span>${s.oi  != null ? '$' + fmtLarge(s.oi)  : '—'}</span>
+          </div>`;
+        }).join('');
+        list.querySelectorAll('.mkt-item').forEach(el =>
+          el.addEventListener('click', () => { selectMarket((el as HTMLElement).dataset.sym!); closeDropdown(); })
+        );
+      }
+
+      function bindMarketBtn() {
+        const btn  = document.getElementById('mktBtn');
+        const dd   = document.getElementById('mktDropdown');
+        const srch = document.getElementById('mktSearch') as HTMLInputElement;
+        const backdrop = document.getElementById('mktBackdrop');
+        if (!btn || !dd || !srch) return;
+
+        function openDropdown() {
+          dd.classList.remove('hidden');
+          backdrop?.classList.remove('hidden');
+          srch.focus();
+          document.getElementById('modePopup')?.classList.add('hidden');
+          document.getElementById('modeBackdrop')?.classList.add('hidden');
+        }
+
+        btn.addEventListener('click', e => {
+          e.stopPropagation();
+          if (dd.classList.contains('hidden')) openDropdown(); else closeDropdown();
+        });
+        backdrop?.addEventListener('click', () => closeDropdown());
+        srch.addEventListener('input', () => {
+          const q       = srch.value.toLowerCase();
+          const markets = currentMode === 'aster' ? ASTER_MARKETS : HL_MARKETS;
+          const list = document.getElementById('mktList');
+          if (list) renderMarketList(markets.filter(s => s.toLowerCase().includes(q)), list);
+        });
+
+        let focusedIdx = -1;
+        const getItems = () => [...document.getElementById('mktList')!.querySelectorAll('.mkt-item')] as HTMLElement[];
+        function setFocus(idx: number) {
+          const items = getItems();
+          items.forEach(el => el.classList.remove('mkt-focused'));
+          if (idx < 0 || idx >= items.length) { focusedIdx = -1; return; }
+          focusedIdx = idx;
+          items[idx].classList.add('mkt-focused');
+          items[idx].scrollIntoView({ block: 'nearest' });
+        }
+        srch.addEventListener('keydown', e => {
+          const items = getItems();
+          if (e.key === 'ArrowDown')  { e.preventDefault(); setFocus(Math.min(focusedIdx + 1, items.length - 1)); }
+          else if (e.key === 'ArrowUp') { e.preventDefault(); setFocus(Math.max(focusedIdx - 1, 0)); }
+          else if (e.key === 'Enter' && focusedIdx >= 0) { selectMarket((items[focusedIdx] as HTMLElement).dataset.sym!); closeDropdown(); }
+          else if (e.key === 'Escape') closeDropdown();
+        });
+        document.addEventListener('click', e => {
+          if (!dd.contains(e.target as Node) && e.target !== btn) closeDropdown();
+        });
+      }
+
+      function closeDropdown() {
+        document.getElementById('mktDropdown')?.classList.add('hidden');
+        document.getElementById('mktBackdrop')?.classList.add('hidden');
+        (document.getElementById('mktSearch') as HTMLInputElement).value = '';
+        rebuildDropdown();
+      }
+
+      async function selectMarket(sym: string) {
+        currentMarket = sym;
+        const suffix      = currentMode === 'aster' ? '-USDT' : '-USDC';
+        const chartSuffix = currentMode === 'aster' ? 'USDT' : 'USD';
+        const mktSym = document.getElementById('mktSymbol');
+        if (mktSym) mktSym.textContent = sym + suffix;
+        const cl = document.getElementById('chartLabel');
+        if (cl) cl.textContent = `${sym}${chartSuffix} · ${ivLabel(currentIv)} · RDO ONE`;
+        const su = document.getElementById('sizeUnit');
+        if (su) su.textContent = sym;
+        updateTradeBtn();
+        await loadMarket(sym);
+      }
+
+      async function loadMarket(sym: string) {
+        const suffix = currentMode === 'aster' ? '-USDT' : '-USDC';
+        const pairEl = document.getElementById('tradesPair');
+        if (pairEl) pairEl.textContent = sym + suffix;
+        const xtEl = document.getElementById('xtTicker');
+        if (xtEl) xtEl.textContent = sym;
+
+        if (currentMode === 'aster') {
+          const data = await getAsterCandles(sym, currentIv, 200);
+          setCandles(data, sym);
+          if (stopBook) { clearInterval(stopBook); stopBook = null; }
+          getAsterBook(sym).then(book => renderOrderBook(sym, book));
+          stopBook = setInterval(async () => {
+            if (currentMode !== 'aster' || currentMarket !== sym) { clearInterval(stopBook); return; }
+            const book = await getAsterBook(sym);
+            renderOrderBook(sym, book);
+          }, 2000);
+        } else {
+          const data = await getCandles(sym, currentIv, 200);
+          setCandles(data, sym);
+          updateHeaderStats();
+          if (stopBook) stopBook();
+          getL2Book(sym).then(book => renderOrderBook(sym, book));
+          stopBook = startBookStream(sym, renderOrderBook);
+        }
+      }
+
+      function renderOrderBook(sym: string, { asks, bids }: any) {
+        if (sym !== currentMarket) return;
+        const fmtPx = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 2 });
+        const fmtSzOb = (n: number) => n >= 1 ? n.toFixed(2) : n >= 0.001 ? n.toFixed(3) : n.toFixed(4);
+        const sortedAsks = [...asks].sort((a, b) => a.px - b.px);
+        const sortedBids = [...bids].sort((a, b) => b.px - a.px);
+        let ca = 0, cb = 0;
+        const cumAsks = sortedAsks.map(r => { ca += r.sz; return { ...r, cum: ca }; });
+        const cumBids = sortedBids.map(r => { cb += r.sz; return { ...r, cum: cb }; });
+        const maxCum  = Math.max(ca, cb) || 1;
+        const row = (cls: string, { px, sz, cum }: any) => {
+          const pct = (cum / maxCum * 100).toFixed(1);
+          return `<div class="ob-row ${cls}"><span class="ob-price">${fmtPx(px)}</span><span class="ob-sz">${fmtSzOb(sz)}</span><span class="ob-total">${fmtSzOb(cum)}</span><div class="ob-depth" style="width:${pct}%"></div></div>`;
+        };
+        const asksEl = document.getElementById('obAsks');
+        if (asksEl) asksEl.innerHTML = cumAsks.map(r => row('ask', r)).join('');
+        const bidsEl = document.getElementById('obBids');
+        if (bidsEl) bidsEl.innerHTML = cumBids.map(r => row('bid', r)).join('');
+        const totalVol = ca + cb || 1;
+        const bidPct = (cb / totalVol * 100).toFixed(1);
+        const askPct = (ca / totalVol * 100).toFixed(1);
+        const ratioBid = document.getElementById('obRatioBid');
+        const ratioAsk = document.getElementById('obRatioAsk');
+        if (ratioBid) { (ratioBid as HTMLElement).style.width = bidPct + '%'; ratioBid.textContent = `B ${bidPct}%`; }
+        if (ratioAsk) ratioAsk.textContent = `${askPct}% S`;
+        const bestAsk = sortedAsks[0]?.px ?? 0;
+        const bestBid = sortedBids[0]?.px ?? 0;
+        if (bestAsk && bestBid) {
+          const spread = bestAsk - bestBid;
+          const sv = document.getElementById('obSpreadVal');
+          const sp = document.getElementById('obSpreadPct');
+          if (sv) sv.textContent = fmtPx(spread);
+          if (sp) sp.textContent = (spread / bestBid * 100).toFixed(3) + '%';
+        }
+      }
+
+      // ── intervals ──────────────────────────────────────────────
+      function bindIntervals() {
+        document.querySelectorAll('.iv-btn').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            document.querySelectorAll('.iv-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            currentIv = parseInt((btn as HTMLElement).dataset.iv!);
+            const suffix = currentMode === 'aster' ? 'USDT' : 'USD';
+            const cl = document.getElementById('chartLabel');
+            if (cl) cl.textContent = `${currentMarket}${suffix} · ${ivLabel(currentIv)} · RDO ONE`;
+            if (currentMode === 'aster') {
+              setCandles(await getAsterCandles(currentMarket, currentIv, 200), currentMarket);
+            } else {
+              setCandles(await getCandles(currentMarket, currentIv, 200), currentMarket);
+            }
+          });
+        });
+      }
+
+      // ── bottom tabs ────────────────────────────────────────────
+      const btmPaneMap: Record<string,string> = {
+        'positions':'btPositions','balances':'btBalances','open-orders':'btOpenOrders',
+        'trade-history':'btTradeHistory','funding':'btFunding','order-history':'btOrderHistory','liq-map':'btLiqMap',
+      };
+
+      function bindBtmTabs() {
+        document.querySelectorAll('.btm-tab').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            document.querySelectorAll('.btm-tab').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            Object.values(btmPaneMap).forEach(id => {
+              const el = document.getElementById(id);
+              if (el) { el.classList.add('hidden'); el.style.display = ''; }
+            });
+            const activePane = document.getElementById(btmPaneMap[(btn as HTMLElement).dataset.bt!]);
+            if (activePane) {
+              activePane.classList.remove('hidden');
+              if ((btn as HTMLElement).dataset.bt === 'liq-map') activePane.style.display = 'flex';
+            }
+            if ((btn as HTMLElement).dataset.bt === 'liq-map') (window as any).lmpOpen?.();
+            const addr = getEVMAddress();
+            if (!addr) return;
+            const tab = (btn as HTMLElement).dataset.bt;
+            if (tab === 'trade-history') renderFills(await getUserFills(addr));
+            if (tab === 'open-orders')   renderOpenOrders(await getOpenOrders(addr));
+            if (tab === 'funding')       renderFundingHistory(await getFundingHistory(addr));
+            if (tab === 'balances')      await refreshPositions(addr);
+          });
+        });
+      }
+
+      // ── price stream ───────────────────────────────────────────
+      function onPrice(sym: string, price: number) {
+        livePrices[sym] = price;
+        const el = document.getElementById(`mprice-${sym}`);
+        if (el) el.textContent = fmt(price, sym);
+        if (sym === currentMarket) { pushTick(sym, price); updateHeaderStats(); updateStats(); }
+      }
+
+      function onTrade(sym: string, trade: any) {
+        if (sym !== currentMarket) return;
+        recentTrades.unshift(trade);
+        if (recentTrades.length > 80) recentTrades.pop();
+        renderTrades();
+      }
+
+      function renderTrades() {
+        const tl = document.getElementById('tradesList');
+        if (!tl) return;
+        tl.innerHTML = recentTrades.slice(0, 50).map(tr => {
+          const d  = new Date(tr.time);
+          const ts = [d.getHours(), d.getMinutes(), d.getSeconds()]
+            .map(n => n.toString().padStart(2, '0')).join(':');
+          return `<div class="trade-row ${tr.side === 'buy' ? 't-buy' : 't-sell'}">
+            <span class="tr-price">${fmt(tr.px, currentMarket)}</span>
+            <span class="tr-sz">${fmtSz(tr.sz)}</span>
+            <span class="tr-time">${ts}</span>
+          </div>`;
+        }).join('');
+      }
+
+      function renderFills(fills: any[]) {
+        const el = document.getElementById('btTradeHistory');
+        if (!el) return;
+        if (!fills.length) { el.innerHTML = '<div class="btm-empty">No trade history</div>'; return; }
+        el.innerHTML = `<div class="btm-col-hdr" style="grid-template-columns:70px 60px 100px 80px 80px 80px 80px 1fr"><span>Market</span><span>Side</span><span>Price</span><span>Size</span><span>Fee</span><span>PnL</span><span>Dir</span><span>Time</span></div>` +
+          fills.slice(0, 200).map(f => {
+            const pnlCls = f.pnl > 0 ? 'pnl-pos' : f.pnl < 0 ? 'pnl-neg' : '';
+            return `<div class="pos-row" style="grid-template-columns:70px 60px 100px 80px 80px 80px 80px 1fr"><span class="pos-sym">${f.coin}</span><span class="${f.side === 'Buy' ? 'dir-long' : 'dir-short'}">${f.side}</span><span>${fmt(f.price, f.coin)}</span><span>${fmtSz(f.size)}</span><span>$${f.fee.toFixed(4)}</span><span class="${pnlCls}">${f.pnl !== 0 ? (f.pnl > 0 ? '+' : '') + '$' + f.pnl.toFixed(2) : '—'}</span><span style="color:var(--hl-text-muted);font-size:10px">${f.dir}</span><span style="color:var(--hl-text-muted)">${new Date(f.time).toLocaleString()}</span></div>`;
+          }).join('');
+      }
+
+      function renderOpenOrders(orders: any[]) {
+        const el = document.getElementById('btOpenOrders');
+        if (!el) return;
+        if (!orders.length) { el.innerHTML = '<div class="btm-empty">No open orders</div>'; return; }
+        el.innerHTML = `<div class="btm-col-hdr" style="grid-template-columns:70px 60px 100px 80px 80px 1fr 60px"><span>Market</span><span>Side</span><span>Price</span><span>Size</span><span>Filled</span><span>Time</span><span></span></div>` +
+          orders.map(o => {
+            const filled = o.origSize - o.size;
+            return `<div class="pos-row" style="grid-template-columns:70px 60px 100px 80px 80px 1fr 60px"><span class="pos-sym">${o.coin}</span><span class="${o.side === 'Buy' ? 'dir-long' : 'dir-short'}">${o.side}</span><span>${fmt(o.price, o.coin)}</span><span>${fmtSz(o.size)}</span><span>${fmtSz(filled)}</span><span style="color:var(--hl-text-muted)">${new Date(o.time).toLocaleString()}</span><span><button class="pos-close-btn" onclick="window.rdo.cancelOrd(${o.oid},'${o.coin}')">Cancel</button></span></div>`;
+          }).join('');
+      }
+
+      function renderFundingHistory(rows: any[]) {
+        const el = document.getElementById('btFunding');
+        if (!el) return;
+        if (!rows.length) { el.innerHTML = '<div class="btm-empty">No funding history</div>'; return; }
+        el.innerHTML = `<div class="btm-col-hdr" style="grid-template-columns:70px 80px 80px 80px 1fr"><span>Market</span><span>Payment</span><span>Rate</span><span>Size</span><span>Time</span></div>` +
+          rows.slice(0, 200).map(f => {
+            const cls = f.usdc >= 0 ? 'pnl-pos' : 'pnl-neg';
+            return `<div class="pos-row" style="grid-template-columns:70px 80px 80px 80px 1fr"><span class="pos-sym">${f.coin}</span><span class="${cls}">${f.usdc >= 0 ? '+' : ''}$${f.usdc.toFixed(4)}</span><span>${(f.rate * 100).toFixed(4)}%</span><span>${fmtSz(Math.abs(f.size))}</span><span style="color:var(--hl-text-muted)">${new Date(f.time).toLocaleString()}</span></div>`;
+          }).join('');
+      }
+
+      // ── trade panel ────────────────────────────────────────────
+      function setSide(buy: boolean) {
+        isBuy = buy;
+        document.getElementById('btnBuy')?.classList.toggle('active', buy);
+        document.getElementById('btnSell')?.classList.toggle('active', !buy);
+        if (getEVMAddress()) {
+          const btn = document.getElementById('tradeBtn');
+          if (btn) {
+            btn.className   = 'tp-action-btn ' + (buy ? 'tp-buy-bg' : 'tp-sell-bg');
+            btn.textContent = (buy ? 'Buy / Long ' : 'Sell / Short ') + currentMarket;
+          }
+        }
+        updateStats();
+      }
+
+      function updateTradeBtn() {
+        const addr = getEVMAddress();
+        const btn  = document.getElementById('tradeBtn');
+        if (!btn) return;
+        if (!addr) { btn.textContent = 'Connect'; return; }
+        btn.textContent = (isBuy ? 'Buy / Long ' : 'Sell / Short ') + currentMarket;
+      }
+
+      function updateStats() {
+        const sizeEl = document.getElementById('sizeInput') as HTMLInputElement;
+        const levEl  = document.getElementById('levInput')  as HTMLInputElement;
+        const size     = parseFloat(sizeEl?.value) || 0;
+        const lev      = parseFloat(levEl?.value)  || 20;
+        const px       = livePrices[currentMarket] || 0;
+        const notional = size * px;
+        const margin   = notional / lev;
+        const liqMove  = 0.975 / lev;
+        const liqPx    = px ? (isBuy ? px * (1 - liqMove) : px * (1 + liqMove)) : 0;
+        const feeRate  = currentMode === 'aster' ? 0.0004 : 0.00045;
+        const feeLabel = currentMode === 'aster' ? '0.0400% Taker / 0.0000% Maker' : '0.0450% / 0.0150%';
+        const feePct   = currentMode === 'aster' ? '0.0400%' : '0.0450%';
+        const el = (id: string, val: string) => { const e = document.getElementById(id); if (e) e.textContent = val; };
+        el('stLiq',    liqPx ? fmt(liqPx, currentMarket) : 'N/A');
+        el('stVal',    notional ? '$' + fmtLarge(notional) : 'N/A');
+        el('stMargin', margin ? '$' + margin.toFixed(2) : '--');
+        el('stFee',    notional ? '$' + (notional * feeRate).toFixed(4) + ' (' + feePct + ')' : feeLabel);
+      }
+
+      function onSlider(val: string) {
+        const addr = getEVMAddress();
+        if (!addr) return;
+        const avEl = document.getElementById('tpAvail');
+        const avail = parseFloat(avEl?.textContent?.replace(/[^0-9.]/g,'') || '0') || 0;
+        const levEl = document.getElementById('levInput') as HTMLInputElement;
+        const lev   = parseFloat(levEl?.value) || 20;
+        const px    = livePrices[currentMarket] || 0;
+        if (!px) return;
+        const sizeEl = document.getElementById('sizeInput') as HTMLInputElement;
+        if (sizeEl) sizeEl.value = ((avail * lev * (parseInt(val) / 100)) / px).toFixed(6);
+        updateStats();
+      }
+
+      async function submitTrade() {
+        const addr = getEVMAddress();
+        if (!addr) { await connectWalletFn(); return; }
+        const sizeEl = document.getElementById('sizeInput') as HTMLInputElement;
+        const levEl  = document.getElementById('levInput')  as HTMLInputElement;
+        const size   = parseFloat(sizeEl?.value);
+        const lev    = parseFloat(levEl?.value) || 20;
+        const px     = livePrices[currentMarket] || await getMarketPrice(currentMarket);
+        if (!size || size <= 0) { showErr('Enter a size'); return; }
+        const btn  = document.getElementById('tradeBtn');
+        if (!btn) return;
+        const orig = btn.textContent!;
+        btn.textContent = 'Confirming...';
+        (btn as HTMLButtonElement).disabled = true;
+        try {
+          const { ethers } = await import('ethers');
+          const signer = await new ethers.BrowserProvider(getEVMProvider()).getSigner();
+          const result = await openPosition({ symbol: currentMarket, sizeDollars: size * px, leverage: lev, isLong: isBuy, signer });
+          if (result.status === 'ok') {
+            showToast(`${isBuy ? 'Long' : 'Short'} ${currentMarket} opened`, 'ok');
+            setTimeout(() => refreshPositions(addr), 2000);
+          } else {
+            showErr(result.response ?? 'Order failed');
+          }
+        } catch (e: any) {
+          showErr(e.message ?? 'Transaction failed');
+        } finally {
+          btn.textContent = orig;
+          (btn as HTMLButtonElement).disabled = false;
+        }
+      }
+
+      function showErr(msg: string) {
+        const el = document.getElementById('tradeErr');
+        if (!el) return;
+        el.textContent = msg;
+        el.classList.remove('hidden');
+        setTimeout(() => el.classList.add('hidden'), 5000);
+      }
+
+      async function refreshPositions(addr: string) {
+        const [positions, balance] = await Promise.all([getPositions(addr), loadBalance(addr)]);
+        const el = (id: string, val: string) => { const e = document.getElementById(id); if (e) e.textContent = val; };
+        el('tpAvail',       '$' + balance.toFixed(2) + ' USDC');
+        el('ovBalance',     '$' + balance.toFixed(2));
+        el('eqPerps',       '$' + balance.toFixed(2));
+        el('balanceDisplay','$' + balance.toFixed(2));
+        const totalPnl = positions.reduce((s: number, p: any) => s + p.pnl, 0);
+        el('ovPnl', (totalPnl >= 0 ? '+' : '') + '$' + totalPnl.toFixed(2));
+        const mine = positions.find((p: any) => p.symbol === currentMarket);
+        el('tpCurPos', mine ? (mine.size >= 0 ? '+' : '') + mine.size.toFixed(5) + ' ' + currentMarket : '0.00000 ' + currentMarket);
+        renderPositions(positions, addr);
+      }
+
+      function renderPositions(positions: any[], addr: string) {
+        const el = document.getElementById('posRows');
+        if (!el) return;
+        if (!positions.length) { el.innerHTML = '<div class="btm-empty">No open positions yet</div>'; return; }
+        el.innerHTML = positions.map((p: any, i: number) => {
+          const pnlCls = p.pnl >= 0 ? 'pnl-pos' : 'pnl-neg';
+          const px     = livePrices[p.symbol] || p.entryPrice;
+          const roe    = p.entryPrice ? ((px - p.entryPrice) / p.entryPrice * p.leverage * (p.isLong ? 1 : -1) * 100) : 0;
+          const modeLbl = currentMode === 'aster' ? 'EXTRA' : 'BASIC';
+          const modeCls = currentMode === 'aster' ? 'pos-mode-extra' : 'pos-mode-basic';
+          return `<div class="pos-row"><span class="pos-sym">${p.symbol}</span><span><span class="pos-mode-tag ${modeCls}">${modeLbl}</span></span><span>${p.size.toFixed(4)}</span><span>$${(Math.abs(p.size) * px).toFixed(2)}</span><span>${fmt(p.entryPrice, p.symbol)}</span><span>${fmt(px, p.symbol)}</span><span class="${pnlCls}">${p.pnl >= 0 ? '+' : ''}$${p.pnl.toFixed(2)} (${roe.toFixed(2)}%)</span><span>${fmt(p.liqPrice, p.symbol)}</span><span>—</span><span>—</span><span class="${p.isLong ? 'dir-long' : 'dir-short'}">${p.isLong ? 'Long' : 'Short'}</span><span><button class="pos-close-btn" onclick="window.rdo.closePos(${i})">Close</button></span></div>`;
+        }).join('');
+      }
+
+      async function closePos(index: number) {
+        const addr = getEVMAddress();
+        if (!addr) return;
+        const positions = await getPositions(addr);
+        const p = positions[index];
+        if (!p) return;
+        try {
+          const { ethers } = await import('ethers');
+          const signer = await new ethers.BrowserProvider(getEVMProvider()).getSigner();
+          const result = await closePosition({ symbol: p.symbol, size: p.size, isLong: p.isLong, signer });
+          if (result.status === 'ok') {
+            showToast('Position closed', 'ok');
+            setTimeout(() => refreshPositions(addr), 2000);
+          } else { showToast(result.response ?? 'Close failed', 'err'); }
+        } catch (e: any) { showToast(e.message, 'err'); }
+      }
+
+      async function cancelOrd(oid: number, symbol: string) {
+        const addr = getEVMAddress();
+        if (!addr) return;
+        try {
+          const { ethers } = await import('ethers');
+          const signer = await new ethers.BrowserProvider(getEVMProvider()).getSigner();
+          const result = await cancelOrder({ oid, symbol, signer });
+          if (result.status === 'ok') {
+            showToast('Order cancelled', 'ok');
+            renderOpenOrders(await getOpenOrders(addr));
+          } else { showToast(result.response ?? 'Cancel failed', 'err'); }
+        } catch (e: any) { showToast(e.message, 'err'); }
+      }
+
+      async function connectWalletFn() {
+        const addr = await connectWallet();
+        if (addr) {
+          const btn = document.getElementById('tradeBtn');
+          if (btn) {
+            btn.textContent = (isBuy ? 'Buy / Long ' : 'Sell / Short ') + currentMarket;
+            btn.className   = 'tp-action-btn ' + (isBuy ? 'tp-buy-bg' : 'tp-sell-bg');
+          }
+          await refreshPositions(addr);
+          setInterval(() => refreshPositions(addr), 15000);
+        }
+        return addr;
+      }
+
+      // ── clock ──────────────────────────────────────────────────
+      function startClock() {
+        const clockEl = document.getElementById('clockEl');
+        const tick = () => {
+          if (clockEl) clockEl.textContent = new Date().toUTCString().slice(5, 25) + ' UTC';
+          if (currentMode === 'hl') {
+            const ctx = metaCtxs[currentMarket];
+            const sf  = document.getElementById('statFunding');
+            if (ctx && sf) sf.textContent = (ctx.funding * 100).toFixed(4) + '% / ' + countdown();
+          }
+        };
+        tick();
+        setInterval(tick, 1000);
+      }
+
+      // ── language ───────────────────────────────────────────────
+      function initLang() {
+        applyTranslations();
+        const dd  = document.getElementById('langDropdown');
+        const bdp = document.getElementById('langBackdrop');
+        if (!dd) return;
+        highlightLangOption();
+        const closeLang = () => { dd.classList.add('hidden'); bdp?.classList.add('hidden'); };
+        dd.querySelectorAll('.lang-option').forEach(btn => {
+          btn.addEventListener('click', () => {
+            setLang((btn as HTMLElement).dataset.lang!);
+            highlightLangOption();
+            closeLang();
+            const list = document.getElementById('mktList');
+            const markets = currentMode === 'aster' ? ASTER_MARKETS : HL_MARKETS;
+            if (list) renderMarketList(markets, list);
+          });
+        });
+        bdp?.addEventListener('click', closeLang);
+        document.addEventListener('click', e => {
+          if (!e.target) return;
+          if (!(e.target as HTMLElement).closest('.lang-wrap') && e.target !== bdp) closeLang();
+        });
+      }
+
+      function toggleLangDropdown() {
+        const dd  = document.getElementById('langDropdown');
+        const bdp = document.getElementById('langBackdrop');
+        const isHidden = dd?.classList.contains('hidden');
+        dd?.classList.toggle('hidden');
+        bdp?.classList.toggle('hidden', !isHidden);
+      }
+
+      function highlightLangOption() {
+        const lang = getLang();
+        document.querySelectorAll('.lang-option').forEach(b => {
+          b.classList.toggle('active', (b as HTMLElement).dataset.lang === lang);
+        });
+      }
+
+      // ── resize handles ─────────────────────────────────────────
+      function initXtResize() {
+        const handle = document.getElementById('xtResizeHandle');
+        if (!handle) return;
+        const root = document.documentElement;
+        const MIN = 120, MAX = 520;
+        let dragging = false, startX = 0, startW = 0;
+        handle.addEventListener('mousedown', e => {
+          dragging = true; startX = e.clientX;
+          startW = parseInt(getComputedStyle(root).getPropertyValue('--xt')) || 240;
+          handle.classList.add('dragging');
+          document.body.style.cursor = 'col-resize'; document.body.style.userSelect = 'none';
+          e.preventDefault();
+        });
+        document.addEventListener('mousemove', e => {
+          if (!dragging) return;
+          const w = Math.min(MAX, Math.max(MIN, startW + (e.clientX - startX)));
+          root.style.setProperty('--xt', w + 'px');
+        });
+        document.addEventListener('mouseup', () => {
+          if (!dragging) return;
+          dragging = false; handle.classList.remove('dragging');
+          document.body.style.cursor = ''; document.body.style.userSelect = '';
+        });
+      }
+
+      function initBtmResize() {
+        const handle = document.getElementById('btmResizeHandle');
+        if (!handle) return;
+        const root = document.documentElement;
+        const MIN = 60, MAX = 480;
+        let dragging = false, startY = 0, startH = 0;
+        handle.addEventListener('mousedown', e => {
+          dragging = true; startY = e.clientY;
+          startH = parseInt(getComputedStyle(root).getPropertyValue('--btm')) || 175;
+          handle.classList.add('dragging');
+          document.body.style.cursor = 'ns-resize'; document.body.style.userSelect = 'none';
+          e.preventDefault();
+        });
+        document.addEventListener('mousemove', e => {
+          if (!dragging) return;
+          const h = Math.min(MAX, Math.max(MIN, startH + (startY - e.clientY)));
+          root.style.setProperty('--btm', h + 'px');
+        });
+        document.addEventListener('mouseup', () => {
+          if (!dragging) return;
+          dragging = false; handle.classList.remove('dragging');
+          document.body.style.cursor = ''; document.body.style.userSelect = '';
+        });
+      }
+
+      // ── floating order book drag ───────────────────────────────
+      function initObFloat() {
+        const fl  = document.getElementById('obFloat');
+        const hdr = document.getElementById('obFloatHdr');
+        if (!fl || !hdr) return;
+        let mx = 0, my = 0;
+        (window as any).toggleObFloat = function() {
+          if (fl.style.display === 'none') {
+            fl.style.display = 'flex';
+            if (!fl.dataset.placed) { fl.style.right = '340px'; fl.style.top = '52px'; fl.dataset.placed = '1'; }
+          } else { fl.style.display = 'none'; }
+        };
+        hdr.addEventListener('mousedown', function(e) {
+          if ((e.target as HTMLElement).classList.contains('ob-float-close')) return;
+          mx = e.clientX; my = e.clientY;
+          const r = fl.getBoundingClientRect();
+          fl.style.left = r.left + 'px'; fl.style.top = r.top + 'px'; fl.style.right = 'auto';
+          function onMove(e: MouseEvent) {
+            const dx = e.clientX - mx, dy = e.clientY - my;
+            mx = e.clientX; my = e.clientY;
+            fl.style.left = (fl.getBoundingClientRect().left + dx) + 'px';
+            fl.style.top  = (fl.getBoundingClientRect().top  + dy) + 'px';
+          }
+          function onUp() {
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+          }
+          document.addEventListener('mousemove', onMove);
+          document.addEventListener('mouseup', onUp);
+          e.preventDefault();
+        });
+      }
+
+      // ── liq map ────────────────────────────────────────────────
+      function initLiqMap() {
+        const FUT_SYMS = ['BTC','ETH','SOL'];
+        let lmpSym = 'BTC';
+        let lmpTab = 'liqmap';
+        let lmpData: any = null;
+        let lmpTimer: any = null;
+
+        function fmtPx(n: number) {
+          if (!isFinite(n) || n == null) return '—';
+          if (n >= 10000) return '$' + n.toLocaleString('en-US', { maximumFractionDigits: 0 });
+          if (n >= 1000)  return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+          if (n >= 1)     return '$' + n.toFixed(4);
+          return '$' + n.toFixed(6);
+        }
+        function fmtM(n: number) {
+          if (!isFinite(n) || n == null) return '—';
+          if (n >= 1e9) return '$' + (n/1e9).toFixed(2) + 'B';
+          if (n >= 1e6) return '$' + (n/1e6).toFixed(2) + 'M';
+          return '$' + (n/1e3).toFixed(1) + 'K';
+        }
+
+        function updateClosestBars(mark: number, levels: any[], totalOI: number, totalW: number) {
+          const el = document.getElementById('lmpClosestBars');
+          if (!el) return;
+          const abovePrice = levels.filter(l => !l.isLong).sort((a, b) => a.price - b.price);
+          const belowPrice = levels.filter(l => l.isLong).sort((a, b) => b.price - a.price);
+          const nearShort = abovePrice[0], nearLong = belowPrice[0];
+          function card(l: any, type: string) {
+            const oiUsd = totalOI * l.weight / totalW * mark;
+            const color = type === 'short' ? '#ff7caa' : '#7cffc0';
+            const dist  = (Math.abs(l.price - mark) / mark * 100).toFixed(1);
+            const reaction = type === 'short'
+              ? `If price reaches <b style="color:#e0e0e0">${fmtPx(l.price)}</b>, ~${fmtM(oiUsd)} in short positions get forcibly closed → cascading buy orders, expect a sharp spike upward.`
+              : `If price drops to <b style="color:#e0e0e0">${fmtPx(l.price)}</b>, ~${fmtM(oiUsd)} in long positions get forcibly closed → cascading sell orders, expect a sharp drop.`;
+            return `<div style="background:rgba(255,255,255,0.025);border:1px solid var(--hl-border);border-left:2px solid ${color};border-radius:6px;padding:9px 11px;display:flex;flex-direction:column;gap:5px"><div style="display:flex;align-items:center;gap:7px"><span style="display:inline-block;width:9px;height:9px;background:${color};border-radius:2px;flex-shrink:0"></span><span style="font-size:11px;font-weight:700;color:${color}">${fmtPx(l.price)}</span><span style="font-size:10px;color:var(--hl-text-muted);margin-left:auto">${dist}% · ${fmtM(oiUsd)}</span></div><div style="font-size:10px;color:var(--hl-text-secondary);line-height:1.55">${reaction}</div></div>`;
+          }
+          let html = '';
+          if (nearShort) html += card(nearShort, 'short');
+          if (nearLong)  html += card(nearLong, 'long');
+          if (!html) html = '<div style="font-size:10px;color:var(--hl-text-muted)">No data available</div>';
+          el.innerHTML = html;
+        }
+
+        function getSym() {
+          const txt = (document.getElementById('mktSymbol')?.textContent || 'BTC-USDC').split('-')[0];
+          return FUT_SYMS.includes(txt) ? txt : lmpSym;
+        }
+
+        async function fetchLmpData(sym: string) {
+          const B = '/fapi', s = sym + 'USDT';
+          try {
+            const [ticker, oiData, lsRatio, takerRatio, oiHist] = await Promise.all([
+              fetch(`${B}/fapi/v1/ticker/24hr?symbol=${s}`).then(r => r.json()),
+              fetch(`${B}/fapi/v1/openInterest?symbol=${s}`).then(r => r.json()),
+              fetch(`${B}/futures/data/globalLongShortAccountRatio?symbol=${s}&period=5m&limit=1`).then(r => r.json()),
+              fetch(`${B}/futures/data/takerlongshortRatio?symbol=${s}&period=5m&limit=1`).then(r => r.json()),
+              fetch(`${B}/futures/data/openInterestHist?symbol=${s}&period=5m&limit=12`).then(r => r.json()),
+            ]);
+            return { sym, ticker, oiData, lsRatio, takerRatio, oiHist };
+          } catch { return null; }
+        }
+
+        function renderLiqMap(data: any) {
+          const body = document.getElementById('lmpBody');
+          if (!body) return;
+          if (!data) { body.innerHTML = '<div class="lmp-loading">No data</div>'; return; }
+          const mark    = parseFloat(data.ticker.lastPrice) || 0;
+          const totalOI = parseFloat(data.oiData.openInterest) || 0;
+          const LEVELS  = 20, RANGE = 0.15;
+          const step    = (mark * RANGE * 2) / LEVELS;
+          const levels: any[] = [];
+          for (let i = 0; i < LEVELS; i++) {
+            const price = mark * (1 - RANGE) + i * step;
+            const d     = Math.abs(price - mark) / mark;
+            const w     = Math.exp(-d * 12) + Math.exp(-Math.pow(d - 0.07, 2) * 200) * 0.6;
+            levels.push({ price, weight: w, isLong: price < mark });
+          }
+          const maxW   = Math.max(...levels.map(l => l.weight));
+          const totalW = levels.reduce((s, l) => s + l.weight, 0);
+          const reversed = [...levels].reverse();
+          const markIdx  = reversed.findIndex(l => l.price <= mark);
+          let html = '';
+          reversed.forEach((l, i) => {
+            const pct   = (l.weight / maxW * 100).toFixed(0);
+            const oiUsd = totalOI * l.weight / totalW * mark;
+            const color = l.isLong ? 'var(--hl-buy)' : 'var(--hl-sell)';
+            if (i === markIdx) html += '<div class="lmp-mark-line"></div>';
+            html += `<div class="lmp-bar-row"><span class="lmp-price">${fmtPx(l.price)}</span><div class="lmp-bar-wrap"><div class="lmp-bar-fill" style="width:${pct}%;background:${color}"></div></div><span class="lmp-oi-tag">${fmtM(oiUsd)}</span></div>`;
+          });
+          body.innerHTML = html;
+          updateClosestBars(mark, levels, totalOI, totalW);
+        }
+
+        function renderOiFlow(data: any) {
+          const body = document.getElementById('lmpOiBody');
+          if (!body) return;
+          if (!data?.oiHist?.length) { body.innerHTML = '<div class="lmp-loading">No data</div>'; return; }
+          const hist = data.oiHist;
+          const px   = parseFloat(data.ticker.lastPrice) || 0;
+          const rows = [...hist].reverse().map((h: any, i: number, arr: any[]) => {
+            const oi    = parseFloat(h.sumOpenInterest);
+            const prev  = arr[i + 1];
+            const delta = prev ? oi - parseFloat(prev.sumOpenInterest) : 0;
+            const cls   = delta >= 0 ? 'up' : 'dn';
+            const time  = new Date(h.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+            return `<div class="lmp-oi-row"><span style="color:var(--hl-text-secondary)">${time}</span><span>${fmtM(oi * px)} <span class="${cls}" style="font-size:10px">${delta >= 0 ? '+' : ''}${fmtM(Math.abs(delta) * px)}</span></span></div>`;
+          }).join('');
+          body.innerHTML = `<div style="font-size:9px;color:var(--hl-text-muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">OI Flow · 5m</div>${rows}`;
+        }
+
+        function renderAI(data: any) {
+          const body       = document.getElementById('lmpAiBody');
+          const verdictEl  = document.getElementById('lmpVerdict');
+          const verdictVal = document.getElementById('lmpVerdictVal');
+          const symLbl     = document.getElementById('lmpAiSym');
+          if (!body) return;
+          if (!data) { body.innerHTML = '<div class="lmp-loading">No data</div>'; return; }
+          if (symLbl) symLbl.textContent = data.sym;
+          const ch24     = parseFloat(data.ticker.priceChangePercent) || 0;
+          const ls       = data.lsRatio?.[0];
+          const lr       = ls ? parseFloat(ls.longAccount) : 0.5;
+          const sr       = ls ? parseFloat(ls.shortAccount) : 0.5;
+          const taker    = data.takerRatio?.[0];
+          const takerBuy = taker ? parseFloat(taker.buyVol) / (parseFloat(taker.sellVol) || 1) : 1;
+          const fr       = parseFloat(data.ticker.lastFundingRate || 0) * 100;
+          const hist     = data.oiHist || [];
+          const oiFirst  = hist.length ? parseFloat(hist[0].sumOpenInterest) : 0;
+          const oiLast   = hist.length ? parseFloat(hist[hist.length - 1].sumOpenInterest) : 0;
+          const oiTrend  = oiFirst ? (oiLast - oiFirst) / oiFirst * 100 : 0;
+          const sigs = [
+            { name:'L/S Ratio', bull: lr <= 0.52, val:`${(lr*100).toFixed(1)}%L / ${(sr*100).toFixed(1)}%S`, body: lr > 0.52 ? 'Longs crowded — squeeze risk' : 'Shorts heavy — squeeze fuel' },
+            { name:'Taker Flow', bull: takerBuy >= 1, val:`Buy ${(takerBuy/(1+takerBuy)*100).toFixed(0)}%`, body: takerBuy >= 1 ? 'Aggressive buying — bullish' : 'Selling into bids — bearish' },
+            { name:'Funding', bull: Math.abs(fr) < 0.03, val:`${fr >= 0 ? '+' : ''}${fr.toFixed(4)}%`, body: Math.abs(fr) < 0.03 ? 'Neutral — no extreme' : fr > 0 ? 'Longs paying — crowded' : 'Shorts paying — bearish' },
+            { name:'OI Trend', bull: oiTrend > 0, val:`${oiTrend >= 0 ? '+' : ''}${oiTrend.toFixed(2)}%`, body: oiTrend > 0 ? 'Growing — new money in' : 'Falling — unwinding' },
+            { name:'24h Price', bull: ch24 >= 0, val:`${ch24 >= 0 ? '+' : ''}${ch24.toFixed(2)}%`, body: ch24 >= 0 ? 'Bullish trend bias' : 'Bearish trend bias' },
+          ];
+          const bullCount = sigs.filter(s => s.bull).length;
+          const verdict   = bullCount >= 4 ? 'STRONG BULL' : bullCount >= 3 ? 'BULL LEAN' : bullCount === 2 ? 'NEUTRAL' : bullCount === 1 ? 'BEAR LEAN' : 'STRONG BEAR';
+          const vc        = bullCount >= 3 ? 'var(--hl-buy)' : bullCount === 2 ? 'var(--hl-text-secondary)' : 'var(--hl-sell)';
+          body.innerHTML = sigs.map(s => `<div class="lmp-ai-sig"><div class="lmp-ai-sig-hdr"><div class="lmp-ai-dot" style="background:${s.bull?'var(--hl-buy)':'var(--hl-sell)'}"></div><span class="lmp-ai-name">${s.name}</span><span class="lmp-ai-val" style="color:${s.bull?'var(--hl-buy)':'var(--hl-sell)'}">${s.val}</span></div><div class="lmp-ai-body-text">${s.body}</div></div>`).join('');
+          if (verdictEl) verdictEl.style.display = 'flex';
+          if (verdictVal) { verdictVal.textContent = verdict; verdictVal.style.color = vc; }
+        }
+
+        async function refresh() {
+          const data = await fetchLmpData(lmpSym);
+          lmpData = data;
+          renderLiqMap(data); renderOiFlow(data); renderAI(data);
+        }
+
+        function syncPills() {
+          document.querySelectorAll('.lmp-sym-pill').forEach(b => b.classList.toggle('active', (b as HTMLElement).dataset.sym === lmpSym));
+        }
+
+        (window as any).lmpOpen = function() {
+          lmpSym = getSym(); syncPills();
+          clearInterval(lmpTimer); refresh();
+          lmpTimer = setInterval(refresh, 30000);
+        };
+
+        const pillsEl = document.getElementById('lmpSymPills');
+        if (pillsEl) {
+          pillsEl.innerHTML = FUT_SYMS.map(s => `<button class="lmp-sym-pill${s === lmpSym ? ' active' : ''}" data-sym="${s}">${s}</button>`).join('');
+          pillsEl.addEventListener('click', e => {
+            const btn = (e.target as HTMLElement).closest('.lmp-sym-pill') as HTMLElement;
+            if (!btn) return;
+            lmpSym = btn.dataset.sym!; syncPills(); refresh();
+          });
+        }
+        document.getElementById('lmpTabs')?.addEventListener('click', e => {
+          const btn = (e.target as HTMLElement).closest('.lmp-tab') as HTMLElement;
+          if (!btn) return;
+          lmpTab = btn.dataset.tab!;
+          document.querySelectorAll('.lmp-tab').forEach(b => b.classList.toggle('active', b === btn));
+          const lbody  = document.getElementById('lmpBody');
+          const oibody = document.getElementById('lmpOiBody');
+          if (lbody)  lbody.style.display  = lmpTab === 'liqmap' ? '' : 'none';
+          if (oibody) oibody.style.display  = lmpTab === 'oi'     ? '' : 'none';
+          if (lmpData) { if (lmpTab === 'liqmap') renderLiqMap(lmpData); else renderOiFlow(lmpData); }
+        });
+      }
+
+      // ── mode help popup ────────────────────────────────────────
+      function toggleModeHelp() {
+        const popup    = document.getElementById('modePopup');
+        const backdrop = document.getElementById('modeBackdrop');
+        if (!popup) return;
+        closeDropdown();
+        const opening = popup.classList.contains('hidden');
+        popup.classList.toggle('hidden', !opening);
+        if (backdrop) backdrop.classList.toggle('hidden', !opening);
+        if (opening) {
+          const close = (e: Event) => {
+            const target = e.target as HTMLElement;
+            if (!popup.contains(target) && target.id !== 'modeHelpBtn' && target.id !== 'modeBackdrop') return;
+            popup.classList.add('hidden');
+            if (backdrop) backdrop.classList.add('hidden');
+            document.removeEventListener('click', close);
+          };
+          setTimeout(() => document.addEventListener('click', close), 0);
+        }
+      }
+
+      // ── public API ─────────────────────────────────────────────
+      (window as any).rdo = {
+        connectWallet: connectWalletFn, switchMode, setSide, updateStats, onSlider,
+        submitTrade, closePos, cancelOrd,
+        openDeposit()  { document.getElementById('depositModal')?.classList.remove('hidden'); },
+        closeDeposit(e?: Event) {
+          if (e && e.target !== document.getElementById('depositModal')) return;
+          document.getElementById('depositModal')?.classList.add('hidden');
+        },
+        connectExtension, connectAntarctic, closeWalletModal, closeWalletModalForce,
+        openOnramp()  { document.getElementById('onrampModal')?.classList.remove('hidden'); },
+        closeOnramp(e?: Event) {
+          if (e && e.target !== document.getElementById('onrampModal')) return;
+          document.getElementById('onrampModal')?.classList.add('hidden');
+        },
+        closeOnrampForce()  { document.getElementById('onrampModal')?.classList.add('hidden'); },
+        connectX() {
+          const btn  = document.getElementById('xtConnectBtn') as HTMLButtonElement;
+          if (btn) { btn.textContent = 'Connected'; btn.disabled = true; }
+          const feed = document.getElementById('xtFeed');
+          if (feed) feed.innerHTML = '<div class="xt-empty">X integration coming soon.</div>';
+        },
+        toggleOrderBook() { document.getElementById('obMini')?.classList.toggle('collapsed'); },
+        toggleLang: toggleLangDropdown,
+        toggleModeHelp,
+      };
+
+      // ── run ────────────────────────────────────────────────────
+      await initChart();
+      startClock();
+      const list = document.getElementById('mktList');
+      if (list) renderMarketList(HL_MARKETS, list);
+      fetchAllMids();
+      bindIntervals();
+      bindBtmTabs();
+      bindMarketBtn();
+      initLang();
+      initXtResize();
+      initBtmResize();
+      initObFloat();
+      initLiqMap();
+      await loadMarket('BTC');
+      await loadMeta();
+      startPriceStream(HL_MARKETS.slice(0, 20), onPrice, null, onTrade);
+    }
+
+    init().catch(console.error);
+  }, []);
+
+  return (
+    <div id="app">
+      {/* ══ HEADER ═══════════════════════════════════════════════ */}
+      <header className="hdr">
+        <div className="hdr-left">
+          <div className="hdr-logo">
+            <span className="logo-rdo">RDO</span><span className="logo-one">ONE</span>
+          </div>
+          <div className="hdr-div"></div>
+          <div className="mode-switch-wrap">
+            <div className="mode-switch" id="modeSwitch">
+              <button className="mode-btn mode-hl active" id="modeBtnHL" onClick={() => (window as any).rdo?.switchMode('hl')}>BASIC</button>
+              <button className="mode-btn mode-aster" id="modeBtnAster" onClick={() => (window as any).rdo?.switchMode('aster')}>EXTRA</button>
+            </div>
+            <button className="mode-help-btn" id="modeHelpBtn" onClick={() => (window as any).rdo?.toggleModeHelp()}>?</button>
+            <div className="mode-backdrop hidden" id="modeBackdrop" onClick={() => (window as any).rdo?.toggleModeHelp()}></div>
+            <div className="mode-backdrop hidden" id="mktBackdrop"></div>
+            <div className="mode-popup hidden" id="modePopup">
+              <div className="mode-popup-row">
+                <span className="mode-popup-tag basic">BASIC</span>
+                <div className="mode-popup-info">
+                  <strong data-i18n="basicTitle">RDO ONE x HYPE x LI.FI</strong><br/>
+                  <b data-i18n="basicLev">Up to 40x leverage</b><br/>
+                  <span data-i18n="basicDesc">Crypto perps only / Non-custodial / Any collateral</span><br/>
+                  <span data-i18n="basicFee">Taker fee 0.045% / Maker 0.015%</span><br/>
+                  <span data-i18n="basicExtra">The best liquidity / Average 0.0015% spreads</span>
+                </div>
+              </div>
+              <div className="mode-popup-divider"></div>
+              <div className="mode-popup-row">
+                <span className="mode-popup-tag extra">EXTRA</span>
+                <div className="mode-popup-info">
+                  <strong data-i18n="extraTitle">RDO ONE x ASTER x LI.FI</strong><br/>
+                  <b data-i18n="extraLev">Up to 200x leverage</b><br/>
+                  <span data-i18n="extraDesc">Crypto perps only / Hybrid-custodial / Any collateral</span><br/>
+                  <span data-i18n="extraFee">Taker fee 0.04% / Maker 0%</span><br/>
+                  <span data-i18n="extraExtra">Higher leverage level / Best fee rates</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="hdr-div"></div>
+          <nav className="hdr-nav">
+            <a className="hdr-nav-link active" href="/" data-i18n="trade">Trade</a>
+            <a className="hdr-nav-link" href="/markets" data-i18n="markets">Markets</a>
+            <a className="hdr-nav-link" href="/news" data-i18n="news">News</a>
+            <a className="hdr-nav-link" href="/portfolio" data-i18n="portfolio">Portfolio</a>
+            <a className="hdr-nav-link" href="/transfer" data-i18n="transfer">Transfer</a>
+          </nav>
+          <div className="hdr-div"></div>
+          <button className="mkt-btn" id="mktBtn">
+            <span id="mktSymbol">BTC-USDC</span>
+            <span className="mkt-arrow">▾</span>
+          </button>
+          <div id="mktDropdown" className="mkt-dropdown hidden">
+            <input id="mktSearch" className="mkt-search" placeholder="Search market..." autoComplete="off" data-i18n="searchMarket" data-i18n-attr="placeholder" />
+            <div className="mkt-list" id="mktList"></div>
+            <div className="mkt-hints">
+              <span className="mkt-hint"><kbd>↑↓</kbd> Navigate</span>
+              <span className="mkt-hint"><kbd>Enter</kbd> Select</span>
+              <span className="mkt-hint"><kbd>Esc</kbd> Close</span>
+            </div>
+          </div>
+        </div>
+        <div className="hdr-stats">
+          <div className="hdr-stat"><span className="hdr-stat-label" data-i18n="mark">Mark</span><span className="hdr-stat-val" id="statMark">—</span></div>
+          <div className="hdr-stat"><span className="hdr-stat-label" data-i18n="change24h">24h Change</span><span className="hdr-stat-val" id="statChange">—</span></div>
+          <div className="hdr-stat"><span className="hdr-stat-label" data-i18n="volume24h">24h Volume</span><span className="hdr-stat-val" id="statVolume">—</span></div>
+          <div className="hdr-stat"><span className="hdr-stat-label" data-i18n="fundingCountdown">Funding / Countdown</span><span className="hdr-stat-val" id="statFunding">— / —</span></div>
+        </div>
+        <div className="hdr-right">
+          <span id="balanceDisplay" className="hdr-balance hidden">$0.00</span>
+          <button id="depositBtn" className="deposit-btn hidden" onClick={() => (window as any).rdo?.openDeposit()} data-i18n="deposit">DEPOSIT</button>
+          <button id="rubBtn" className="rub-btn hidden" onClick={() => (window as any).rdo?.openOnramp()}>₽ RUB</button>
+          <div className="lang-wrap">
+            <button className="lang-btn" id="langBtn" onClick={() => (window as any).rdo?.toggleLang()} aria-label="Language">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><ellipse cx="12" cy="12" rx="4" ry="10"/><path d="M2 12h20"/></svg>
+            </button>
+            <div className="lang-dropdown hidden" id="langDropdown">
+              <button className="lang-option" data-lang="en">English</button>
+              <button className="lang-option" data-lang="ru">Русский</button>
+              <button className="lang-option" data-lang="zh">中文</button>
+            </div>
+          </div>
+          <div className="mode-backdrop hidden" id="langBackdrop"></div>
+          <button id="walletBtn" className="wallet-btn" onClick={() => (window as any).rdo?.connectWallet()} data-i18n="connect">Connect</button>
+        </div>
+      </header>
+
+      {/* ══ WORKSPACE ════════════════════════════════════════════ */}
+      <div className="workspace">
+        {/* X Tracker */}
+        <aside className="xt-col">
+          <div className="xt-hdr">
+            <span className="xt-title" data-i18n="tracker">Tracker</span>
+            <button className="xt-connect-btn" id="xtConnectBtn" onClick={() => (window as any).rdo?.connectX()} data-i18n="connectX">Connect X</button>
+          </div>
+          <div className="xt-feed" id="xtFeed">
+            <div className="xt-empty">Connect your X account to see real-time news and mentions for <span className="xt-ticker" id="xtTicker">BTC</span></div>
+          </div>
+          <div className="xt-resize-handle" id="xtResizeHandle"></div>
+        </aside>
+
+        {/* Chart */}
+        <section className="chart-col">
+          <div className="chart-subhdr">
+            <div className="chart-subhdr-left">
+              <span id="chartLabel" className="chart-label">BTCUSD · 1m · RDO ONE</span>
+              <span id="chartOhlc" className="chart-ohlc">O <b id="oO">—</b>&nbsp; H <b id="oH">—</b>&nbsp; L <b id="oL">—</b>&nbsp; C <b id="oC">—</b></span>
+            </div>
+            <div className="chart-intervals">
+              <button className="iv-btn active" data-iv="1">1m</button>
+              <button className="iv-btn" data-iv="3">3m</button>
+              <button className="iv-btn" data-iv="5">5m</button>
+              <button className="iv-btn" data-iv="15">15m</button>
+              <button className="iv-btn" data-iv="60">1h</button>
+              <button className="iv-btn" data-iv="240">4h</button>
+              <button className="iv-btn" data-iv="1440">1D</button>
+            </div>
+            <div className="chart-subhdr-tools">
+              <button className="chart-tool-btn" title="Indicators"><span data-i18n="indicators">Indicators</span></button>
+              <button className="chart-tool-btn" onClick={() => (window as any).toggleObFloat?.()} title="Order Book">Order Book</button>
+            </div>
+          </div>
+          <div className="chart-body">
+            <div className="draw-tools">
+              <button className="dt" title="Cursor">✛</button>
+              <button className="dt" title="Crosshair">⊕</button>
+              <div className="dt-sep"></div>
+              <button className="dt" title="Trend line">╱</button>
+              <button className="dt" title="Horizontal line">—</button>
+              <button className="dt" title="Rectangle">▭</button>
+              <button className="dt" title="Fibonacci">∿</button>
+              <div className="dt-sep"></div>
+              <button className="dt" title="Text">T</button>
+              <div className="dt-sep"></div>
+              <button className="dt" title="Magnet">⊙</button>
+            </div>
+            <div className="canvas-wrap" id="priceChart"></div>
+          </div>
+        </section>
+
+        {/* Live Trades */}
+        <section className="tr-col">
+          <div className="tr-col-hdr">
+            <span className="tr-col-title" data-i18n="liveTrades">Live Trades</span>
+            <span className="tr-col-pair" id="tradesPair">BTC-USDC</span>
+          </div>
+          <div className="tr-col-labels">
+            <span data-i18n="price">Price</span>
+            <span data-i18n="size">Size</span>
+            <span data-i18n="time">Time</span>
+          </div>
+          <div id="tradesList" className="tr-col-list"></div>
+        </section>
+
+        {/* Trade Panel */}
+        <aside className="tp-col">
+          <div className="tp-margin-row">
+            <select className="tp-select" id="marginType">
+              <option data-i18n="cross">Cross</option>
+              <option data-i18n="isolated">Isolated</option>
+            </select>
+            <div className="tp-lev-wrap">
+              <input id="levInput" className="tp-lev-input" type="number" min={1} max={50} defaultValue={20} />
+              <span className="tp-lev-x">x</span>
+            </div>
+            <select className="tp-select"><option data-i18n="unified">Unified</option></select>
+          </div>
+          <div className="tp-order-tabs">
+            <button className="tp-otab active" data-ot="market" data-i18n="market">Market</button>
+            <button className="tp-otab" data-ot="limit" data-i18n="limit">Limit</button>
+          </div>
+          <div className="tp-sides">
+            <button id="btnBuy" className="tp-side tp-buy active" onClick={() => (window as any).rdo?.setSide(true)} data-i18n="buyLong">Buy / Long</button>
+            <button id="btnSell" className="tp-side tp-sell" onClick={() => (window as any).rdo?.setSide(false)} data-i18n="sellShort">Sell / Short</button>
+          </div>
+          <div className="tp-form">
+            <div className="tp-info-row"><span className="tp-info-label" data-i18n="availableTrade">Available to Trade</span><span id="tpAvail" className="tp-info-val">0.00 USDC</span></div>
+            <div className="tp-info-row"><span className="tp-info-label" data-i18n="currentPosition">Current Position</span><span id="tpCurPos" className="tp-info-val">0.00000 BTC</span></div>
+            <div className="tp-field-label" data-i18n="size">Size</div>
+            <div className="tp-size-wrap">
+              <input id="sizeInput" className="tp-size-input" type="number" placeholder="0" min={0} onChange={() => (window as any).rdo?.updateStats()} />
+              <div className="tp-size-unit" id="sizeUnit">BTC</div>
+            </div>
+            <input id="sizeSlider" className="tp-slider" type="range" min={0} max={100} defaultValue={0} onChange={(e) => (window as any).rdo?.onSlider(e.target.value)} />
+            <div className="tp-slider-marks"><span>0%</span><span>25%</span><span>50%</span><span>75%</span><span>100%</span></div>
+            <div className="tp-options">
+              <label className="tp-check"><input type="checkbox" id="chkReduce" /><span data-i18n="reduceOnly">Reduce Only</span></label>
+              <label className="tp-check"><input type="checkbox" id="chkTpSl" /><span data-i18n="tpsl">Take Profit / Stop Loss</span></label>
+            </div>
+            <button id="tradeBtn" className="tp-action-btn tp-buy-bg" onClick={() => (window as any).rdo?.submitTrade()}>Connect</button>
+            <div id="tradeErr" className="tp-err hidden"></div>
+            <div className="tp-stats">
+              <div className="tp-stat-row"><span data-i18n="liqPrice">Liquidation Price</span><span id="stLiq">N/A</span></div>
+              <div className="tp-stat-row"><span data-i18n="orderValue">Order Value</span><span id="stVal">N/A</span></div>
+              <div className="tp-stat-row"><span data-i18n="marginRequired">Margin Required</span><span id="stMargin">--</span></div>
+              <div className="tp-stat-row"><span data-i18n="slippage">Slippage</span><span id="stSlip">--</span></div>
+              <div className="tp-stat-row"><span data-i18n="fee">Fee</span><span id="stFee">0.0450% / 0.0150%</span></div>
+            </div>
+            <div className="tp-section-title" data-i18n="accountEquity">Account Equity</div>
+            <div className="tp-stats">
+              <div className="tp-stat-row"><span data-i18n="spot">Spot</span><span id="eqSpot">$0.00</span></div>
+              <div className="tp-stat-row"><span><a href="#" className="tp-link" data-i18n="perps">Perps</a></span><span id="eqPerps">$0.00</span></div>
+            </div>
+            <div className="tp-section-title" data-i18n="perpsOverview">Perps Overview</div>
+            <div className="tp-stats">
+              <div className="tp-stat-row"><span><a href="#" className="tp-link" data-i18n="balance">Balance</a></span><span id="ovBalance">$0.00</span></div>
+              <div className="tp-stat-row"><span data-i18n="unrealizedPnl">Unrealized PnL</span><span id="ovPnl">$0.00</span></div>
+              <div className="tp-stat-row"><span data-i18n="crossMarginRatio">Cross Margin Ratio</span><span id="ovCmr">0.00%</span></div>
+              <div className="tp-stat-row"><span><a href="#" className="tp-link" data-i18n="maintenanceMargin">Maintenance Margin</a></span><span id="ovMm">$0.00</span></div>
+              <div className="tp-stat-row"><span><a href="#" className="tp-link" data-i18n="crossAccountLev">Cross Account Leverage</a></span><span id="ovLev">0.00x</span></div>
+            </div>
+          </div>
+        </aside>
+      </div>
+
+      {/* ══ BOTTOM RESIZE ════════════════════════════════════════ */}
+      <div className="btm-resize-handle" id="btmResizeHandle"></div>
+
+      {/* ══ BOTTOM PANEL ════════════════════════════════════════ */}
+      <section className="btm-panel">
+        <div className="btm-tabs">
+          <button className="btm-tab active" data-bt="positions" data-i18n="positions">Positions</button>
+          <button className="btm-tab" data-bt="balances" data-i18n="balances">Balances</button>
+          <button className="btm-tab" data-bt="open-orders" data-i18n="openOrders">Open Orders</button>
+          <button className="btm-tab" data-bt="trade-history" data-i18n="tradeHistory">Trade History</button>
+          <button className="btm-tab" data-bt="funding" data-i18n="fundingHistory">Funding History</button>
+          <button className="btm-tab" data-bt="order-history" data-i18n="orderHistory">Order History</button>
+          <button className="btm-tab" data-bt="liq-map">Liq Map</button>
+        </div>
+        <div className="btm-content">
+          <div id="btPositions" className="btm-pane"><div className="btm-col-hdr"><span data-i18n="market">Market</span><span data-i18n="mode">Mode</span><span data-i18n="size">Size</span><span data-i18n="positionValue">Position Value</span><span data-i18n="entryPrice">Entry Price</span><span data-i18n="markPrice">Mark Price</span><span data-i18n="pnlRoe">PNL (ROE %)</span><span data-i18n="liqPriceShort">Liq. Price</span><span data-i18n="margin">Margin</span><span data-i18n="funding">Funding</span></div><div id="posRows" className="btm-rows"><div className="btm-empty" data-i18n="noPositions">No open positions yet</div></div></div>
+          <div id="btBalances" className="btm-pane hidden"><div className="btm-empty" data-i18n="connectBalances">Connect wallet to view balances</div></div>
+          <div id="btOpenOrders" className="btm-pane hidden"><div className="btm-empty" data-i18n="noOpenOrders">No open orders</div></div>
+          <div id="btTradeHistory" className="btm-pane hidden"><div className="btm-empty" data-i18n="noTradeHistory">No trade history</div></div>
+          <div id="btFunding" className="btm-pane hidden"><div className="btm-empty" data-i18n="noFundingHistory">No funding history</div></div>
+          <div id="btOrderHistory" className="btm-pane hidden"><div className="btm-empty" data-i18n="noOrderHistory">No order history</div></div>
+          <div id="btLiqMap" className="btm-pane hidden" style={{display:'none',padding:0,flexDirection:'row'}}>
+            <div id="lmpOuter" style={{display:'flex',flexDirection:'row',height:'100%',width:'70%',borderRight:'1px solid var(--hl-border)'}}>
+              <div id="lmpLeft" style={{display:'flex',flexDirection:'column',flex:1,minWidth:120,borderRight:'1px solid var(--hl-border)'}}>
+                <div className="lmp-hdr"><span className="lmp-title">Liquidation Map</span><div className="lmp-sym-pills" id="lmpSymPills"></div><div className="lmp-tabs" id="lmpTabs"><button className="lmp-tab active" data-tab="liqmap">Liq Map</button><button className="lmp-tab" data-tab="oi">OI Flow</button></div></div>
+                <div id="lmpBody" className="lmp-body" style={{flex:1,height:'auto'}}><div className="lmp-loading">Loading…</div></div>
+                <div id="lmpOiBody" className="lmp-oi-body" style={{display:'none',flex:1,height:'auto'}}><div className="lmp-loading">Loading…</div></div>
+              </div>
+              <div id="lmpRight" style={{display:'flex',flexDirection:'column',width:600,flexShrink:0}}>
+                <div className="lmp-hdr"><span className="lmp-title">AI Signals</span><span style={{fontSize:9,color:'var(--hl-text-muted)',marginLeft:'auto'}} id="lmpAiSym"></span></div>
+                <div className="lmp-ai-body" id="lmpAiBody"><div className="lmp-loading">Loading…</div></div>
+                <div className="lmp-verdict" id="lmpVerdict" style={{display:'none'}}><span className="lmp-verdict-lbl">Signal</span><span className="lmp-verdict-val" id="lmpVerdictVal">—</span></div>
+              </div>
+            </div>
+            <div id="lmpGuide" style={{display:'flex',flexDirection:'column',flex:1,minWidth:0}}>
+              <div className="lmp-hdr"><span className="lmp-title">How to read</span></div>
+              <div style={{display:'flex',flexDirection:'column',overflowY:'scroll',flex:1,padding:'12px 14px 16px',gap:12,scrollbarWidth:'thin',scrollbarColor:'var(--hl-border) transparent'}}>
+                <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                  <div style={{fontSize:11,fontWeight:700,color:'var(--hl-text-primary)'}}>Nearest Liquidation Zones</div>
+                  <div style={{fontSize:10,fontWeight:600,color:'var(--hl-text-secondary)',lineHeight:1.55}}>The 2 closest liquidation clusters to the current price — what happens if price reaches them.</div>
+                  <div id="lmpClosestBars" style={{display:'flex',flexDirection:'column',gap:7}}><div style={{fontSize:10,color:'var(--hl-text-muted)'}}>Waiting for data…</div></div>
+                </div>
+                <div style={{height:1,background:'var(--hl-border)'}}></div>
+                <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                  <div style={{fontSize:11,fontWeight:700,color:'var(--hl-text-primary)'}}>Liquidation Map</div>
+                  <div style={{fontSize:'10.5px',color:'var(--hl-text-secondary)',lineHeight:1.6}}>Each bar is a <b style={{color:'var(--hl-text-primary)'}}>price level</b> with leveraged positions stacked on it. The wider the bar, the more USD is at risk of forced liquidation at that price.</div>
+                  <div style={{display:'flex',flexDirection:'column',gap:8,marginTop:2}}>
+                    <div style={{display:'flex',flexDirection:'column',gap:3}}><div style={{display:'flex',alignItems:'center',gap:8,fontSize:'10.5px'}}><span style={{display:'inline-block',width:11,height:11,background:'#ff7caa',borderRadius:2,flexShrink:0}}></span><b style={{color:'var(--hl-text-primary)'}}>Pink bars (above price)</b></div><div style={{fontSize:10,color:'var(--hl-text-secondary)',lineHeight:1.55}}>Short positions. Price rising into these triggers their liquidation, injecting cascading buy orders into the market.</div></div>
+                    <div style={{display:'flex',flexDirection:'column',gap:3}}><div style={{display:'flex',alignItems:'center',gap:8,fontSize:'10.5px'}}><span style={{display:'inline-block',width:11,height:11,background:'#7cffc0',borderRadius:2,flexShrink:0}}></span><b style={{color:'var(--hl-text-primary)'}}>Green bars (below price)</b></div><div style={{fontSize:10,color:'var(--hl-text-secondary)',lineHeight:1.55}}>Long positions. Price falling into these forces liquidation, injecting cascading sell orders into the market.</div></div>
+                  </div>
+                  <div style={{fontSize:10,color:'var(--hl-text-muted)',marginTop:2,lineHeight:1.6}}>Large clusters act like <b style={{color:'var(--hl-text-primary)'}}>magnets</b> — price tends to move toward them because market makers hunt that liquidity.</div>
+                </div>
+                <div style={{height:1,background:'var(--hl-border)'}}></div>
+                <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                  <div style={{fontSize:11,fontWeight:700,color:'var(--hl-text-primary)'}}>OI Flow</div>
+                  <div style={{fontSize:'10.5px',color:'var(--hl-text-secondary)',lineHeight:1.6}}>Open Interest = total $ value of all open contracts. OI Flow shows how it changed every 5 minutes.</div>
+                  <div style={{display:'flex',flexDirection:'column',gap:5,marginTop:2,fontSize:'10.5px',color:'var(--hl-text-secondary)',lineHeight:1.6}}>
+                    <div><b style={{color:'#7cffc0'}}>OI rising + price rising</b> — new longs opening, bullish</div>
+                    <div><b style={{color:'#ff7caa'}}>OI rising + price falling</b> — new shorts opening, bearish</div>
+                    <div><b>OI falling + price rising</b> — shorts squeezed/closed, momentum could fade</div>
+                    <div><b>OI falling + price falling</b> — longs closing in panic, potential capitulation</div>
+                  </div>
+                </div>
+                <div style={{height:1,background:'var(--hl-border)'}}></div>
+                <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                  <div style={{fontSize:11,fontWeight:700,color:'var(--hl-text-primary)'}}>AI Signals</div>
+                  <div style={{display:'flex',flexDirection:'column',gap:7,marginTop:2}}>
+                    <div style={{fontSize:'10.5px',color:'var(--hl-text-secondary)',lineHeight:1.6}}><b style={{color:'var(--hl-text-primary)'}}>L/S Ratio</b> — what % of traders are long vs short.</div>
+                    <div style={{fontSize:'10.5px',color:'var(--hl-text-secondary)',lineHeight:1.6}}><b style={{color:'var(--hl-text-primary)'}}>Taker Flow</b> — who is being aggressive: buyers or sellers.</div>
+                    <div style={{fontSize:'10.5px',color:'var(--hl-text-secondary)',lineHeight:1.6}}><b style={{color:'var(--hl-text-primary)'}}>Funding</b> — positive = longs paying shorts. Negative = shorts paying longs.</div>
+                    <div style={{fontSize:'10.5px',color:'var(--hl-text-secondary)',lineHeight:1.6}}><b style={{color:'var(--hl-text-primary)'}}>OI Trend</b> — short-term direction of open interest.</div>
+                    <div style={{fontSize:'10.5px',color:'var(--hl-text-secondary)',lineHeight:1.6}}><b style={{color:'var(--hl-text-primary)'}}>24h Price</b> — session context for signals.</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Status bar */}
+      <div className="status-bar">
+        <span className="ws-dot" id="wsDot"></span>
+        <span id="wsStatus" className="ws-status" data-i18n="connecting">CONNECTING...</span>
+        <span className="sb-sep">·</span>
+        <span id="clockEl" className="sb-clock">—</span>
+      </div>
+
+      {/* Deposit modal */}
+      <div id="depositModal" className="modal-overlay hidden" onClick={(e) => (window as any).rdo?.closeDeposit(e)}>
+        <div className="modal-box">
+          <div className="modal-header">
+            <div><div className="modal-title" data-i18n="depositFunds">DEPOSIT FUNDS</div><div className="modal-sub" data-i18n="depositSub">Swap any token → USDC on Hyperliquid</div></div>
+            <span className="modal-close" onClick={() => (window as any).rdo?.closeDeposit()}>✕</span>
+          </div>
+          <div className="deposit-steps">
+            <div className="step"><span className="step-num">1</span><span data-i18n="step1">Pick source token</span></div>
+            <div className="step"><span className="step-num">2</span><span data-i18n="step2">Approve in Phantom</span></div>
+            <div className="step"><span className="step-num">3</span><span data-i18n="step3">USDC arrives in ~2 min</span></div>
+          </div>
+          <div className="deposit-addr-box">
+            <div className="deposit-addr-label" data-i18n="yourHlAddr">Your Hyperliquid address</div>
+            <div className="deposit-addr" id="depositAddr" data-i18n="connectFirst">Connect wallet first</div>
+          </div>
+          <div className="deposit-routes">
+            <div className="deposit-route"><span className="deposit-route-from">Solana (SOL / USDC)</span><span className="deposit-route-arrow">→</span><span className="deposit-route-to">HyperEVM via LI.FI</span><span className="deposit-route-time">~2 min</span></div>
+            <div className="deposit-route"><span className="deposit-route-from">Ethereum (ETH / USDC)</span><span className="deposit-route-arrow">→</span><span className="deposit-route-to">HyperEVM via LI.FI</span><span className="deposit-route-time">~3 min</span></div>
+            <div className="deposit-route"><span className="deposit-route-from" data-i18n="directDeposit">Direct USDC deposit</span><span className="deposit-route-arrow">→</span><span className="deposit-route-to" data-i18n="sendToAddr">Send to address above on HyperEVM</span><span className="deposit-route-time">~1 min</span></div>
+          </div>
+        </div>
+      </div>
+
+      {/* Wallet modal */}
+      <div id="walletModal" className="modal-overlay hidden" onClick={(e) => (window as any).rdo?.closeWalletModal(e)}>
+        <div className="modal-box wm-box">
+          <div className="modal-header" style={{padding:'16px 18px 0'}}>
+            <div><div className="modal-title">CONNECT WALLET</div><div className="modal-sub">Choose how to connect</div></div>
+            <span className="modal-close" onClick={() => (window as any).rdo?.closeWalletModalForce()}>✕</span>
+          </div>
+          <div className="wm-options">
+            <button className="wm-opt" onClick={() => (window as any).rdo?.connectExtension()}>
+              <div className="wm-opt-icon">💻</div>
+              <div className="wm-opt-body"><div className="wm-opt-name">Browser Extension</div><div className="wm-opt-sub">MetaMask · Phantom</div></div>
+              <span className="wm-opt-arrow">›</span>
+            </button>
+            <button className="wm-opt wm-opt-featured" onClick={() => (window as any).rdo?.connectAntarctic()}>
+              <div className="wm-opt-icon wm-opt-icon-aw">🐧</div>
+              <div className="wm-opt-body"><div className="wm-opt-name">Antarctic Wallet</div><div className="wm-opt-sub">Scan QR with mobile app</div></div>
+              <span className="wm-opt-badge">Recommended</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Onramp modal */}
+      <div id="onrampModal" className="modal-overlay hidden" onClick={(e) => (window as any).rdo?.closeOnramp(e)}>
+        <div className="modal-box" style={{maxWidth:400}}>
+          <div className="modal-header" style={{padding:'16px 18px 0'}}>
+            <div><div className="modal-title">DEPOSIT RUB → PERPS</div><div className="modal-sub">Купи USDT за рубли и отправь на перпы</div></div>
+            <span className="modal-close" onClick={() => (window as any).rdo?.closeOnrampForce()}>✕</span>
+          </div>
+          <div className="onramp-body">
+            <div className="onramp-addr-box">
+              <div className="onramp-addr-label">Адрес Antarctic Wallet (USDT)</div>
+              <div className="onramp-addr-row"><span className="onramp-address" id="onrampAddress">—</span><button className="onramp-copy-btn" id="onrampCopyBtn">Copy</button></div>
+            </div>
+            <div className="onramp-steps">
+              <div className="onramp-step"><span className="onramp-num">1</span>Купи USDT за рубли на UTORG или Mercuryo</div>
+              <div className="onramp-step"><span className="onramp-num">2</span>USDT придёт в Antarctic Wallet (~5 мин)</div>
+              <div className="onramp-step"><span className="onramp-num">3</span>Нажми DEPOSIT → LI.FI для отправки на перпы</div>
+            </div>
+            <div className="onramp-providers">
+              <button className="onramp-provider-btn onramp-utorg"><span className="onramp-prov-name">UTORG</span><span className="onramp-prov-tag">Рекомендуем для РФ</span></button>
+              <button className="onramp-provider-btn onramp-mercuryo"><span className="onramp-prov-name">Mercuryo</span><span className="onramp-prov-tag">Альтернатива</span></button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Toast */}
+      <div id="toastWrap" className="toast-wrap"></div>
+
+      {/* Floating order book */}
+      <div id="obFloat" className="ob-float" style={{display:'none'}}>
+        <div className="ob-float-hdr" id="obFloatHdr">
+          <span className="ob-float-title">Order Book</span>
+          <button className="ob-float-close" onClick={() => { const el = document.getElementById('obFloat'); if (el) el.style.display = 'none'; }}>✕</button>
+        </div>
+        <div className="ob-mini" id="obMini">
+          <div className="ob-mini-hdr" onClick={() => (window as any).rdo?.toggleOrderBook()} style={{cursor:'pointer'}}>
+            <span className="ob-mini-title" data-i18n="orderBook">Order Book</span>
+            <button className="ob-toggle-btn" id="obToggleBtn" aria-label="Toggle order book"></button>
+            <div className="ob-colhdr" id="obColHdr" style={{flex:1}}>
+              <span data-i18n="price">Price</span><span data-i18n="size">Size</span><span data-i18n="total">Total</span>
+            </div>
+          </div>
+          <div id="obBody">
+            <div id="obAsks" className="ob-asks ob-asks-mini"></div>
+            <div className="ob-spread-row">
+              <span className="ob-spread-label" data-i18n="spread">Spread</span>
+              <span id="obSpreadVal" className="ob-spread-val">—</span>
+              <span id="obSpreadPct" className="ob-spread-pct"></span>
+            </div>
+            <div id="obBids" className="ob-bids"></div>
+            <div className="ob-ratio" id="obRatio">
+              <div className="ob-ratio-bid" id="obRatioBid" style={{width:'50%'}}>B 50.0%</div>
+              <div className="ob-ratio-ask" id="obRatioAsk">50.0% S</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,408 @@
+'use client';
+import { useEffect } from 'react';
+
+const PAGE_CSS = `
+main{max-width:1200px;margin:0 auto;padding:0 24px 40px;padding-top:calc(40px + 8px)}
+.page-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px}
+h1{font-size:18px;font-weight:700;letter-spacing:-.03em}
+.hdr-right{display:flex;align-items:center;gap:10px}
+.article{background:#0d0d0d;border:1px solid #1f1f1f;border-radius:6px;overflow:hidden;display:flex;flex-direction:column;cursor:pointer;transition:border-color .15s}
+.article:hover{border-color:#50d2c1}
+.article:hover .art-title{color:#50d2c1}
+.art-img-wrap{width:100%;aspect-ratio:16/7;overflow:hidden;background:#161616;flex-shrink:0}
+.art-img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .3s}
+.article:hover .art-img{transform:scale(1.03)}
+.art-img-ph{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:28px;color:#878c8f}
+.art-body{padding:12px 14px;flex:1;display:flex;flex-direction:column;gap:7px}
+.art-meta{display:flex;justify-content:space-between;align-items:center;gap:6px}
+.art-src{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.art-time{font-size:10px;color:#878c8f;white-space:nowrap;flex-shrink:0}
+.art-title{font-size:13px;font-weight:600;line-height:1.45;color:#fff;transition:color .15s;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.art-excerpt{font-size:11px;color:#878c8f;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.art-tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:2px}
+.art-tag{font-size:9px;font-weight:600;padding:2px 6px;border-radius:3px;background:#161616;color:#878c8f;text-transform:uppercase;letter-spacing:.04em}
+.state-box{grid-column:1/-1;padding:60px 20px;text-align:center;color:#878c8f;font-size:12px}
+.state-icon{font-size:32px;margin-bottom:10px}
+.sk-card{background:#0d0d0d;border:1px solid #1f1f1f;border-radius:6px;overflow:hidden}
+.sk-img{width:100%;aspect-ratio:16/7;background:#161616;animation:pulse 1.5s ease-in-out infinite}
+.sk-body{padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+.sk-line{border-radius:3px;background:#161616;animation:pulse 1.5s ease-in-out infinite}
+#load-more-wrap{margin-top:20px;text-align:center;display:none}
+.feed-status{font-size:10px;color:#878c8f;margin-bottom:8px}
+.feed-status span{color:#50d2c1}
+.lang-wrap{position:relative}
+.lang-btn{display:flex;align-items:center;justify-content:center;width:28px;height:28px;background:transparent;border:1px solid #1f1f1f;border-radius:4px;color:#878c8f;cursor:pointer}
+.lang-dropdown{position:absolute;top:calc(100% + 6px);right:0;z-index:900;background:#0d0d0d;border:1px solid #1f1f1f;border-radius:4px;padding:4px 0;min-width:110px;box-shadow:0 8px 24px rgba(0,0,0,.5);display:none}
+.lang-option{display:block;width:100%;padding:7px 14px;border:none;background:transparent;color:#878c8f;font-size:12px;text-align:left;cursor:pointer;font-family:inherit}
+`;
+
+export default function NewsPage() {
+  useEffect(() => {
+    const R2J = 'https://api.rss2json.com/v1/api.json?rss_url=';
+    const SOURCES = [
+      { id:'ct',   name:'CoinTelegraph', type:'proxy', url:'/ctnews/rss',                                                              color:'#50d2c1' },
+      { id:'cd',   name:'CoinDesk',      type:'proxy', url:'/cdnews/arc/outboundfeeds/rss/',                                           color:'#f7931a' },
+      { id:'dec',  name:'Decrypt',       type:'proxy', url:'/decnews/feed',                                                            color:'#7b68ee' },
+      { id:'blk',  name:'CryptoSlate',   type:'r2j',   url:R2J + encodeURIComponent('https://cryptoslate.com/feed/'),                 color:'#3498db' },
+      { id:'bwk',  name:'Blockworks',    type:'r2j',   url:R2J + encodeURIComponent('https://blockworks.co/feed'),                    color:'#e74c3c' },
+      { id:'btcm', name:'Bitcoin Mag',   type:'r2j',   url:R2J + encodeURIComponent('https://bitcoinmagazine.com/.rss/full/'),        color:'#f39c12' },
+      { id:'bein', name:'BeInCrypto',    type:'proxy', url:'/beinnews/feed/',                                                         color:'#27ae60' },
+      { id:'btci', name:'Bitcoinist',    type:'proxy', url:'/btcinews/feed/',                                                         color:'#9b59b6' },
+    ];
+    const CATS = [
+      { id:'all',        label:'All',        kw:[] },
+      { id:'bitcoin',    label:'Bitcoin',    kw:['bitcoin','btc'] },
+      { id:'ethereum',   label:'Ethereum',   kw:['ethereum','eth'] },
+      { id:'solana',     label:'Solana',     kw:['solana','sol'] },
+      { id:'defi',       label:'DeFi',       kw:['defi','decentralized finance','yield','amm'] },
+      { id:'altcoins',   label:'Altcoins',   kw:['altcoin','altcoins','xrp','cardano','polygon','avalanche'] },
+      { id:'nft',        label:'NFT',        kw:['nft','non-fungible'] },
+      { id:'regulation', label:'Regulation', kw:['regulation','sec','cftc','legal','compliance','congress','ban'] },
+    ];
+    const PAGE_SIZE = 18;
+    let allArticles: any[] = [];
+    let cacheLoaded = false;
+    let activeCat = CATS[0];
+    let activeSrcIds = new Set(SOURCES.map(s => s.id));
+    let shown = 0;
+    let loading = false;
+    let visibleArticles: any[] = [];
+
+    const el = (id: string) => document.getElementById(id);
+    const set = (id: string, v: string) => { const e = el(id); if (e) e.textContent = v; };
+
+    function timeAgo(dateStr: string) {
+      const d = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
+      if (d < 60)    return d + 's ago';
+      if (d < 3600)  return Math.floor(d / 60) + 'm ago';
+      if (d < 86400) return Math.floor(d / 3600) + 'h ago';
+      return Math.floor(d / 86400) + 'd ago';
+    }
+
+    function getText(item: Element, tagName: string) {
+      const node = item.getElementsByTagName(tagName)[0];
+      return (node as any)?.textContent?.trim() || '';
+    }
+
+    function upgradeImageUrl(url: string) {
+      if (!url) return url;
+      if (url.includes('images.cointelegraph.com'))
+        url = url.replace(/\/images\/\d+_/, '/images/1200_');
+      if (url.includes('cloudinary.com')) {
+        url = url.replace(/\/w_\d+,h_\d+/, '/w_1200,h_675');
+        url = url.replace(/\/w_\d+(?=,|\/|$)/, '/w_1200');
+      }
+      url = url.replace(/(-\d{2,4}x\d{2,4})(\.[a-zA-Z0-9]{2,5})(\?|$)/, '$2$3');
+      url = url.replace(/([?&]w=)\d+/, (_m: string, p: string) => p + '1200');
+      url = url.replace(/([?&]width=)\d+/, (_m: string, p: string) => p + '1200');
+      url = url.replace(/([?&]resize=)\d+,\d+/, (_m: string, p: string) => p + '1200,675');
+      return url;
+    }
+
+    function parseRSS(xmlText: string, source: any) {
+      const doc = new DOMParser().parseFromString(xmlText, 'text/xml');
+      const items = doc.querySelectorAll('item');
+      return Array.from(items).map(item => {
+        let img = '';
+        const allMC = Array.from(item.getElementsByTagName('media:content'))
+          .filter(n => {
+            const med = n.getAttribute('medium') || '';
+            const u   = n.getAttribute('url') || '';
+            return med === 'image' || !med || /\.(jpe?g|png|gif|webp)/i.test(u);
+          })
+          .sort((a, b) => (parseInt(b.getAttribute('width') || '0') || 0) - (parseInt(a.getAttribute('width') || '0') || 0));
+        const mc = allMC[0] || item.getElementsByTagName('media:thumbnail')[0];
+        if (mc) img = mc.getAttribute('url') || mc.getAttribute('href') || '';
+        if (!img) {
+          const enc = item.getElementsByTagName('enclosure')[0];
+          if (enc && /image/i.test(enc.getAttribute('type') || '')) img = enc.getAttribute('url') || '';
+        }
+        if (!img) {
+          const desc = getText(item, 'description');
+          const m = desc.match(/<img[^>]+src=["']([^"']+)/i);
+          if (m) img = m[1];
+        }
+        img = upgradeImageUrl(img);
+        const cats = Array.from(item.getElementsByTagName('category')).map(c => c.textContent?.trim()).filter(Boolean);
+        const desc = getText(item, 'description').replace(/<[^>]*>/g, '').trim();
+        return {
+          title:       getText(item, 'title'),
+          link:        getText(item, 'link'),
+          pubDate:     getText(item, 'pubDate'),
+          desc,
+          img,
+          cats:        cats.slice(0, 3),
+          sourceId:    source.id,
+          source:      source.name,
+          sourceColor: source.color,
+        };
+      });
+    }
+
+    function skeletons(n: number) {
+      return Array.from({ length: n }, () => `
+        <div class="sk-card">
+          <div class="sk-img"></div>
+          <div class="sk-body">
+            <div class="sk-line" style="width:50%;height:8px"></div>
+            <div class="sk-line" style="width:100%;height:11px;margin-top:2px"></div>
+            <div class="sk-line" style="width:85%;height:11px"></div>
+            <div class="sk-line" style="width:60%;height:11px"></div>
+            <div class="sk-line" style="width:40%;height:8px;margin-top:4px"></div>
+          </div>
+        </div>`).join('');
+    }
+
+    function articleCard(a: any) {
+      const link = a.link.replace(/'/g, "&#39;");
+      return `<div class="article" onclick="window.open('${link}','_blank','noopener')">
+        <div class="art-img-wrap">
+          ${a.img
+            ? `<img class="art-img" src="${a.img}" alt="" loading="lazy" onerror="this.parentElement.innerHTML='<div class=art-img-ph>📰</div>'">`
+            : '<div class="art-img-ph">📰</div>'}
+        </div>
+        <div class="art-body">
+          <div class="art-meta">
+            <span class="art-src" style="color:${a.sourceColor}">${a.source}</span>
+            <span class="art-time">${a.pubDate ? timeAgo(a.pubDate) : ''}</span>
+          </div>
+          <div class="art-title">${a.title}</div>
+          ${a.desc ? `<div class="art-excerpt">${a.desc.slice(0, 200)}</div>` : ''}
+          ${a.cats.length ? `<div class="art-tags">${a.cats.map((c: string) => `<span class="art-tag">${c}</span>`).join('')}</div>` : ''}
+        </div>
+      </div>`;
+    }
+
+    function parseR2J(data: any, source: any) {
+      return (data.items || []).map((item: any) => ({
+        title:       item.title || '',
+        link:        item.link  || '',
+        pubDate:     item.pubDate || '',
+        desc:        (item.description || '').replace(/<[^>]*>/g, '').trim(),
+        img:         upgradeImageUrl(item.thumbnail || ''),
+        cats:        (item.categories || []).slice(0, 3),
+        sourceId:    source.id,
+        source:      source.name,
+        sourceColor: source.color,
+      }));
+    }
+
+    async function fetchAll() {
+      if (cacheLoaded) return allArticles;
+      const results = await Promise.allSettled(
+        SOURCES.map(s => {
+          if (s.type === 'r2j') {
+            return fetch(s.url)
+              .then(r => { if (!r.ok) throw new Error(String(r.status)); return r.json(); })
+              .then(data => { if (data.status !== 'ok') throw new Error(data.message); return parseR2J(data, s); });
+          }
+          return fetch(s.url)
+            .then(r => { if (!r.ok) throw new Error(String(r.status)); return r.text(); })
+            .then(xml => parseRSS(xml, s));
+        })
+      );
+      const loaded: any[] = [], failed: string[] = [];
+      results.forEach((r, i) => {
+        if (r.status === 'fulfilled') loaded.push(...r.value);
+        else failed.push(SOURCES[i].name);
+      });
+      loaded.sort((a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime());
+      const seen = new Set<string>();
+      allArticles = loaded.filter(a => {
+        const key = a.title.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 60);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      cacheLoaded = true;
+      const statusEl = el('feed-status');
+      if (statusEl) {
+        const ok = SOURCES.length - failed.length;
+        statusEl.innerHTML = `<span>${ok}</span>/${SOURCES.length} sources loaded · ${allArticles.length} articles` +
+          (failed.length ? ` · failed: ${failed.join(', ')}` : '');
+      }
+      return allArticles;
+    }
+
+    function applyFilters(articles: any[]) {
+      let result = articles;
+      if (activeCat.kw.length) {
+        const kw = activeCat.kw;
+        result = result.filter(a => {
+          const text = (a.title + ' ' + a.desc + ' ' + a.cats.join(' ')).toLowerCase();
+          return kw.some(k => text.includes(k));
+        });
+      }
+      if (activeSrcIds.size < SOURCES.length) {
+        result = result.filter(a => activeSrcIds.has(a.sourceId));
+      }
+      return result;
+    }
+
+    function render(filtered: any[]) {
+      visibleArticles = filtered;
+      shown = 0;
+      const next = Math.min(PAGE_SIZE, visibleArticles.length);
+      const grid = el('news-grid');
+      if (!grid) return;
+      if (!visibleArticles.length) {
+        grid.innerHTML = `<div class="state-box"><div class="state-icon">📭</div><div>No articles found.</div></div>`;
+        const lmw = el('load-more-wrap'); if (lmw) lmw.style.display = 'none';
+        return;
+      }
+      grid.innerHTML = visibleArticles.slice(0, next).map(articleCard).join('');
+      shown = next;
+      const lmw = el('load-more-wrap');
+      if (lmw) lmw.style.display = shown < visibleArticles.length ? 'block' : 'none';
+    }
+
+    function showMore() {
+      const next = Math.min(shown + PAGE_SIZE, visibleArticles.length);
+      const grid = el('news-grid');
+      if (grid) grid.innerHTML = visibleArticles.slice(0, next).map(articleCard).join('');
+      shown = next;
+      const lmw = el('load-more-wrap');
+      if (lmw) lmw.style.display = shown < visibleArticles.length ? 'block' : 'none';
+    }
+
+    async function load() {
+      if (loading) return;
+      loading = true;
+      const grid = el('news-grid'); if (grid) grid.innerHTML = skeletons(9);
+      const lmw = el('load-more-wrap'); if (lmw) lmw.style.display = 'none';
+      const btn = el('refresh-btn'); if (btn) (btn as HTMLButtonElement).disabled = true;
+      try {
+        const all = await fetchAll();
+        set('update-ts', 'Updated ' + new Date().toLocaleTimeString());
+        render(applyFilters(all));
+      } catch (e: any) {
+        const grid2 = el('news-grid');
+        if (grid2) grid2.innerHTML = `<div class="state-box"><div class="state-icon">⚠️</div><div>Failed to load: ${e.message}</div></div>`;
+      }
+      if (btn) (btn as HTMLButtonElement).disabled = false;
+      loading = false;
+    }
+
+    async function refresh() {
+      cacheLoaded = false; allArticles = [];
+      const fs = el('feed-status'); if (fs) fs.textContent = '';
+      await load();
+    }
+
+    function buildFilters() {
+      const catFilters = el('cat-filters');
+      if (catFilters) {
+        catFilters.innerHTML = CATS.map(c =>
+          `<button class="filter-btn${c.id === activeCat.id ? ' active' : ''}" data-id="${c.id}">${c.label}</button>`
+        ).join('');
+        catFilters.addEventListener('click', e => {
+          const btn = (e.target as Element).closest('.filter-btn') as HTMLElement;
+          if (!btn || loading) return;
+          const cat = CATS.find(c => c.id === btn.dataset.id);
+          if (!cat || cat.id === activeCat.id) return;
+          activeCat = cat;
+          document.querySelectorAll('#cat-filters .filter-btn').forEach(b => b.classList.toggle('active', (b as HTMLElement).dataset.id === cat.id));
+          render(applyFilters(allArticles));
+        });
+      }
+
+      const srcFilters = el('src-filters');
+      if (srcFilters) {
+        srcFilters.innerHTML = SOURCES.map(s =>
+          `<button class="src-btn-news active" data-sid="${s.id}">${s.name}</button>`
+        ).join('');
+        srcFilters.addEventListener('click', e => {
+          const btn = (e.target as Element).closest('.src-btn-news') as HTMLElement;
+          if (!btn) return;
+          const sid = btn.dataset.sid || '';
+          if (activeSrcIds.has(sid)) {
+            if (activeSrcIds.size === 1) return;
+            activeSrcIds.delete(sid);
+            btn.classList.remove('active');
+          } else {
+            activeSrcIds.add(sid);
+            btn.classList.add('active');
+          }
+          render(applyFilters(allArticles));
+        });
+      }
+    }
+
+    (window as any).refresh = refresh;
+    (window as any).showMore = showMore;
+
+    buildFilters();
+    load();
+
+    import('@/lib/i18n').then(({ applyTranslations, setLang, getLang }) => {
+      applyTranslations();
+      const dd = document.getElementById('langDropdown');
+      const langBtn = document.getElementById('langBtn');
+      if (langBtn) langBtn.addEventListener('click', () => {
+        if (dd) dd.style.display = dd.style.display === 'none' ? '' : 'none';
+      });
+      dd?.querySelectorAll('.lang-option').forEach(b => {
+        b.addEventListener('click', () => {
+          setLang((b as HTMLElement).dataset.lang || '');
+          if (dd) dd.style.display = 'none';
+          updateLangHighlight();
+        });
+      });
+      document.addEventListener('click', e => {
+        if (!(e.target as Element).closest('.lang-wrap') && dd) dd.style.display = 'none';
+      });
+      function updateLangHighlight() {
+        document.querySelectorAll('.lang-option').forEach(b => {
+          (b as HTMLElement).style.color = (b as HTMLElement).dataset.lang === getLang() ? 'var(--accent,#50d2c1)' : '';
+        });
+      }
+      updateLangHighlight();
+    });
+  }, []);
+
+  return (
+    <>
+      <style dangerouslySetInnerHTML={{__html: PAGE_CSS}} />
+
+      <nav id="rdo-nav">
+        <div className="nav-logo">RDO<span>ONE</span></div>
+        <div className="nav-div" />
+        <a href="/" data-i18n="trade">Trade</a>
+        <a href="/markets" data-i18n="markets">Markets</a>
+        <a href="/news" className="active" data-i18n="news">News</a>
+        <a href="/portfolio" data-i18n="portfolio">Portfolio</a>
+        <a href="/transfer" data-i18n="transfer">Transfer</a>
+        <div style={{marginLeft:'auto'}} />
+        <div className="lang-wrap">
+          <button className="lang-btn" id="langBtn" aria-label="Language">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10"/><ellipse cx="12" cy="12" rx="4" ry="10"/><path d="M2 12h20"/>
+            </svg>
+          </button>
+          <div className="lang-dropdown" id="langDropdown">
+            <button className="lang-option" data-lang="en">English</button>
+            <button className="lang-option" data-lang="ru">Русский</button>
+            <button className="lang-option" data-lang="zh">中文</button>
+          </div>
+        </div>
+      </nav>
+
+      <main>
+        <div className="page-hdr">
+          <h1 data-i18n="cryptoNews">Crypto News</h1>
+          <div className="hdr-right">
+            <span id="update-ts" />
+            <button className="refresh-btn" id="refresh-btn" onClick={() => (window as any).refresh()} data-i18n="refresh">Refresh</button>
+          </div>
+        </div>
+        <div className="filter-row" id="cat-filters" />
+        <div className="source-row" id="src-filters" />
+        <div className="feed-status" id="feed-status" />
+        <div className="news-grid" id="news-grid" />
+        <div id="load-more-wrap">
+          <button className="load-more-btn" onClick={() => (window as any).showMore()}>Load More</button>
+        </div>
+      </main>
+    </>
+  );
+}
