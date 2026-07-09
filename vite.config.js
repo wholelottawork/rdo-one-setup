@@ -14,6 +14,11 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: path => path.replace(/^\/api\/hl/, ''),
       },
+      '/api/hl-testnet': {
+        target: 'https://api.hyperliquid-testnet.xyz',
+        changeOrigin: true,
+        rewrite: path => path.replace(/^\/api\/hl-testnet/, ''),
+      },
       '/api/binance': {
         target: 'https://api.binance.com',
         changeOrigin: true,
