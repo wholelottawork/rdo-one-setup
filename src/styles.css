@@ -507,7 +507,7 @@ body.mode-aster { --hl-accent: #a78bfa; --hl-accent-dark: rgba(139,92,246,0.15);
 
 .chart-subhdr-tools { flex-shrink: 0; }
 .chart-tool-btn {
-  font-family: var(--hl-font); font-size: 11px; font-weight: 500; color: var(--hl-text-secondary);
+  font-family: var(--hl-font); font-size: 11px; font-weight: 700; color: var(--hl-text-secondary);
   background: transparent; border: none; border-radius: 7px;
   padding: 4px 10px; cursor: pointer; transition: color 0.12s, background 0.12s;
 }
