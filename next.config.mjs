@@ -7,6 +7,10 @@ const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:3001';
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // Some proxied paths (e.g. news source feeds) carry a trailing slash the
+  // upstream actually wants — without this, Next's own trailing-slash
+  // normalization 308s those requests before the rewrite even runs.
+  skipTrailingSlashRedirect: true,
   async rewrites() {
     return [
       { source: '/api/:path*', destination: `${BACKEND_URL}/api/:path*` },

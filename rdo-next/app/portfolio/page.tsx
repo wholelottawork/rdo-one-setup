@@ -1,5 +1,6 @@
 'use client';
 import { useEffect } from 'react';
+import { ensureAsterAgentApproved, ensureBscNetwork, getAsterIncomeHistory } from '@/lib/aster-agent';
 
 const PAGE_CSS = `
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -281,7 +282,6 @@ export default function PortfolioPage() {
     const HL_API     = '/hl/info';
     const ARB_RPC    = 'https://arb1.arbitrum.io/rpc';
     const USDC_ARB   = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831';
-    const ASTER_API  = '/aster-fapi';
 
     let pubkey: string | null = null;
     let tokenMeta: Record<string, any> = {};
@@ -1082,6 +1082,29 @@ export default function PortfolioPage() {
       const pw = el('as-pv-positions-wrap'); if (pw) pw.style.display='none';
       const tb = el('aster-trades-body'); if (tb) tb.innerHTML='<div class="hl-placeholder">Loading…</div>';
       ['as-total-pnl','as-win-rate','as-trades','as-hold','as-best','as-worst'].forEach(id=>set(id,'…'));
+
+      // Aster deprecated the old public v2/account bulk endpoint this used to
+      // call — the current V3 Pro API requires our shared trading agent to
+      // be approved first. ensureAsterAgentApproved probes silently and only
+      // prompts the wallet for a signature when this address hasn't already
+      // approved (e.g. via the main app, same shared agent) — "one time, and
+      // again only if needed," no separate button.
+      const provider = (window as any).phantom?.ethereum ?? (window as any).ethereum ?? null;
+      const approval = await ensureAsterAgentApproved(address, async () => {
+        if (!provider) throw new Error('connect an EVM wallet to approve the Aster agent');
+        const onBsc = await ensureBscNetwork(provider);
+        if (!onBsc) throw new Error("switch your wallet to BNB Smart Chain (BSC) — Aster's approval signature requires it");
+        const { ethers } = await import('ethers');
+        return new ethers.BrowserProvider(provider).getSigner();
+      });
+      if (!approval.ok) {
+        ['as-pv-equity','as-pv-upnl','as-pv-ntl','as-pv-avail','as-pv-margin','as-pv-lev'].forEach(id=>set(id,'—'));
+        const ph1 = el('as-pv-placeholder'); if (ph1) { ph1.style.display='block'; ph1.innerHTML=`Could not load Aster portfolio: ${approval.message}<br><span style="font-size:10px;color:var(--text3)">Collateral: USDT · Max leverage: 200x</span>`; }
+        ['as-total-pnl','as-win-rate','as-trades','as-hold','as-best','as-worst'].forEach(id=>set(id,'—'));
+        const tb1 = el('aster-trades-body'); if (tb1) tb1.innerHTML='<div class="hl-placeholder">No trade history found for this address.</div>';
+        return;
+      }
+
       const [posRes, tradesRes] = await Promise.allSettled([
         fetchAsterPositions(address),
         fetchAsterTrades(address),
@@ -1100,16 +1123,26 @@ export default function PortfolioPage() {
       }
     }
 
+    // Raw accountWithJoinMargin shape matches what renderAsterPortfolio
+    // already expects (totalWalletBalance/positions/etc. are Aster's own
+    // field names) — only the URL + signed auth changed from the old,
+    // now-dead v2/account endpoint.
     async function fetchAsterPositions(address: string) {
-      const r = await fetch(`${ASTER_API}/v2/account?address=${encodeURIComponent(address)}`);
-      if (!r.ok) throw new Error('HTTP '+r.status);
-      return r.json();
-    }
-    async function fetchAsterTrades(address: string) {
-      const r = await fetch(`${ASTER_API}/v1/userTrades?address=${encodeURIComponent(address)}&limit=500`);
+      const r = await fetch(`/aster-signed/fapi/v3/accountWithJoinMargin?user=${encodeURIComponent(address)}`);
       if (!r.ok) throw new Error('HTTP '+r.status);
       const data = await r.json();
-      return Array.isArray(data) ? data : [];
+      if (!data || !Array.isArray(data.positions)) throw new Error('agent not approved');
+      return data;
+    }
+    // The old v1/userTrades (per-fill: price/qty/side/realizedPnl) has no
+    // direct V3 replacement without iterating every traded symbol — income
+    // history (symbol/pnl/time only) is what's available in one bulk call.
+    // renderAsterTrades shows "—" for the price/size/side columns it can't
+    // fill from this shape rather than fabricating misleading values.
+    async function fetchAsterTrades(address: string) {
+      const sinceMs = Date.now() - 365*24*60*60*1000;
+      const income = await getAsterIncomeHistory(sinceMs, address);
+      return income.map(e => ({ realizedPnl: e.income, symbol: e.symbol, time: e.time }));
     }
 
     function renderAsterPortfolio(data: any, _address: string) {
@@ -1145,10 +1178,19 @@ export default function PortfolioPage() {
       if (!recent.length) { tb.innerHTML='<div class="hl-placeholder">No closed trades found.</div>'; return; }
       const hdr=`<div class="trades-grid trades-hdr" style="grid-template-columns:1fr 64px 88px 70px 88px"><span>Token</span><span>Side</span><span>Price</span><span>Size</span><span>PnL</span></div>`;
       const rows=recent.map(t=>{
-        const pnl=parseFloat(t.realizedPnl??0); const px2=parseFloat(t.price??0); const qty=parseFloat(t.qty??t.quoteQty??0);
-        const isLong=(t.side??'').toUpperCase()==='BUY';
+        const pnl=parseFloat(t.realizedPnl??0);
+        // Realized-PnL history (income endpoint) carries no price/size/side —
+        // show "—" rather than a fabricated $0.00/Short for fields we don't
+        // actually know, unlike the old per-fill endpoint this replaced.
+        const hasDetail = t.price !== undefined && t.side !== undefined;
+        const px2 = hasDetail ? parseFloat(t.price??0) : null;
+        const qty = hasDetail ? parseFloat(t.qty??t.quoteQty??0) : null;
+        const isLong = hasDetail ? (t.side??'').toUpperCase()==='BUY' : null;
         const sym=(t.symbol??'').replace('USDT','').replace('PERP','');
-        return `<div class="trades-grid trade-row" style="grid-template-columns:1fr 64px 88px 70px 88px"><div class="trade-coin">${sym}</div><div><span class="trade-dir ${isLong?'long':'short'}">${isLong?'Long':'Short'}</span></div><div class="trade-cell">$${fmt(px2,px2<1?4:2)}</div><div class="trade-cell">${fmt(qty,qty<1?4:2)}</div><div class="trade-pnl ${pCls(pnl)}">${pnl>=0?'+':''}$${fmt(pnl)}</div></div>`;
+        const sideCell = isLong===null ? '<span class="trade-dir">—</span>' : `<span class="trade-dir ${isLong?'long':'short'}">${isLong?'Long':'Short'}</span>`;
+        const priceCell = px2===null ? '—' : '$'+fmt(px2,px2<1?4:2);
+        const sizeCell = qty===null ? '—' : fmt(qty,qty<1?4:2);
+        return `<div class="trades-grid trade-row" style="grid-template-columns:1fr 64px 88px 70px 88px"><div class="trade-coin">${sym}</div><div>${sideCell}</div><div class="trade-cell">${priceCell}</div><div class="trade-cell">${sizeCell}</div><div class="trade-pnl ${pCls(pnl)}">${pnl>=0?'+':''}$${fmt(pnl)}</div></div>`;
       }).join('');
       tb.innerHTML=hdr+rows;
     }

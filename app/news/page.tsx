@@ -18,11 +18,22 @@ function upgradeImageUrl(url: string): string {
     url = url.replace(/\/w_\d+,h_\d+/, '/w_1200,h_675');
     url = url.replace(/\/w_\d+(?=,|\/|$)/, '/w_1200');
   }
-  url = url.replace(/(-\d{2,4}x\d{2,4})(\.[a-zA-Z0-9]{2,5})(\?|$)/, '$2$3');
+  // Skip for Sanity (CoinDesk's asset host): unlike WordPress-style
+  // thumbnail suffixes, Sanity's "-WIDTHxHEIGHT" is part of the asset's
+  // permanent filename — stripping it makes the CDN reject the request with
+  // a 400 "Invalid filename" (which then trips Chrome's ORB when requested
+  // via <img>, since the response isn't image content).
+  if (!url.includes('cdn.sanity.io')) {
+    url = url.replace(/(-\d{2,4}x\d{2,4})(\.[a-zA-Z0-9]{2,5})(\?|$)/, '$2$3');
+  }
   url = url.replace(/([?&]w=)\d+/, (_m, p) => p + '1200');
   url = url.replace(/([?&]width=)\d+/, (_m, p) => p + '1200');
   url = url.replace(/([?&]resize=)\d+,\d+/, (_m, p) => p + '1200,675');
-  return url;
+  // Some CDNs (e.g. CoinDesk's Sanity asset host) respond with `Vary: Origin`
+  // and no CORS grant, which Chrome's Opaque Response Blocking silently
+  // rejects for cross-origin <img> loads even though the image itself is
+  // fine — route through our own backend to sidestep it.
+  return `/api/img-proxy?url=${encodeURIComponent(url)}`;
 }
 
 function ArticleCard({ a }: { a: Article }) {

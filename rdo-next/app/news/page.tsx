@@ -45,7 +45,7 @@ export default function NewsPage() {
       { id:'dec',  name:'Decrypt',       type:'proxy', url:'/decnews/feed',                                                            color:'#7b68ee' },
       { id:'blk',  name:'CryptoSlate',   type:'r2j',   url:R2J + encodeURIComponent('https://cryptoslate.com/feed/'),                 color:'#3498db' },
       { id:'bwk',  name:'Blockworks',    type:'r2j',   url:R2J + encodeURIComponent('https://blockworks.co/feed'),                    color:'#e74c3c' },
-      { id:'btcm', name:'Bitcoin Mag',   type:'r2j',   url:R2J + encodeURIComponent('https://bitcoinmagazine.com/.rss/full/'),        color:'#f39c12' },
+      { id:'btcm', name:'Bitcoin Mag',   type:'proxy', url:'/btcmnews/feed',                                                          color:'#f39c12' },
       { id:'bein', name:'BeInCrypto',    type:'proxy', url:'/beinnews/feed/',                                                         color:'#27ae60' },
       { id:'btci', name:'Bitcoinist',    type:'proxy', url:'/btcinews/feed/',                                                         color:'#9b59b6' },
     ];
@@ -92,11 +92,23 @@ export default function NewsPage() {
         url = url.replace(/\/w_\d+,h_\d+/, '/w_1200,h_675');
         url = url.replace(/\/w_\d+(?=,|\/|$)/, '/w_1200');
       }
-      url = url.replace(/(-\d{2,4}x\d{2,4})(\.[a-zA-Z0-9]{2,5})(\?|$)/, '$2$3');
+      // Skip for Sanity (CoinDesk's asset host): unlike WordPress-style
+      // thumbnail suffixes, Sanity's "-WIDTHxHEIGHT" is part of the asset's
+      // permanent filename — stripping it makes the CDN reject the request
+      // with a 400 "Invalid filename" (which then trips Chrome's ORB when
+      // requested via <img>, since the response isn't image content).
+      if (!url.includes('cdn.sanity.io')) {
+        url = url.replace(/(-\d{2,4}x\d{2,4})(\.[a-zA-Z0-9]{2,5})(\?|$)/, '$2$3');
+      }
       url = url.replace(/([?&]w=)\d+/, (_m: string, p: string) => p + '1200');
       url = url.replace(/([?&]width=)\d+/, (_m: string, p: string) => p + '1200');
       url = url.replace(/([?&]resize=)\d+,\d+/, (_m: string, p: string) => p + '1200,675');
-      return url;
+      // Some CDNs (e.g. CoinDesk's Sanity asset host) respond with
+      // `Vary: Origin` and no CORS grant, which Chrome's Opaque Response
+      // Blocking silently rejects for cross-origin <img> loads even though
+      // the image itself is fine — route through our own backend proxy to
+      // sidestep it.
+      return `/img-proxy?url=${encodeURIComponent(url)}`;
     }
 
     function parseRSS(xmlText: string, source: any) {

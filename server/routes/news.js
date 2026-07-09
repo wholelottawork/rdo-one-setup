@@ -11,7 +11,7 @@ const SOURCES = [
   { id: 'btci', name: 'Bitcoinist',    url: 'https://bitcoinist.com/feed/',                    type: 'direct' },
   { id: 'cs',   name: 'CryptoSlate',   url: 'https://cryptoslate.com/feed/',                   type: 'r2j' },
   { id: 'bwk',  name: 'Blockworks',    url: 'https://blockworks.co/feed',                      type: 'r2j' },
-  { id: 'btcm', name: 'Bitcoin Mag',   url: 'https://bitcoinmagazine.com/.rss/full/',           type: 'r2j' },
+  { id: 'btcm', name: 'Bitcoin Mag',   url: 'https://bitcoinmagazine.com/feed',                type: 'direct' },
 ];
 
 async function fetchSource(source) {

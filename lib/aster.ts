@@ -313,6 +313,16 @@ export async function getAsterOpenInterest(symbols: string[], prices: Record<str
  * that Aster rejects the same values signed in any order other than exactly
  * this one (alphabetical order fails with "Signature check failed").
  */
+// Aster Code (docs.asterdex.com "Aster Code" builder program): approveAgent
+// "supports setting builder and maxFeeRate to approve the builder at the
+// same time" — riding on the same signed call as agent approval, rather than
+// a separate one, is what lets us collect a per-trade fee. builder is paid
+// to the same address as the agent signer; maxFeeRate is the cap the user
+// approves (we charge at or under this — see docs.asterdex.com/product/
+// aster-perpetuals/aster-code).
+export const ASTER_BUILDER_ADDRESS = ASTER_AGENT_ADDRESS;
+export const ASTER_BUILDER_MAX_FEE_RATE = '0.0001'; // 0.01%
+
 export async function approveAsterAgent(userAddress: string, signer: Signer): Promise<{ ok: boolean; message: string }> {
   const nonce = Date.now() * 1000; // microseconds, per Aster's V3 nonce convention
   const expired = Date.now() + 365 * 24 * 60 * 60 * 1000; // 1 year validity
@@ -328,6 +338,9 @@ export async function approveAsterAgent(userAddress: string, signer: Signer): Pr
     canPerpTrade: 'true',
     canWithdraw: 'false',
     ipWhitelist: '',
+    builder: ASTER_BUILDER_ADDRESS,
+    maxFeeRate: ASTER_BUILDER_MAX_FEE_RATE,
+    builderName: 'RDOONE',
   };
   const msg = new URLSearchParams(fields).toString();
 
@@ -363,20 +376,56 @@ export async function isAsterAgentApproved(userAddress: string): Promise<boolean
   return account !== null;
 }
 
+export interface AsterBuilderApproval {
+  userAddress: string;
+  builderAddress: string;
+  maxFeeRate: number;
+  builderName: string;
+}
+
+/** GET /fapi/v3/builder — the list of builders this user has approved, with
+ *  their fee-rate caps. Signed server-side by our agent (same pattern as
+ *  every other /aster-signed/* read). */
+export async function getAsterBuilders(userAddress: string): Promise<AsterBuilderApproval[]> {
+  try {
+    const res = await fetch(`/api/aster-signed/fapi/v3/builder?user=${userAddress}`);
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Is OUR builder address specifically approved (with a nonzero fee cap) for
+ *  this user — separate from agent approval, since a user could have
+ *  approved the agent (reads/trades) before this builder-fee field existed
+ *  and never been asked to approve the fee itself. */
+export async function isAsterBuilderApproved(userAddress: string): Promise<boolean> {
+  const builders = await getAsterBuilders(userAddress);
+  return builders.some(b => b.builderAddress?.toLowerCase() === ASTER_BUILDER_ADDRESS.toLowerCase() && b.maxFeeRate > 0);
+}
+
 /**
  * Check-then-approve wrapper: only prompts the user's wallet for the on-chain
- * approval signature when the agent isn't already approved for `userAddress`.
- * This is what makes approval a "one time, and again only if needed" action
- * instead of a button the user must click on every visit. `getSigner` is a
- * callback (rather than a Signer) so the caller can lazily do wallet-side
- * prep — switching the wallet to BSC, building the ethers signer — ONLY on
- * the branch that actually needs to sign, never when already approved.
+ * approval signature when the agent AND builder fee aren't already approved
+ * for `userAddress`. This is what makes approval a "one time, and again only
+ * if needed" action instead of a button the user must click on every visit —
+ * a user who already approved the agent but never the builder fee (or vice
+ * versa) gets re-prompted once to cover whichever is missing; the same
+ * signed call sets both. `getSigner` is a callback (rather than a Signer) so
+ * the caller can lazily do wallet-side prep — switching the wallet to BSC,
+ * building the ethers signer — ONLY on the branch that actually needs to
+ * sign, never when already fully approved.
  */
 export async function ensureAsterAgentApproved(
   userAddress: string,
   getSigner: () => Promise<Signer>,
 ): Promise<{ ok: boolean; alreadyApproved: boolean; message: string }> {
-  if (await isAsterAgentApproved(userAddress)) {
+  const [agentOk, builderOk] = await Promise.all([
+    isAsterAgentApproved(userAddress),
+    isAsterBuilderApproved(userAddress),
+  ]);
+  if (agentOk && builderOk) {
     return { ok: true, alreadyApproved: true, message: 'Agent already approved' };
   }
   const signer = await getSigner();
