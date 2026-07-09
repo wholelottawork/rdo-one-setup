@@ -4,7 +4,8 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "next dev -p 3002",
+    "dev": "concurrently \"next dev -p 3002\" \"npm --prefix server run dev\" --names \"next,server\" --prefix-colors cyan,magenta",
+    "dev:frontend": "next dev -p 3002",
     "dev:server": "npm --prefix server run dev",
     "build": "next build",
     "start": "next start -p 5176",
@@ -14,6 +15,7 @@
     "@types/node": "^26.1.0",
     "@types/react": "^19.2.3",
     "@types/react-dom": "^19.2.3",
+    "concurrently": "^10.0.3",
     "typescript": "^6.0.3"
   },
   "dependencies": {
