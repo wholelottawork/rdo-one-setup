@@ -497,7 +497,7 @@ body.mode-aster { --hl-accent: #a78bfa; --hl-accent-dark: rgba(139,92,246,0.15);
   display: flex; gap: 1px; flex-shrink: 0;
 }
 .iv-btn {
-  font-family: var(--hl-font); font-size: 11px; padding: 3px 7px;
+  font-family: var(--hl-font); font-size: 11px; font-weight: 700; padding: 3px 7px;
   background: transparent; border: 1px solid transparent;
   color: var(--hl-text-secondary); cursor: pointer; border-radius: var(--hl-radius);
   transition: all 0.12s;
