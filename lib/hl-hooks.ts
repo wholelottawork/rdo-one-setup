@@ -43,6 +43,8 @@ export function useHLBalance(address: string | null, network: HLNetwork = 'mainn
     queryKey: ['hl', 'balance', address, network],
     queryFn: () => loadBalance(address!, network),
     enabled: !!address,
+    staleTime: 5 * 60_000,
+    gcTime: 10 * 60_000,
     refetchInterval: 15_000,
   });
 }
@@ -52,6 +54,8 @@ export function useHLPositions(address: string | null, network: HLNetwork = 'mai
     queryKey: ['hl', 'positions', address, network],
     queryFn: () => getPositions(address!, network),
     enabled: !!address,
+    staleTime: 5 * 60_000,
+    gcTime: 10 * 60_000,
     refetchInterval: 15_000,
   });
 }

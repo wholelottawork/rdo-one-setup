@@ -72,11 +72,14 @@ export function useAsterLeverageBrackets() {
 // most ban-prone calls). The push-based user-data stream (useAsterUserStream)
 // invalidates them the instant a fill/funding actually changes the account, so
 // the interval here is just a slow safety net, not the real-time source.
+
 export function useAsterBalance(address: string | null) {
   return useQuery({
     queryKey: ['aster', 'balance', address],
     queryFn: () => getAsterBalance(address!),
     enabled: !!address,
+    staleTime: 5 * 60_000, // keep data fresh for 5 min, no refetch on remount
+    gcTime: 10 * 60_000,
     refetchInterval: 60_000,
   });
 }
@@ -86,6 +89,8 @@ export function useAsterPositions(address: string | null) {
     queryKey: ['aster', 'positions', address],
     queryFn: () => getAsterPositions(address!),
     enabled: !!address,
+    staleTime: 5 * 60_000,
+    gcTime: 10 * 60_000,
     refetchInterval: 60_000,
   });
 }

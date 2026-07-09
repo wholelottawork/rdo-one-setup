@@ -132,6 +132,7 @@ export default function PortfolioPage() {
   const [asterIncome, setAsterIncome] = useState<AsterIncomeEntry[] | null>(
     null,
   );
+  const [asterLastLoadAt, setAsterLastLoadAt] = useState<number>(0);
   const [asterApproving, setAsterApproving] = useState(false);
   const [asterApproveMsg, setAsterApproveMsg] = useState<string | null>(null);
 
@@ -544,14 +545,17 @@ export default function PortfolioPage() {
         : "error",
     );
     setAsterIncome(incomeRes.status === "fulfilled" ? incomeRes.value : []);
+    setAsterLastLoadAt(Date.now());
     setAsterLoading(false);
   }, [evmAddr, range]);
 
   // Auto-load Aster data whenever EXTRA mode is active with a connected wallet
   // — covers both flipping to EXTRA via the global header switch and connecting
   // the wallet while already on EXTRA. The load itself is the approval check.
+  // Guarded by a 5-minute stale window so coming back to the tab doesn't reload.
   useEffect(() => {
-    if (pfMode === "aster" && evmAddr && asterIncome === null && !asterLoading)
+    const isStale = Date.now() - asterLastLoadAt > 5 * 60_000;
+    if (pfMode === "aster" && evmAddr && !asterLoading && isStale)
       loadAsterData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [evmAddr, pfMode]);
