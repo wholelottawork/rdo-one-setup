@@ -8,7 +8,7 @@ import { useToast } from '@/lib/toast';
 import { useHLSocket, useHLBookStream, type Trade } from '@/lib/hl-socket';
 import { useHLCandles } from '@/lib/hl-hooks';
 import {
-  useAsterCandles, useAsterBook, useAsterTradeStream, useAsterUserStream,
+  useAsterCandles, useAsterBookStream, useAsterTradeStream, useAsterUserStream,
 } from '@/lib/aster-hooks';
 import { openPosition, closePosition, cancelOrder, getL2Book, type OrderBook } from '@/lib/hyperliquid';
 import { asterPlaceOrder, asterClosePosition, asterCancelOrder } from '@/lib/aster';
@@ -69,7 +69,7 @@ function Terminal() {
   // Fetch candles, book, trades (trade-specific data)
   const { data: hlCandles } = useHLCandles(market, intervalMinutes, network);
   const { data: asterCandles } = useAsterCandles(market, intervalMinutes);
-  const { data: asterBook } = useAsterBook(market, isAster);
+  const { data: asterBook } = useAsterBookStream(market, isAster);
 
   const candles = isAster ? asterCandles : hlCandles;
 

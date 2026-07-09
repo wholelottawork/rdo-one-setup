@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { AppProviders } from '@/lib/providers';
 import { HLSocketProvider } from '@/lib/hl-socket';
+import { AsterSocketProvider } from '@/lib/aster-socket';
 import { ShellProvider } from '@/app/_components/ShellContext';
 import { ShellWrapper } from '@/app/_components/ShellWrapper';
 import './terminal.css';
@@ -24,11 +25,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <AppProviders>
           <HLSocketProvider network="mainnet">
-            <ShellProvider>
-              <ShellWrapper>
-                {children}
-              </ShellWrapper>
-            </ShellProvider>
+            <AsterSocketProvider>
+              <ShellProvider>
+                <ShellWrapper>
+                  {children}
+                </ShellWrapper>
+              </ShellProvider>
+            </AsterSocketProvider>
           </HLSocketProvider>
         </AppProviders>
       </body>

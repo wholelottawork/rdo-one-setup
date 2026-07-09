@@ -2,12 +2,16 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useAsterSocket } from './aster-socket';
 import {
-  getAsterTickers, getAsterFunding, getAsterCandles, getAsterBook, getAsterOpenInterest,
+  getAsterCandles, getAsterOpenInterest,
   getAsterSymbols, getAsterLeverageBrackets,
   getAsterBalance, getAsterPositions, getAsterFills, getAsterOpenOrders as getAsterOpenOrdersRaw, getAsterFundingHistory,
   startAsterUserStream, keepaliveAsterUserStream, closeAsterUserStream, asterUserStreamWsUrl,
 } from './aster';
+
+// Re-export so the terminal keeps importing all Aster data hooks from one place.
+export { useAsterBookStream } from './aster-socket';
 
 // The exchange's own symbol list — rarely changes, so a long staleTime avoids
 // re-fetching exchangeInfo (a ~700KB payload) more often than needed.
@@ -20,35 +24,23 @@ export function useAsterSymbols() {
   });
 }
 
+// Live from the shared Aster market WebSocket (see aster-socket.tsx) — no more
+// /ticker/24hr or /premiumIndex polling. Same `{ data }` shape the old React
+// Query hooks exposed, so existing call sites don't change.
 export function useAsterTickers() {
-  return useQuery({
-    queryKey: ['aster', 'tickers'],
-    queryFn: getAsterTickers,
-    refetchInterval: 5_000,
-  });
+  const { tickers } = useAsterSocket();
+  return { data: tickers };
 }
 
 export function useAsterFunding() {
-  return useQuery({
-    queryKey: ['aster', 'funding'],
-    queryFn: getAsterFunding,
-    refetchInterval: 30_000,
-  });
+  const { funding } = useAsterSocket();
+  return { data: funding };
 }
 
 export function useAsterCandles(symbol: string, intervalMinutes: number) {
   return useQuery({
     queryKey: ['aster', 'candles', symbol, intervalMinutes],
     queryFn: () => getAsterCandles(symbol, intervalMinutes, 200),
-  });
-}
-
-export function useAsterBook(symbol: string, enabled = true) {
-  return useQuery({
-    queryKey: ['aster', 'book', symbol],
-    queryFn: () => getAsterBook(symbol),
-    refetchInterval: 2_000,
-    enabled,
   });
 }
 
@@ -76,12 +68,16 @@ export function useAsterLeverageBrackets() {
 
 // ── Terminal account data hooks (wallet-gated) ───────────────────────────────
 
+// These hit the signed /fapi/v3/accountWithJoinMargin endpoint (the weightiest,
+// most ban-prone calls). The push-based user-data stream (useAsterUserStream)
+// invalidates them the instant a fill/funding actually changes the account, so
+// the interval here is just a slow safety net, not the real-time source.
 export function useAsterBalance(address: string | null) {
   return useQuery({
     queryKey: ['aster', 'balance', address],
     queryFn: () => getAsterBalance(address!),
     enabled: !!address,
-    refetchInterval: 15_000,
+    refetchInterval: 60_000,
   });
 }
 
@@ -90,7 +86,7 @@ export function useAsterPositions(address: string | null) {
     queryKey: ['aster', 'positions', address],
     queryFn: () => getAsterPositions(address!),
     enabled: !!address,
-    refetchInterval: 15_000,
+    refetchInterval: 60_000,
   });
 }
 
