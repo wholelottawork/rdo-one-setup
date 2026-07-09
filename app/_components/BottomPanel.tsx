@@ -64,8 +64,8 @@ export function BottomPanel({ mode, address, positions, fills, openOrders, fundi
               <span>{t('markPrice')}</span>
               <span>{t('pnlRoe')}</span>
               <span>{t('liqPriceShort')}</span>
-              <span>{t('margin')}</span>
-              <span>{t('funding')}</span>
+              <span>{t('direction')}</span>
+              <span className="pos-col-action" />
             </div>
             <div id="posRows" className="btm-rows">
               {positions.length === 0 ? (
@@ -87,9 +87,8 @@ export function BottomPanel({ mode, address, positions, fills, openOrders, fundi
                       <span>{fmtPrice(px)}</span>
                       <span className={pnlCls}>{p.pnl >= 0 ? '+' : ''}${p.pnl.toFixed(2)} ({roe.toFixed(2)}%)</span>
                       <span>{fmtPrice(p.liqPrice)}</span>
-                      <span>—</span><span>—</span>
                       <span className={p.isLong ? 'dir-long' : 'dir-short'}>{p.isLong ? 'Long' : 'Short'}</span>
-                      <span><button className="pos-close-btn" onClick={() => onClosePosition(i)}>Close</button></span>
+                      <span className="pos-col-action"><button className="pos-close-btn" onClick={() => onClosePosition(i)}>Close</button></span>
                     </div>
                   );
                 })

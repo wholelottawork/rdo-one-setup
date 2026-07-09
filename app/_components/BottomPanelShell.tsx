@@ -7,6 +7,8 @@ interface Props {
   defaultHeight?: number;
   minHeight?: number;
   maxHeight?: number;
+  /** Height when collapsed — just enough for the tab bar, no table area. */
+  collapsedHeight?: number;
 }
 
 /** Shared bottom panel shell with draggable resize handle and collapse/expand
@@ -18,6 +20,7 @@ export function BottomPanelShell({
   defaultHeight = 175,
   minHeight = 60,
   maxHeight = 480,
+  collapsedHeight = 38,
 }: Props) {
   const [collapsed, setCollapsed] = useState(false);
   const [height, setHeight] = useState(defaultHeight);
@@ -78,11 +81,13 @@ export function BottomPanelShell({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [minHeight, maxHeight]);
 
-  // Sync CSS variable when collapsed/height changes from non-drag sources
+  // Sync CSS variable when collapsed/height changes from non-drag sources.
+  // Collapsed uses collapsedHeight (tab-bar only), not minHeight, so the panel
+  // shrinks to just the headings rather than an empty minHeight slab.
   useEffect(() => {
     const root = document.documentElement;
-    root.style.setProperty('--btm', (collapsed ? minHeight : height) + 'px');
-  }, [collapsed, height, minHeight]);
+    root.style.setProperty('--btm', (collapsed ? collapsedHeight : height) + 'px');
+  }, [collapsed, height, collapsedHeight]);
 
   function toggleCollapse() {
     if (collapsed) {

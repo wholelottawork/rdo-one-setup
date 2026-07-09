@@ -789,10 +789,13 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
   border-bottom-color: var(--hl-text-primary);
 }
 
-/* Collapsed bottom panel */
-.btm-panel.collapsed .btm-content,
-.btm-panel.collapsed .btm-tabs {
+/* Collapsed bottom panel — hide the table area but keep the tab headings
+   visible so the panel shrinks to just the tab bar (minimal vertical space). */
+.btm-panel.collapsed .btm-content {
   display: none;
+}
+.btm-panel.collapsed .btm-tabs {
+  border-bottom: none;
 }
 
 /* ── BOTTOM PANEL ───────────────────────────────────────────── */
@@ -843,6 +846,10 @@ input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
 .pos-row span { flex: 1; min-width: 0; }
 .pos-row:hover { background: var(--hl-bg-overlay); }
 .pos-row span { font-size: 11px; color: var(--hl-text-soft); }
+/* Action column (Close button) — fixed width + right-aligned on both the
+   header and rows so it doesn't stretch and stays lined up. */
+.btm-col-hdr .pos-col-action,
+.pos-row .pos-col-action { flex: 0 0 70px; text-align: right; }
 .pos-row .pos-sym  { color: var(--hl-text-primary); font-weight: 600; }
 .pos-row .pnl-pos  { color: var(--hl-buy); font-weight: 600; }
 .pos-row .pnl-neg  { color: var(--hl-sell); font-weight: 600; }
