@@ -475,7 +475,7 @@ export async function openPosition({ symbol, sizeDollars, isLong, signer, networ
     body: JSON.stringify({ action: wireAction, nonce, signature }),
   });
   const data = await res.json();
-  if (data?.status === 'success' || data?.response?.type === 'order') {
+  if (data?.status === 'ok' || data?.response?.type === 'order') {
     return { status: 'ok' as const };
   }
   return { status: 'err' as const, response: data?.error ?? data?.response ?? 'Order failed' };
@@ -486,14 +486,14 @@ export async function closePosition(
 ) {
   const price = await getMarketPrice(symbol, network);
   if (!price) return { status: 'err' as const, response: 'Cannot fetch price for ' + symbol };
-  const slip = 0.003;
+  const slip = 0.01; // 1% slippage for reliable close fills on volatile perps
 
   const wireAction = {
     type: 'order',
     orders: [{
       a: assetIndexMap[symbol] ?? 0,
       b: !isLong,
-      p: floatToWire(!isLong ? price * (1 + slip) : price * (1 - slip)),
+      p: floatToWire(isLong ? price * (1 - slip) : price * (1 + slip)), // sell at discount / buy at premium for reliable IOC fill
       s: floatToWire(Math.abs(size)),
       r: true,
       t: { limit: { tif: 'Ioc' } },
@@ -510,7 +510,7 @@ export async function closePosition(
     body: JSON.stringify({ action: wireAction, nonce, signature }),
   });
   const data = await res.json();
-  if (data?.status === 'success' || data?.response?.type === 'order') {
+  if (data?.status === 'ok' || data?.response?.type === 'order') {
     return { status: 'ok' as const };
   }
   return { status: 'err' as const, response: data?.error ?? data?.response ?? 'Close failed' };
@@ -529,7 +529,7 @@ export async function cancelOrder({ oid, symbol, signer, network = 'mainnet' }: 
     body: JSON.stringify({ action: wireAction, nonce, signature }),
   });
   const data = await res.json();
-  if (data?.status === 'success' || data?.response?.type === 'cancel') {
+  if (data?.status === 'ok' || data?.response?.type === 'cancel') {
     return { status: 'ok' as const };
   }
   return { status: 'err' as const, response: data?.error ?? data?.response ?? 'Cancel failed' };
