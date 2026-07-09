@@ -360,7 +360,7 @@ body.mode-aster { --hl-accent: #a78bfa; --hl-accent-dark: rgba(139,92,246,0.15);
   cursor: pointer; transition: background 0.12s, color 0.12s;
 }
 .lang-option:hover { background: var(--hl-bg-hover); color: var(--hl-text-primary); }
-.lang-option.active { color: var(--hl-accent); }
+.lang-option.active { color: var(--hl-text-primary); font-weight: 700; }
 
 .wallet-btn {
   font-family: var(--hl-font); font-size: 12px; font-weight: 600;
