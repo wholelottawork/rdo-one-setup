@@ -131,6 +131,12 @@ export function ShellProvider({ children }: { children: React.ReactNode }) {
         const provider = getEVMProvider();
         if (!provider) return;
         const { ethers } = await import('ethers');
+        const { ensureHyperliquidNetwork } = await import('@/lib/hyperliquid');
+        const onHL = await ensureHyperliquidNetwork(provider);
+        if (!onHL) {
+          showToast('Switch your wallet to Hyperliquid network to sign', 'err');
+          return;
+        }
         const signer = await new ethers.BrowserProvider(provider as never).getSigner();
         const result = await closePosition({ symbol: p.symbol, size: p.size, isLong: p.isLong, signer, network });
         if (result.status === 'ok') {
@@ -161,6 +167,12 @@ export function ShellProvider({ children }: { children: React.ReactNode }) {
         const provider = getEVMProvider();
         if (!provider) return;
         const { ethers } = await import('ethers');
+        const { ensureHyperliquidNetwork } = await import('@/lib/hyperliquid');
+        const onHL = await ensureHyperliquidNetwork(provider);
+        if (!onHL) {
+          showToast('Switch your wallet to Hyperliquid network to sign', 'err');
+          return;
+        }
         const signer = await new ethers.BrowserProvider(provider as never).getSigner();
         const result = await cancelOrder({ oid, symbol, signer, network });
         if (result.status === 'ok') {

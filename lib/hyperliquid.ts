@@ -16,6 +16,39 @@ function hlApiBase(network: HLNetwork): string {
   return network === 'testnet' ? HL_TESTNET_API : HL_API;
 }
 
+/** Switch wallet to Hyperliquid's phantom chain (1337) so MetaMask accepts
+ *  eth_signTypedData_v4 with domain.chainId = 1337. If the wallet doesn't
+ *  have the chain, add it first. */
+export async function ensureHyperliquidNetwork(provider: { request: (args: { method: string; params?: unknown[] }) => Promise<unknown> }): Promise<boolean> {
+  try {
+    await provider.request({
+      method: 'wallet_switchEthereumChain',
+      params: [{ chainId: '0x539' }], // 1337 in hex
+    });
+    return true;
+  } catch (e) {
+    const code = (e as { code?: number })?.code;
+    if (code === 4902) {
+      try {
+        await provider.request({
+          method: 'wallet_addEthereumChain',
+          params: [{
+            chainId: '0x539',
+            chainName: 'Hyperliquid',
+            nativeCurrency: { name: 'HL', symbol: 'HL', decimals: 18 },
+            rpcUrls: ['https://api.hyperliquid.xyz/evm'], // HL's public RPC
+            blockExplorerUrls: ['https://app.hyperliquid.xyz/explorer'],
+          }],
+        });
+        return true;
+      } catch {
+        return false;
+      }
+    }
+    return false;
+  }
+}
+
 const assetIndexMap: Record<string, number> = {};
 
 export interface AssetCtx {
@@ -414,7 +447,7 @@ interface TradeParams {
 
 export async function openPosition({ symbol, sizeDollars, isLong, signer, network = 'mainnet' }: TradeParams) {
   const price = await getMarketPrice(symbol, network);
-  if (!price) throw new Error('Cannot fetch price for ' + symbol);
+  if (!price) return { status: 'err' as const, response: 'Cannot fetch price for ' + symbol };
 
   const sz = parseFloat((sizeDollars / price).toFixed(8));
   const slip = 0.003;
@@ -441,14 +474,18 @@ export async function openPosition({ symbol, sizeDollars, isLong, signer, networ
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: wireAction, nonce, signature }),
   });
-  return res.json();
+  const data = await res.json();
+  if (data?.status === 'success' || data?.response?.type === 'order') {
+    return { status: 'ok' as const };
+  }
+  return { status: 'err' as const, response: data?.error ?? data?.response ?? 'Order failed' };
 }
 
 export async function closePosition(
   { symbol, size, isLong, signer, network = 'mainnet' }: { symbol: string; size: number; isLong: boolean; signer: Signer; network?: HLNetwork },
 ) {
   const price = await getMarketPrice(symbol, network);
-  if (!price) throw new Error('Cannot fetch price for ' + symbol);
+  if (!price) return { status: 'err' as const, response: 'Cannot fetch price for ' + symbol };
   const slip = 0.003;
 
   const wireAction = {
@@ -472,7 +509,11 @@ export async function closePosition(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: wireAction, nonce, signature }),
   });
-  return res.json();
+  const data = await res.json();
+  if (data?.status === 'success' || data?.response?.type === 'order') {
+    return { status: 'ok' as const };
+  }
+  return { status: 'err' as const, response: data?.error ?? data?.response ?? 'Close failed' };
 }
 
 export async function cancelOrder({ oid, symbol, signer, network = 'mainnet' }: { oid: number; symbol: string; signer: Signer; network?: HLNetwork }) {
@@ -487,7 +528,11 @@ export async function cancelOrder({ oid, symbol, signer, network = 'mainnet' }: 
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: wireAction, nonce, signature }),
   });
-  return res.json();
+  const data = await res.json();
+  if (data?.status === 'success' || data?.response?.type === 'cancel') {
+    return { status: 'ok' as const };
+  }
+  return { status: 'err' as const, response: data?.error ?? data?.response ?? 'Cancel failed' };
 }
 
 export interface HLTickerStat {

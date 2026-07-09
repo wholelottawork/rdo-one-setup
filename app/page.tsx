@@ -10,7 +10,7 @@ import { useHLCandles } from '@/lib/hl-hooks';
 import {
   useAsterCandles, useAsterBookStream, useAsterTradeStream, useAsterUserStream,
 } from '@/lib/aster-hooks';
-import { openPosition, closePosition, cancelOrder, getL2Book, type OrderBook } from '@/lib/hyperliquid';
+import { openPosition, closePosition, cancelOrder, getL2Book, ensureHyperliquidNetwork, type OrderBook } from '@/lib/hyperliquid';
 import { asterPlaceOrder, asterClosePosition, asterCancelOrder } from '@/lib/aster';
 import { type TradeMode } from '@/lib/markets';
 import { useShell } from '@/app/_components/ShellContext';
@@ -143,6 +143,8 @@ function Terminal() {
         const provider = getEVMProvider();
         if (!provider) { flashError('No wallet found'); setSubmitting(false); return; }
         const { ethers } = await import('ethers');
+        const onHL = await ensureHyperliquidNetwork(provider);
+        if (!onHL) { flashError('Switch your wallet to Hyperliquid network to sign'); setSubmitting(false); return; }
         const signer = await new ethers.BrowserProvider(provider as never).getSigner();
         const px = livePrice ?? 0;
         const result = await openPosition({ symbol: market, sizeDollars: sizeNum * px, leverage, isLong: isBuy, signer, network });
@@ -186,6 +188,8 @@ function Terminal() {
         const provider = getEVMProvider();
         if (!provider) return;
         const { ethers } = await import('ethers');
+        const onHL = await ensureHyperliquidNetwork(provider);
+        if (!onHL) { showToast('Switch your wallet to Hyperliquid network to sign', 'err'); return; }
         const signer = await new ethers.BrowserProvider(provider as never).getSigner();
         const result = await closePosition({ symbol: p.symbol, size: p.size, isLong: p.isLong, signer, network });
         if (result.status === 'ok') {
@@ -216,6 +220,8 @@ function Terminal() {
         const provider = getEVMProvider();
         if (!provider) return;
         const { ethers } = await import('ethers');
+        const onHL = await ensureHyperliquidNetwork(provider);
+        if (!onHL) { showToast('Switch your wallet to Hyperliquid network to sign', 'err'); return; }
         const signer = await new ethers.BrowserProvider(provider as never).getSigner();
         const result = await cancelOrder({ oid, symbol, signer, network });
         if (result.status === 'ok') {
