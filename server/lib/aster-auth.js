@@ -40,20 +40,16 @@ function nextNonce() {
 }
 
 /**
- * Signs a param object for an Aster V3 signed endpoint. Returns the full
- * query string — including `signer`, `nonce`, and `signature` — ready to
- * append to the request URL or send as a form body.
+ * Signs a param object for an Aster V3 signed endpoint with an arbitrary
+ * wallet — the per-user variant (see server/lib/agent-keystore.js) passes
+ * that user's own dedicated agent wallet here instead of the house one.
+ * Returns the full query string — including `signer`, `nonce`, and
+ * `signature` — ready to append to the request URL or send as a form body.
  */
-export async function signAsterV3Request(params = {}) {
-  const signerAddress = process.env.ASTER_SIGNER_ADDRESS;
-  if (!signerAddress) {
-    throw new Error("ASTER_SIGNER_ADDRESS not configured — add it to server/.env");
-  }
-
-  const withAuth = { ...params, nonce: String(nextNonce()), signer: signerAddress };
+export async function signAsterV3RequestAs(wallet, params = {}) {
+  const withAuth = { ...params, nonce: String(nextNonce()), signer: wallet.address };
   const query = new URLSearchParams(withAuth).toString();
 
-  const wallet = getAgentWallet();
   const domain = {
     name: "AsterSignTransaction",
     version: "1",
@@ -63,4 +59,16 @@ export async function signAsterV3Request(params = {}) {
   const signature = await wallet.signTypedData(domain, MESSAGE_TYPES, { msg: query });
 
   return `${query}&signature=${signature}`;
+}
+
+/**
+ * Signs with the house agent wallet (ASTER_SIGNER_PRIVATE_KEY) — reserved
+ * for signed-but-not-account-specific endpoints (e.g. /aster-leverage-brackets,
+ * whose data is the same market-wide risk tiers for every caller). Anything
+ * that reads or acts on a specific user's account must go through
+ * signAsterV3RequestAs with that user's own dedicated agent instead — see
+ * lib/aster.ts's ASTER_BUILDER_ADDRESS comment for why.
+ */
+export async function signAsterV3Request(params = {}) {
+  return signAsterV3RequestAs(getAgentWallet(), params);
 }

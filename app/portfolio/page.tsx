@@ -289,7 +289,7 @@ export default function PortfolioPage() {
     }
   }
 
-  // Aster's registerAndApproveAgent signature is hardcoded to chainId 56
+  // Aster's approveAgent signature is hardcoded to chainId 56
   // (BNB Smart Chain) per their spec — some wallets (MetaMask family)
   // reject eth_signTypedData_v4 if that domain chainId doesn't match the
   // wallet's currently active network, so switch (or add, if not present)

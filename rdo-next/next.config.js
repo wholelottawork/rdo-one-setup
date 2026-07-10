@@ -42,8 +42,9 @@ const nextConfig = {
       { source: '/aster-fapi/:path*',       destination: `${BACKEND_URL}/api/aster-fapi/:path*` },
       { source: '/aster-oi-bulk',           destination: `${BACKEND_URL}/api/aster-oi-bulk` },
       { source: '/aster-signed/:path*',     destination: `${BACKEND_URL}/api/aster-signed/:path*` },
+      { source: '/aster-agent-address',     destination: `${BACKEND_URL}/api/aster-agent-address` },
       { source: '/aster-leverage-brackets', destination: `${BACKEND_URL}/api/aster-leverage-brackets` },
-      { source: '/aster-register-agent',    destination: `${BACKEND_URL}/api/aster-register-agent` },
+      { source: '/aster-approve-agent',     destination: `${BACKEND_URL}/api/aster-approve-agent` },
       // LI.FI
       { source: '/lifi-api/:path*', destination: `${BACKEND_URL}/api/lifi-api/:path*` },
       // 1inch swap (server-side API key)

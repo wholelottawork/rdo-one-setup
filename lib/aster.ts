@@ -1,11 +1,17 @@
 import type { Candle, OrderBook, Signer } from './hyperliquid';
 
-// Our one shared Aster Pro API agent (server/lib/aster-auth.js holds the
-// matching private key) — every user of this app approves this SAME address
-// once via approveAsterAgent() below, after which our backend can read/trade
-// for their account by including `user: <their address>` on each signed
-// call. This is the "Aster Code" builder pattern, not a per-user key.
-export const ASTER_AGENT_ADDRESS = '0xdA480541aDB8D00E4783E5180CE70D3Da52D99F9';
+// Each user gets their OWN dedicated Aster Pro API agent keypair, minted
+// and held server-side (server/lib/agent-keystore.js) — NOT one shared
+// address. Aster's signed reads/trades resolve account identity from the
+// signer alone (confirmed against Aster's own docs and reference client:
+// GET /fapi/v3/accountWithJoinMargin, /balance, /positionRisk, /income,
+// /userTrades take no `user` parameter at all), so a single shared agent
+// could only ever be "live" for the one user who most recently approved
+// it. Aster's own integration flow explicitly recommends this
+// ("recommended: one signer per user" — asterdex.github.io/aster-api-website/
+// asterCode/integration-flow/). getMyAsterAgentAddress() below fetches (and
+// implicitly creates) the caller's own agent address; nothing in this file
+// hardcodes one anymore.
 
 export interface AsterTicker {
   symbol: string;
@@ -142,13 +148,18 @@ export interface AsterAccountInfo {
 }
 
 /**
- * Real account snapshot for `userAddress` via our shared Pro API agent
- * (server/lib/aster-auth.js holds the agent's key) — requires that address
- * to have approved our agent first (see approveAsterAgent). Unlike
- * Hyperliquid, Aster has no permissionless "look up any address" endpoint;
- * every signed call must carry an explicit `user` param naming the account,
- * or Aster has no way to know which of our (potentially many) approved
- * users' data to return.
+ * Real account snapshot for `userAddress` via THEIR OWN dedicated Pro API
+ * agent (server/lib/agent-keystore.js mints and holds it server-side) —
+ * requires that address to have approved its agent first (see
+ * approveAsterAgent). The backend resolves which agent key to sign with
+ * from this same `user` query param — see server/routes/proxy.js's
+ * requireUserAgent.
+ *
+ * GET /fapi/v3/accountWithJoinMargin itself takes no `user` parameter per
+ * Aster's docs (confirmed against asterdex.github.io/aster-api-website/
+ * futures-v3/account%26trades/ and github.com/asterdex/API-demo) — it
+ * resolves the account from the signer alone, which is exactly why this
+ * has to be a per-user agent rather than one shared one.
  */
 export async function getAsterAccount(userAddress: string): Promise<AsterAccountInfo | null> {
   try {
@@ -301,58 +312,123 @@ export async function getAsterOpenInterest(symbols: string[], prices: Record<str
   }
 }
 
-/**
- * One-time approval letting our shared Aster Pro API agent (ASTER_AGENT_ADDRESS,
- * private key in server/.env — see server/lib/aster-auth.js) read and trade
- * on `userAddress`'s behalf. Signed by the user's OWN wallet client-side —
- * this call is PUBLIC/unauthenticated on Aster's side and never touches our
- * server's key. canWithdraw is hardcoded false: the shared agent should never
- * be able to move funds out of a user's account, only trade with them.
- *
- * Field order in the signed message is significant — confirmed empirically
- * that Aster rejects the same values signed in any order other than exactly
- * this one (alphabetical order fails with "Signature check failed").
- */
 // Aster Code (docs.asterdex.com "Aster Code" builder program): approveAgent
 // "supports setting builder and maxFeeRate to approve the builder at the
 // same time" — riding on the same signed call as agent approval, rather than
-// a separate one, is what lets us collect a per-trade fee. builder is paid
-// to the same address as the agent signer; maxFeeRate is the cap the user
-// approves (we charge at or under this — see docs.asterdex.com/product/
-// aster-perpetuals/aster-code).
-export const ASTER_BUILDER_ADDRESS = ASTER_AGENT_ADDRESS;
+// a separate one, is what lets us collect a per-trade fee. Per Aster's
+// integration flow, `builder` is a FIXED business-identity address (used
+// purely for fee attribution — "must be registered on Aster, and the Aster
+// contract account must have a balance of at least 100 ASTER"), unrelated
+// to whichever per-user agent actually signs a given trade. This reuses the
+// address that used to double as this app's one shared agent
+// (ASTER_SIGNER_ADDRESS in server/.env) — it already has approval history
+// under it, and repurposing it as the fixed builder identity needs no new
+// setup. maxFeeRate is the cap the user approves (we charge at or under
+// this — see docs.asterdex.com/product/aster-perpetuals/aster-code).
+export const ASTER_BUILDER_ADDRESS = '0xdA480541aDB8D00E4783E5180CE70D3Da52D99F9';
 export const ASTER_BUILDER_MAX_FEE_RATE = '0.0001'; // 0.01%
 
-export async function approveAsterAgent(userAddress: string, signer: Signer): Promise<{ ok: boolean; message: string }> {
+/** Fetches (creating on first call) `userAddress`'s own dedicated Aster
+ *  agent address — never a private key, just the public address needed as
+ *  `agentAddress` when signing approveAgent. See server/lib/agent-keystore.js. */
+export async function getMyAsterAgentAddress(userAddress: string): Promise<string | null> {
+  try {
+    const res = await fetch(`/api/aster-agent-address?user=${encodeURIComponent(userAddress)}`);
+    const data = await res.json();
+    return typeof data?.agentAddress === 'string' ? data.agentAddress : null;
+  } catch {
+    return null;
+  }
+}
+
+type Eip712Value = string | number | boolean;
+
+function capitalizeKey(key: string): string {
+  return key.charAt(0).toUpperCase() + key.slice(1);
+}
+
+// Matches Aster's own reference client's type-inference exactly (see
+// signAsterManagementAction's doc comment) — booleans and integers get
+// their natural Solidity type, everything else (including decimal amounts
+// like maxFeeRate, which must stay a string) falls through to `string`.
+function inferEip712Type(value: Eip712Value): string {
+  if (typeof value === 'boolean') return 'bool';
+  if (typeof value === 'number' && Number.isInteger(value)) return 'uint256';
+  return 'string';
+}
+
+/**
+ * Signs an Aster Code "management" action (ApproveAgent, ApproveBuilder,
+ * UpdateAgent, ...) with the user's own wallet. This is a genuinely
+ * different EIP-712 scheme from every other signed call in this file: a
+ * per-action typed struct (dynamic primaryType, e.g. "ApproveAgent"), not
+ * the generic Message{msg:string} wrapper accountWithJoinMargin/income/etc
+ * use (that wrapper is for the OTHER Aster signature mode — "trading",
+ * signed by the agent's own key, always domain chainId 1666; see
+ * server/lib/aster-auth.js). Management actions are signed by the user's
+ * main wallet, field names are capitalized (agentName -> AgentName), and
+ * domain chainId is fixed at 56 — none of which the prose docs spell out in
+ * full; ported verbatim from Aster's reference implementation
+ * (github.com/asterdex/API-demo/tree/main/aster-code-demo, utils.js's
+ * signEIP712Main + 01_approveAgent.js) since getting this wrong just means
+ * a silently-rejected signature, not a dangerous one — but it's still worth
+ * getting right the first time given this grants trading authority.
+ */
+async function signAsterManagementAction(
+  signer: Signer,
+  primaryType: string,
+  params: Record<string, Eip712Value>,
+): Promise<string> {
+  const message: Record<string, Eip712Value> = {};
+  const fields: Array<{ name: string; type: string }> = [];
+  for (const [key, value] of Object.entries(params)) {
+    const capKey = capitalizeKey(key);
+    message[capKey] = value;
+    fields.push({ name: capKey, type: inferEip712Type(value) });
+  }
+  const domain = { name: 'AsterSignTransaction', version: '1', chainId: 56, verifyingContract: '0x0000000000000000000000000000000000000000' };
+  return signer.signTypedData(domain, { [primaryType]: fields }, message);
+}
+
+/**
+ * One-time approval letting `userAddress`'s OWN dedicated Aster Pro API
+ * agent (see getMyAsterAgentAddress — a fresh keypair per user, held
+ * server-side in server/lib/agent-keystore.js) read and trade on their
+ * behalf. Signed by the user's OWN wallet client-side — this call is
+ * PUBLIC/unauthenticated on Aster's side and never touches any of our
+ * server's keys. canWithdraw is hardcoded false: an agent should never be
+ * able to move funds out of a user's account, only trade with them.
+ *
+ * Calls POST /fapi/v3/approveAgent — the Aster Code builder-program endpoint
+ * (asterdex.github.io/aster-api-website/asterCode/endpoints/) — NOT the
+ * older /fapi/v3/registerAndApproveAgent from the general V3 docs, which
+ * this used to call: registerAndApproveAgent doesn't document (and, tested,
+ * doesn't honor) the builder/maxFeeRate/builderName fields needed to
+ * collect a per-trade fee.
+ */
+export async function approveAsterAgent(userAddress: string, agentAddress: string, signer: Signer): Promise<{ ok: boolean; message: string }> {
   const nonce = Date.now() * 1000; // microseconds, per Aster's V3 nonce convention
   const expired = Date.now() + 365 * 24 * 60 * 60 * 1000; // 1 year validity
-  const chainId = 56; // BSC — required for EVM addresses per Aster's docs, NOT the usual 1666 domain chainId used elsewhere
-  const fields = {
-    user: userAddress,
-    nonce: String(nonce),
+  const params: Record<string, Eip712Value> = {
     agentName: 'RDOONE',
-    agentAddress: ASTER_AGENT_ADDRESS,
-    expired: String(expired),
-    signatureChainId: String(chainId),
-    canSpotTrade: 'false',
-    canPerpTrade: 'true',
-    canWithdraw: 'false',
+    agentAddress,
     ipWhitelist: '',
+    expired,
+    canSpotTrade: false,
+    canPerpTrade: true,
+    canWithdraw: false,
     builder: ASTER_BUILDER_ADDRESS,
     maxFeeRate: ASTER_BUILDER_MAX_FEE_RATE,
     builderName: 'RDOONE',
+    user: userAddress,
+    nonce,
   };
-  const msg = new URLSearchParams(fields).toString();
-
-  const domain = { name: 'AsterSignTransaction', version: '1', chainId, verifyingContract: '0x0000000000000000000000000000000000000000' };
-  const types = { Message: [{ name: 'msg', type: 'string' }] };
-
   try {
-    const signature = await signer.signTypedData(domain, types, { msg });
-    const res = await fetch('/api/aster-register-agent', {
+    const signature = await signAsterManagementAction(signer, 'ApproveAgent', params);
+    const res = await fetch('/api/aster-approve-agent', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...fields, signature }),
+      body: JSON.stringify({ ...params, signature }),
     });
     const data = await res.json();
     return { ok: data.code === 200, message: data.msg ?? 'Unknown response' };
@@ -361,19 +437,50 @@ export async function approveAsterAgent(userAddress: string, signer: Signer): Pr
   }
 }
 
+export interface AsterAgentApproval {
+  agentAddress: string;
+  agentName: string;
+  canPerpTrade: boolean;
+  canSpotTrade: boolean;
+  canWithdraw: boolean;
+  expired: number;
+}
+
+/** GET /fapi/v3/agent — the list of agents `userAddress` has approved.
+ *  Signed server-side by that same user's own dedicated agent key (the
+ *  backend resolves which key from this `user` query param — see
+ *  server/routes/proxy.js's requireUserAgent) — this lookup endpoint DOES
+ *  accept and honor an explicit `user` param, unlike accountWithJoinMargin/
+ *  income/etc (see getAsterAccount's doc comment for the endpoints that
+ *  don't). */
+export async function getAsterAgents(userAddress: string): Promise<AsterAgentApproval[]> {
+  try {
+    const res = await fetch(`/api/aster-signed/fapi/v3/agent?user=${encodeURIComponent(userAddress)}`);
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
+
 /**
- * Best-effort check of whether `userAddress` has already approved our shared
- * agent. Aster has NO dedicated "is this agent approved?" endpoint — confirmed
- * against the V3 docs, whose only agent endpoint is registerAndApproveAgent —
- * so we infer it by probing a cheap signed read: if accountWithJoinMargin
- * returns a real snapshot, our agent can sign for this user (→ approved); a
- * null result means either not-approved or a transient error, which callers
- * treat the same way (offer approval). Reuses the same call the portfolio
- * loads anyway, so it adds no extra request weight when wired into that path.
+ * Is `userAddress`'s own dedicated agent (`agentAddress`, from
+ * getMyAsterAgentAddress) currently approved and not expired — via GET
+ * /fapi/v3/agent, the documented, per-user-scoped way to check this.
+ * Previously this was inferred by probing accountWithJoinMargin and
+ * treating a non-null response as "approved" — which conflated two
+ * different things, since accountWithJoinMargin doesn't take a `user`
+ * param at all and would return SOME account as long as the (then shared)
+ * agent had a live mapping to anyone.
  */
-export async function isAsterAgentApproved(userAddress: string): Promise<boolean> {
-  const account = await getAsterAccount(userAddress);
-  return account !== null;
+export async function isAsterAgentApproved(userAddress: string, agentAddress: string): Promise<boolean> {
+  const agents = await getAsterAgents(userAddress);
+  const now = Date.now();
+  return agents.some(a =>
+    a.agentAddress?.toLowerCase() === agentAddress.toLowerCase() &&
+    a.canPerpTrade &&
+    (!a.expired || a.expired > now),
+  );
 }
 
 export interface AsterBuilderApproval {
@@ -388,7 +495,7 @@ export interface AsterBuilderApproval {
  *  every other /aster-signed/* read). */
 export async function getAsterBuilders(userAddress: string): Promise<AsterBuilderApproval[]> {
   try {
-    const res = await fetch(`/api/aster-signed/fapi/v3/builder?user=${userAddress}`);
+    const res = await fetch(`/api/aster-signed/fapi/v3/builder?user=${encodeURIComponent(userAddress)}`);
     const data = await res.json();
     return Array.isArray(data) ? data : [];
   } catch {
@@ -416,20 +523,28 @@ export async function isAsterBuilderApproved(userAddress: string): Promise<boole
  * the caller can lazily do wallet-side prep — switching the wallet to BSC,
  * building the ethers signer — ONLY on the branch that actually needs to
  * sign, never when already fully approved.
+ *
+ * Always resolves `userAddress`'s own dedicated agent address first (a
+ * cheap Redis-backed lookup, never a wallet prompt) — needed to know what
+ * to check approval against, and what to sign if approval is still needed.
  */
 export async function ensureAsterAgentApproved(
   userAddress: string,
   getSigner: () => Promise<Signer>,
 ): Promise<{ ok: boolean; alreadyApproved: boolean; message: string }> {
+  const agentAddress = await getMyAsterAgentAddress(userAddress);
+  if (!agentAddress) {
+    return { ok: false, alreadyApproved: false, message: 'Could not allocate a trading agent — try again' };
+  }
   const [agentOk, builderOk] = await Promise.all([
-    isAsterAgentApproved(userAddress),
+    isAsterAgentApproved(userAddress, agentAddress),
     isAsterBuilderApproved(userAddress),
   ]);
   if (agentOk && builderOk) {
     return { ok: true, alreadyApproved: true, message: 'Agent already approved' };
   }
   const signer = await getSigner();
-  const result = await approveAsterAgent(userAddress, signer);
+  const result = await approveAsterAgent(userAddress, agentAddress, signer);
   return { ok: result.ok, alreadyApproved: false, message: result.message };
 }
 

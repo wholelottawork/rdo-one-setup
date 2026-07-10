@@ -1,6 +1,7 @@
 import { withCache } from "../lib/cache.js";
 import { fetchJSON, fetchText } from "../lib/fetcher.js";
-import { signAsterV3Request } from "../lib/aster-auth.js";
+import { signAsterV3Request, signAsterV3RequestAs } from "../lib/aster-auth.js";
+import { getOrCreateUserAgent } from "../lib/agent-keystore.js";
 
 export default async function proxyRoutes(fastify) {
   // ── Hyperliquid REST API (POST) ────────────────────────────────────────────
@@ -152,16 +153,42 @@ export default async function proxyRoutes(fastify) {
 
   // ── Aster Pro API V3 — signed endpoints (TRADE/USER_DATA/USER_STREAM) ──────
   // Never cached: each call needs a fresh, strictly-increasing nonce, and the
-  // response is account-specific. See server/lib/aster-auth.js for the
-  // EIP-712 signing itself.
-  fastify.get("/aster-signed/*", async (req) => {
+  // response is account-specific.
+  //
+  // Every one of these is signed with the CALLING USER's own dedicated agent
+  // wallet (server/lib/agent-keystore.js), not a shared one — Aster resolves
+  // account identity from the signer alone on most of these endpoints, so a
+  // single shared signer can only ever act as one user at a time (see
+  // lib/aster.ts's ASTER_BUILDER_ADDRESS comment for the full writeup).
+  // `user` is therefore required on every call here, not just informational.
+  async function requireUserAgent(reply, userAddress) {
+    if (!userAddress || typeof userAddress !== "string") {
+      reply.code(400).send({ error: "user required" });
+      return null;
+    }
+    return getOrCreateUserAgent(fastify.redis, userAddress);
+  }
+
+  fastify.get("/aster-signed/*", async (req, reply) => {
     const path = req.params["*"];
-    const signedQuery = await signAsterV3Request(req.query);
+    const wallet = await requireUserAgent(reply, req.query.user);
+    if (!wallet) return;
+    const signedQuery = await signAsterV3RequestAs(wallet, req.query);
     const url = `https://fapi.asterdex.com/${path}?${signedQuery}`;
 
     return fetchJSON(url, {
       headers: { "Content-Type": "application/x-www-form-urlencoded", ...ASTER_HEADERS },
     });
+  });
+
+  // Returns (creating on first call) the address of the caller's own
+  // dedicated Aster agent — the frontend needs this BEFORE it can sign
+  // approveAgent, since agentAddress must name that specific per-user
+  // signer, not a fixed constant. Never returns the private key.
+  fastify.get("/aster-agent-address", async (req, reply) => {
+    const wallet = await requireUserAgent(reply, req.query.user);
+    if (!wallet) return;
+    return { agentAddress: wallet.address };
   });
 
   // Leverage brackets are exchange risk config, not account-specific data —
@@ -179,9 +206,11 @@ export default async function proxyRoutes(fastify) {
     });
   });
 
-  fastify.post("/aster-signed/*", async (req) => {
+  fastify.post("/aster-signed/*", async (req, reply) => {
     const path = req.params["*"];
-    const signedQuery = await signAsterV3Request(req.body || {});
+    const wallet = await requireUserAgent(reply, (req.body || {}).user);
+    if (!wallet) return;
+    const signedQuery = await signAsterV3RequestAs(wallet, req.body || {});
     const url = `https://fapi.asterdex.com/${path}`;
 
     return fetchJSON(url, {
@@ -194,9 +223,11 @@ export default async function proxyRoutes(fastify) {
   // PUT/DELETE variants of the same signed passthrough — needed for the
   // listenKey user-data-stream lifecycle (PUT to keepalive, DELETE to
   // close), which are otherwise identical USER_STREAM-auth signed calls.
-  fastify.put("/aster-signed/*", async (req) => {
+  fastify.put("/aster-signed/*", async (req, reply) => {
     const path = req.params["*"];
-    const signedQuery = await signAsterV3Request(req.body || {});
+    const wallet = await requireUserAgent(reply, (req.body || {}).user);
+    if (!wallet) return;
+    const signedQuery = await signAsterV3RequestAs(wallet, req.body || {});
     const url = `https://fapi.asterdex.com/${path}`;
 
     return fetchJSON(url, {
@@ -206,9 +237,11 @@ export default async function proxyRoutes(fastify) {
     });
   });
 
-  fastify.delete("/aster-signed/*", async (req) => {
+  fastify.delete("/aster-signed/*", async (req, reply) => {
     const path = req.params["*"];
-    const signedQuery = await signAsterV3Request(req.body || {});
+    const wallet = await requireUserAgent(reply, (req.body || {}).user);
+    if (!wallet) return;
+    const signedQuery = await signAsterV3RequestAs(wallet, req.body || {});
     const url = `https://fapi.asterdex.com/${path}`;
 
     return fetchJSON(url, {
@@ -218,19 +251,23 @@ export default async function proxyRoutes(fastify) {
     });
   });
 
-  // registerAndApproveAgent is PUBLIC (unauthenticated) and signed by the
-  // END USER's own wallet client-side, not by our agent — this route never
-  // touches ASTER_SIGNER_PRIVATE_KEY, it's a plain form-urlencoded
-  // passthrough carrying whatever signature the browser already produced.
+  // approveAgent (Aster Code builder-program endpoint) is PUBLIC
+  // (unauthenticated) and signed by the END USER's own wallet client-side,
+  // not by our agent — this route never touches ASTER_SIGNER_PRIVATE_KEY,
+  // it's a plain form-urlencoded passthrough carrying whatever signature
+  // the browser already produced. NOT registerAndApproveAgent (the older,
+  // general-V3-docs endpoint this used to call) — that one doesn't honor
+  // the builder/maxFeeRate/builderName fields the frontend now signs (see
+  // lib/aster.ts's approveAsterAgent doc comment).
   //
   // Uses a raw fetch (not the shared fetchJSON helper) because fetchJSON
   // throws away the response body on non-2xx status, replacing it with a
   // generic "HTTP 400" — Aster always returns a real {code, msg} body even
   // on failure (e.g. "Signature check failed"), and the frontend needs that
   // actual message, not a swallowed one.
-  fastify.post("/aster-register-agent", async (req, reply) => {
+  fastify.post("/aster-approve-agent", async (req, reply) => {
     const body = new URLSearchParams(req.body || {}).toString();
-    const res = await fetch("https://fapi.asterdex.com/fapi/v3/registerAndApproveAgent", {
+    const res = await fetch("https://fapi.asterdex.com/fapi/v3/approveAgent", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded", ...ASTER_HEADERS },
       body,
