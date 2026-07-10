@@ -1,12 +1,16 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import './subpage.css';
+import { WalletProvider } from '@/lib/wallet';
 
 export const metadata: Metadata = {
   title: 'RDO ONE — Perpetuals Terminal',
   description: 'Dual-exchange perpetuals terminal — BASIC (Hyperliquid) + EXTRA (Aster DEX)',
 };
 
+// WalletProvider mounts once here, so every route (terminal, markets, news,
+// portfolio, transfer) shares one wallet Context instance via real React
+// state across client-side navigations — not a per-page reconnect.
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
@@ -18,7 +22,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           rel="stylesheet"
         />
       </head>
-      <body>{children}</body>
+      <body>
+        <WalletProvider>{children}</WalletProvider>
+      </body>
     </html>
   );
 }

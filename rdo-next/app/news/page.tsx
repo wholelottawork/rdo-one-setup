@@ -1,5 +1,6 @@
 'use client';
 import { useEffect } from 'react';
+import { SiteNav } from '@/components/SiteNav';
 
 const PAGE_CSS = `
 main{max-width:1200px;margin:0 auto;padding:0 24px 40px;padding-top:calc(40px + 8px)}
@@ -346,29 +347,8 @@ export default function NewsPage() {
     buildFilters();
     load();
 
-    import('@/lib/i18n').then(({ applyTranslations, setLang, getLang }) => {
+    import('@/lib/i18n').then(({ applyTranslations }) => {
       applyTranslations();
-      const dd = document.getElementById('langDropdown');
-      const langBtn = document.getElementById('langBtn');
-      if (langBtn) langBtn.addEventListener('click', () => {
-        if (dd) dd.style.display = dd.style.display === 'none' ? '' : 'none';
-      });
-      dd?.querySelectorAll('.lang-option').forEach(b => {
-        b.addEventListener('click', () => {
-          setLang((b as HTMLElement).dataset.lang || '');
-          if (dd) dd.style.display = 'none';
-          updateLangHighlight();
-        });
-      });
-      document.addEventListener('click', e => {
-        if (!(e.target as Element).closest('.lang-wrap') && dd) dd.style.display = 'none';
-      });
-      function updateLangHighlight() {
-        document.querySelectorAll('.lang-option').forEach(b => {
-          (b as HTMLElement).style.color = (b as HTMLElement).dataset.lang === getLang() ? 'var(--accent,#50d2c1)' : '';
-        });
-      }
-      updateLangHighlight();
     });
   }, []);
 
@@ -376,28 +356,7 @@ export default function NewsPage() {
     <>
       <style dangerouslySetInnerHTML={{__html: PAGE_CSS}} />
 
-      <nav id="rdo-nav">
-        <div className="nav-logo">RDO<span>ONE</span></div>
-        <div className="nav-div" />
-        <a href="/" data-i18n="trade">Trade</a>
-        <a href="/markets" data-i18n="markets">Markets</a>
-        <a href="/news" className="active" data-i18n="news">News</a>
-        <a href="/portfolio" data-i18n="portfolio">Portfolio</a>
-        <a href="/transfer" data-i18n="transfer">Transfer</a>
-        <div style={{marginLeft:'auto'}} />
-        <div className="lang-wrap">
-          <button className="lang-btn" id="langBtn" aria-label="Language">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10"/><ellipse cx="12" cy="12" rx="4" ry="10"/><path d="M2 12h20"/>
-            </svg>
-          </button>
-          <div className="lang-dropdown" id="langDropdown">
-            <button className="lang-option" data-lang="en">English</button>
-            <button className="lang-option" data-lang="ru">Русский</button>
-            <button className="lang-option" data-lang="zh">中文</button>
-          </div>
-        </div>
-      </nav>
+      <SiteNav activePage="news" />
 
       <main>
         <div className="page-hdr">

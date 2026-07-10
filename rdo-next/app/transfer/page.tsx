@@ -1,5 +1,7 @@
 'use client';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
+import { SiteNav } from '@/components/SiteNav';
+import { useWallet, getEVMProvider } from '@/lib/wallet';
 
 const PAGE_CSS = `
 main{max-width:600px;margin:0 auto;padding:0 24px 60px;padding-top:calc(40px + 8px)}
@@ -37,6 +39,20 @@ main{max-width:600px;margin:0 auto;padding:0 24px 60px;padding-top:calc(40px + 8
 `;
 
 export default function TransferPage() {
+  const { evmAddress } = useWallet();
+  const evmAddressRef = useRef(evmAddress);
+  evmAddressRef.current = evmAddress;
+  // Bridges the shared wallet Context into this page's vanilla-DOM effect
+  // closure below — onConnected (defined inside that effect) does the
+  // actual UI update, this just lets a SEPARATE effect (reacting to
+  // evmAddress changes, e.g. connecting from the nav after this page is
+  // already mounted) invoke it without re-running the whole one-time setup.
+  const onConnectedRef = useRef<((addr: string) => void) | null>(null);
+
+  useEffect(() => {
+    if (evmAddress) onConnectedRef.current?.(evmAddress);
+  }, [evmAddress]);
+
   useEffect(() => {
     const CHAINS = [
       {id:'42161', name:'Arbitrum', tokens:[
@@ -93,7 +109,6 @@ export default function TransferPage() {
 
     let wdSrc    = 'hl';
     let btwDir   = 'hl-to-aster';
-    let evmAddr: string | null  = null;
     let hlEquity = 0;
     let curQuote: any  = null;
     let qTimer: any   = null;
@@ -109,31 +124,25 @@ export default function TransferPage() {
       });
     }
 
-    function getProv() { return (window as any).phantom?.ethereum ?? (window as any).ethereum ?? null; }
+    function getProv() { return getEVMProvider(); }
 
-    async function autoConnectEVM() {
-      const p = getProv(); if (!p) return;
-      try { const a = await p.request({method:'eth_accounts'}); if (a?.[0]) onConnected(a[0]); } catch {}
-    }
-
+    // Connection itself now lives in the nav (SiteNav / lib/wallet's
+    // WalletProvider) — this just reads whatever it already resolved via
+    // evmAddressRef, rather than prompting its own eth_requestAccounts.
     async function requireEVM() {
-      const p = getProv();
-      if (!p) throw new Error('No EVM wallet detected. Install MetaMask or Phantom.');
-      let a = await p.request({method:'eth_accounts'});
-      if (!a?.[0]) a = await p.request({method:'eth_requestAccounts'});
-      if (!a?.[0]) throw new Error('Wallet not connected');
-      if (!evmAddr) onConnected(a[0]);
-      return a[0] as string;
+      const addr = evmAddressRef.current;
+      if (!addr) throw new Error('Connect your wallet from the top nav first.');
+      return addr;
     }
 
     function onConnected(addr: string) {
-      evmAddr = addr;
       const s = addr.slice(0,8) + '…' + addr.slice(-6);
       const wdDest = el('wd-dest') as HTMLInputElement | null;
       if (wdDest) wdDest.placeholder = addr + ' (connected)';
       set('wd-bal', 'Connected: ' + s);
       loadHLEquity(addr);
     }
+    onConnectedRef.current = onConnected;
 
     async function loadHLEquity(addr: string) {
       try {
@@ -166,7 +175,7 @@ export default function TransferPage() {
       if (wdSrc === 'hl') {
         set('wd-bal', a && hlEquity
           ? `Balance: $${fmt(hlEquity)} USDC  ·  After: $${fmt(Math.max(0, hlEquity - a))}`
-          : evmAddr ? `Balance: $${fmt(hlEquity)} USDC` : 'Connect wallet to see balance');
+          : evmAddressRef.current ? `Balance: $${fmt(hlEquity)} USDC` : 'Connect wallet to see balance');
       }
     }
 
@@ -359,14 +368,14 @@ export default function TransferPage() {
       const toToken   = toTokenEl?.value   || '';
       const fromDec   = selDec('from-token');
       if (!amt || !dest) return;
-      if (!evmAddr) { showSt('send-st', 'err', 'Connect your wallet first'); return; }
+      if (!evmAddressRef.current) { showSt('send-st', 'err', 'Connect your wallet from the top nav first'); return; }
       const sqw = el('send-quote-wrap'); if (sqw) sqw.style.display = '';
       const qcard = el('send-qcard'); if (qcard) qcard.className = 'quote-card loading';
       const skel = el('send-skel'); if (skel) skel.style.display = '';
       const qbody = el('send-qbody'); if (qbody) qbody.style.display = 'none';
       const fromAmount = BigInt(Math.round(amt * 10 ** fromDec)).toString();
       try {
-        const q = await lifiQuote(fromChain, toChain, fromToken, toToken, fromAmount, evmAddr, dest);
+        const q = await lifiQuote(fromChain, toChain, fromToken, toToken, fromAmount, evmAddressRef.current, dest);
         curQuote = q;
         const toDec  = q.action?.toToken?.decimals ?? 18;
         const toSym  = q.action?.toToken?.symbol ?? selSym('to-token');
@@ -412,7 +421,7 @@ export default function TransferPage() {
           from:user, to:tx.to, data:tx.data,
           value: tx.value ? '0x'+BigInt(tx.value).toString(16) : '0x0',
           ...(tx.gasLimit ? {gas:'0x'+BigInt(tx.gasLimit).toString(16)} : {}),
-        }]});
+        }]}) as string;
         showSt('send-st', 'ok', `✓ Sent! Tx: ${hash.slice(0,20)}…`);
         curQuote = null;
         const sendAmt = el('send-amt') as HTMLInputElement | null;
@@ -683,7 +692,6 @@ export default function TransferPage() {
 
     // Init
     setTab('withdraw');
-    autoConnectEVM();
     fillChainSel('wd-to-chain');
     fillTokenSel('wd-to-token', '42161', 'USDC');
     updateWdConvHint();
@@ -693,29 +701,8 @@ export default function TransferPage() {
     set('send-cur-badge', selSym('from-token'));
     setDir('hl-to-aster');
 
-    import('@/lib/i18n').then(({ applyTranslations, setLang, getLang }) => {
+    import('@/lib/i18n').then(({ applyTranslations }) => {
       applyTranslations();
-      const dd = document.getElementById('langDropdown');
-      const langBtn = document.getElementById('langBtn');
-      if (langBtn) langBtn.addEventListener('click', () => {
-        if (dd) dd.style.display = dd.style.display === 'none' ? '' : 'none';
-      });
-      dd?.querySelectorAll('.lang-option').forEach(b => {
-        b.addEventListener('click', () => {
-          setLang((b as HTMLElement).dataset.lang || '');
-          if (dd) dd.style.display = 'none';
-          updateLangHighlight();
-        });
-      });
-      document.addEventListener('click', e => {
-        if (!(e.target as Element).closest('.lang-wrap') && dd) dd.style.display = 'none';
-      });
-      function updateLangHighlight() {
-        document.querySelectorAll('.lang-option').forEach(b => {
-          (b as HTMLElement).style.color = (b as HTMLElement).dataset.lang === getLang() ? 'var(--accent,#50d2c1)' : '';
-        });
-      }
-      updateLangHighlight();
     });
   }, []);
 
@@ -723,28 +710,7 @@ export default function TransferPage() {
     <>
       <style dangerouslySetInnerHTML={{__html: PAGE_CSS}} />
 
-      <nav id="rdo-nav">
-        <div className="nav-logo">RDO<span>ONE</span></div>
-        <div className="nav-div" />
-        <a href="/" data-i18n="trade">Trade</a>
-        <a href="/markets" data-i18n="markets">Markets</a>
-        <a href="/news" data-i18n="news">News</a>
-        <a href="/portfolio" data-i18n="portfolio">Portfolio</a>
-        <a href="/transfer" className="active" data-i18n="transfer">Transfer</a>
-        <div style={{marginLeft:'auto'}} />
-        <div className="lang-wrap">
-          <button className="lang-btn" id="langBtn" aria-label="Language">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10"/><ellipse cx="12" cy="12" rx="4" ry="10"/><path d="M2 12h20"/>
-            </svg>
-          </button>
-          <div className="lang-dropdown" id="langDropdown">
-            <button className="lang-option" data-lang="en">English</button>
-            <button className="lang-option" data-lang="ru">Русский</button>
-            <button className="lang-option" data-lang="zh">中文</button>
-          </div>
-        </div>
-      </nav>
+      <SiteNav activePage="transfer" />
 
       <main>
         <div className="page-hdr">

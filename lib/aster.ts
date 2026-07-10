@@ -315,18 +315,22 @@ export async function getAsterOpenInterest(symbols: string[], prices: Record<str
 // Aster Code (docs.asterdex.com "Aster Code" builder program): approveAgent
 // "supports setting builder and maxFeeRate to approve the builder at the
 // same time" — riding on the same signed call as agent approval, rather than
-// a separate one, is what lets us collect a per-trade fee. Per Aster's
-// integration flow, `builder` is a FIXED business-identity address (used
-// purely for fee attribution — "must be registered on Aster, and the Aster
-// contract account must have a balance of at least 100 ASTER"), unrelated
-// to whichever per-user agent actually signs a given trade. This reuses the
-// address that used to double as this app's one shared agent
-// (ASTER_SIGNER_ADDRESS in server/.env) — it already has approval history
-// under it, and repurposing it as the fixed builder identity needs no new
-// setup. maxFeeRate is the cap the user approves (we charge at or under
-// this — see docs.asterdex.com/product/aster-perpetuals/aster-code).
+// a separate one, is what lets us collect a per-trade fee. `builder` is a
+// FIXED business-identity address (used purely for fee attribution),
+// unrelated to whichever per-user agent actually signs a given trade.
 export const ASTER_BUILDER_ADDRESS = '0xdA480541aDB8D00E4783E5180CE70D3Da52D99F9';
 export const ASTER_BUILDER_MAX_FEE_RATE = '0.0001'; // 0.01%
+
+// Confirmed live against fapi.asterdex.com: attaching `builder` to
+// ApproveAgent before ASTER_BUILDER_ADDRESS is registered fails the whole
+// call with "Builder address:... not registered in Aster" — per Aster's
+// integration flow, the builder address must be registered on
+// asterdex.com AND funded with >=100 ASTER before any ApproveAgent call
+// naming it can succeed. That's a one-time business setup step on Aster's
+// site, not something this code can do. Flip this to true once that step
+// is done — until then, agent approval (reads/trades) still works fully;
+// only fee attribution is on hold.
+const ASTER_BUILDER_REGISTERED = false;
 
 /** Fetches (creating on first call) `userAddress`'s own dedicated Aster
  *  agent address — never a private key, just the public address needed as
@@ -409,6 +413,15 @@ async function signAsterManagementAction(
 export async function approveAsterAgent(userAddress: string, agentAddress: string, signer: Signer): Promise<{ ok: boolean; message: string }> {
   const nonce = Date.now() * 1000; // microseconds, per Aster's V3 nonce convention
   const expired = Date.now() + 365 * 24 * 60 * 60 * 1000; // 1 year validity
+
+  // Field set and order match Aster's own reference implementation
+  // (github.com/jupiter-hongc/aster-code-builder-demo/docs/demo-code.md's
+  // send_by_url) verbatim, confirmed live against fapi.asterdex.com — two
+  // things neither the public docs nor the more commonly-linked demo repo
+  // (asterdex/API-demo) mention: `asterChain: 'Mainnet'` must be part of
+  // the SIGNED struct (its absence is why every approval silently failed
+  // signature verification before), and `signatureChainId` is a separate
+  // WIRE-ONLY param added after signing, not part of what's signed.
   const params: Record<string, Eip712Value> = {
     agentName: 'RDOONE',
     agentAddress,
@@ -417,9 +430,12 @@ export async function approveAsterAgent(userAddress: string, agentAddress: strin
     canSpotTrade: false,
     canPerpTrade: true,
     canWithdraw: false,
-    builder: ASTER_BUILDER_ADDRESS,
-    maxFeeRate: ASTER_BUILDER_MAX_FEE_RATE,
-    builderName: 'RDOONE',
+    ...(ASTER_BUILDER_REGISTERED ? {
+      builder: ASTER_BUILDER_ADDRESS,
+      maxFeeRate: ASTER_BUILDER_MAX_FEE_RATE,
+      builderName: 'RDOONE',
+    } : {}),
+    asterChain: 'Mainnet',
     user: userAddress,
     nonce,
   };
@@ -428,10 +444,10 @@ export async function approveAsterAgent(userAddress: string, agentAddress: strin
     const res = await fetch('/api/aster-approve-agent', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...params, signature }),
+      body: JSON.stringify({ ...params, signatureChainId: 56, signature }),
     });
     const data = await res.json();
-    return { ok: data.code === 200, message: data.msg ?? 'Unknown response' };
+    return { ok: data.code === 200, message: data.msg ?? data.error ?? 'Unknown response' };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : 'Request failed' };
   }
@@ -536,9 +552,15 @@ export async function ensureAsterAgentApproved(
   if (!agentAddress) {
     return { ok: false, alreadyApproved: false, message: 'Could not allocate a trading agent — try again' };
   }
+  // Builder approval isn't requested at all while ASTER_BUILDER_REGISTERED
+  // is false (see approveAsterAgent) — checking for it here too would mean
+  // this NEVER short-circuits (isAsterBuilderApproved can never return
+  // true for a builder we never asked the user to approve), re-prompting
+  // a signature on every single load even for an already-agent-approved
+  // user. Only require it once we're actually asking for it.
   const [agentOk, builderOk] = await Promise.all([
     isAsterAgentApproved(userAddress, agentAddress),
-    isAsterBuilderApproved(userAddress),
+    ASTER_BUILDER_REGISTERED ? isAsterBuilderApproved(userAddress) : Promise.resolve(true),
   ]);
   if (agentOk && builderOk) {
     return { ok: true, alreadyApproved: true, message: 'Agent already approved' };

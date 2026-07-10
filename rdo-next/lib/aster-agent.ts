@@ -30,20 +30,22 @@
 // Aster Code (docs.asterdex.com "Aster Code" builder program): approveAgent
 // "supports setting builder and maxFeeRate to approve the builder at the
 // same time" — riding on the same signed call as agent approval is what lets
-// us collect a per-trade fee. Per Aster's integration flow, `builder` is a
-// FIXED business-identity address (used purely for fee attribution — "must
-// be registered on Aster, and the Aster contract account must have a
-// balance of at least 100 ASTER"), unrelated to whichever per-user agent
-// actually signs a given trade. This reuses the address that used to
-// double as this app's one shared agent (ASTER_SIGNER_ADDRESS in
-// server/.env) — it already has approval history under it, and repurposing
-// it as the fixed builder identity needs no new setup.
+// us collect a per-trade fee. `builder` is a FIXED business-identity
+// address (used purely for fee attribution), unrelated to whichever
+// per-user agent actually signs a given trade.
 export const ASTER_BUILDER_ADDRESS = '0xdA480541aDB8D00E4783E5180CE70D3Da52D99F9';
 export const ASTER_BUILDER_MAX_FEE_RATE = '0.0001'; // 0.01%
 
-interface EIP1193Provider {
-  request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
-}
+// Confirmed live against fapi.asterdex.com: attaching `builder` to
+// ApproveAgent before ASTER_BUILDER_ADDRESS is registered fails the whole
+// call with "Builder address:... not registered in Aster" — per Aster's
+// integration flow, the builder address must be registered on
+// asterdex.com AND funded with >=100 ASTER before any ApproveAgent call
+// naming it can succeed. That's a one-time business setup step on Aster's
+// site, not something this code can do. Flip this to true once that step
+// is done — until then, agent approval (reads/trades) still works fully;
+// only fee attribution is on hold.
+const ASTER_BUILDER_REGISTERED = false;
 
 interface Signer {
   signTypedData: (domain: object, types: object, value: object) => Promise<string>;
@@ -219,6 +221,15 @@ async function signAsterManagementAction(
 export async function approveAsterAgent(userAddress: string, agentAddress: string, signer: Signer): Promise<{ ok: boolean; message: string }> {
   const nonce = Date.now() * 1000; // microseconds, per Aster's V3 nonce convention
   const expired = Date.now() + 365 * 24 * 60 * 60 * 1000; // 1 year validity
+
+  // Field set and order match Aster's own reference implementation
+  // (github.com/jupiter-hongc/aster-code-builder-demo/docs/demo-code.md's
+  // send_by_url) verbatim, confirmed live against fapi.asterdex.com — two
+  // things neither the public docs nor the more commonly-linked demo repo
+  // (asterdex/API-demo) mention: `asterChain: 'Mainnet'` must be part of
+  // the SIGNED struct (its absence is why every approval silently failed
+  // signature verification before), and `signatureChainId` is a separate
+  // WIRE-ONLY param added after signing, not part of what's signed.
   const params: Record<string, Eip712Value> = {
     agentName: 'RDOONE',
     agentAddress,
@@ -227,9 +238,12 @@ export async function approveAsterAgent(userAddress: string, agentAddress: strin
     canSpotTrade: false,
     canPerpTrade: true,
     canWithdraw: false,
-    builder: ASTER_BUILDER_ADDRESS,
-    maxFeeRate: ASTER_BUILDER_MAX_FEE_RATE,
-    builderName: 'RDOONE',
+    ...(ASTER_BUILDER_REGISTERED ? {
+      builder: ASTER_BUILDER_ADDRESS,
+      maxFeeRate: ASTER_BUILDER_MAX_FEE_RATE,
+      builderName: 'RDOONE',
+    } : {}),
+    asterChain: 'Mainnet',
     user: userAddress,
     nonce,
   };
@@ -239,10 +253,10 @@ export async function approveAsterAgent(userAddress: string, agentAddress: strin
     const res = await fetch('/aster-approve-agent', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...params, signature }),
+      body: JSON.stringify({ ...params, signatureChainId: 56, signature }),
     });
     const data = await res.json();
-    return { ok: data.code === 200, message: data.msg ?? 'Unknown response' };
+    return { ok: data.code === 200, message: data.msg ?? data.error ?? 'Unknown response' };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : 'Request failed' };
   }
@@ -267,9 +281,15 @@ export async function ensureAsterAgentApproved(
   if (!agentAddress) {
     return { ok: false, alreadyApproved: false, message: 'Could not allocate a trading agent — try again' };
   }
+  // Builder approval isn't requested at all while ASTER_BUILDER_REGISTERED
+  // is false (see approveAsterAgent) — checking for it here too would mean
+  // this NEVER short-circuits (isAsterBuilderApproved can never return
+  // true for a builder we never asked the user to approve), re-prompting
+  // a signature on every single load even for an already-agent-approved
+  // user. Only require it once we're actually asking for it.
   const [agentOk, builderOk] = await Promise.all([
     isAsterAgentApproved(userAddress, agentAddress),
-    isAsterBuilderApproved(userAddress),
+    ASTER_BUILDER_REGISTERED ? isAsterBuilderApproved(userAddress) : Promise.resolve(true),
   ]);
   if (agentOk && builderOk) {
     return { ok: true, alreadyApproved: true, message: 'Agent already approved' };
@@ -283,121 +303,19 @@ export async function ensureAsterAgentApproved(
   }
 }
 
-export interface EvmNetworkOption {
-  chainId: string; // hex, e.g. '0x38'
-  name: string;
-  short: string; // small badge glyph, matches this file's evm-tok-dot convention
-  color: string;
-  bg: string;
-  nativeCurrency: { name: string; symbol: string; decimals: number };
-  rpcUrls: string[];
-  blockExplorerUrls: string[];
-}
-
-// The networks this app's Aster/portfolio flow cares about — BNB Chain for
-// Aster's approval signature, Ethereum as the common default, Arbitrum for
-// the perps-deposit flow elsewhere on this page. Matches the network
-// switcher on Aster's own site (asterdex.com), which is THEIR app chrome —
-// not proof every wallet supports every entry here (see the Phantom note
-// on getEvmProviderFor below).
-export const EVM_NETWORKS: EvmNetworkOption[] = [
-  { chainId: '0x38', name: 'BNB Chain', short: 'B', color: '#F0B90B', bg: '#3a2f0a', nativeCurrency: { name: 'BNB', symbol: 'BNB', decimals: 18 }, rpcUrls: ['https://bsc-dataseed.binance.org/'], blockExplorerUrls: ['https://bscscan.com'] },
-  { chainId: '0x1', name: 'Ethereum', short: 'Ξ', color: '#627EEA', bg: '#1b2429', nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 }, rpcUrls: ['https://eth.llamarpc.com'], blockExplorerUrls: ['https://etherscan.io'] },
-  { chainId: '0xa4b1', name: 'Arbitrum', short: 'A', color: '#28A0F0', bg: '#0f2a3d', nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 }, rpcUrls: ['https://arb1.arbitrum.io/rpc'], blockExplorerUrls: ['https://arbiscan.io'] },
-];
-
-/**
- * Picks an EVM provider that can actually switch to `chainId` for
- * `expectedAddress` — needed because Phantom's EVM mode has a hardcoded
- * chain allowlist (Ethereum, Base, Polygon, Monad testnet — confirmed
- * against Phantom's own docs/help center) that does NOT include BNB Chain
- * or Arbitrum. wallet_switchEthereumChain AND wallet_addEthereumChain both
- * fail for Phantom on those; there's no request payload that works around
- * it, it's a capability gap, not a formatting bug. If Phantom is the active
- * wallet and another injected wallet (e.g. MetaMask) already has the SAME
- * address connected, prefer that one instead — checked via eth_accounts,
- * which never prompts, so this never surprises the user with an unexpected
- * connection request. Falls back to whatever's available (typically
- * Phantom) if no matching alternative exists, so the caller can still
- * surface a clear, specific error instead of a silent failure. Ethereum
- * mainnet is one of the few chains Phantom natively supports, so it's
- * exempted from the swap.
- */
-export async function getEvmProviderFor(expectedAddress: string, chainId: string): Promise<EIP1193Provider | null> {
-  if (typeof window === 'undefined') return null;
-  const w = window as unknown as { ethereum?: (EIP1193Provider & { providers?: EIP1193Provider[]; isPhantom?: boolean }); phantom?: { ethereum?: EIP1193Provider & { isPhantom?: boolean } } };
-  const candidates: (EIP1193Provider & { isPhantom?: boolean })[] = [];
-  if (Array.isArray(w.ethereum?.providers)) candidates.push(...(w.ethereum.providers as (EIP1193Provider & { isPhantom?: boolean })[]));
-  else if (w.ethereum) candidates.push(w.ethereum);
-  if (w.phantom?.ethereum && !candidates.includes(w.phantom.ethereum)) candidates.push(w.phantom.ethereum);
-
-  if (chainId === '0x1') return candidates[0] ?? null;
-
-  const nonPhantom = candidates.filter((p) => !p.isPhantom);
-  for (const p of nonPhantom) {
-    try {
-      const accounts = (await p.request({ method: 'eth_accounts' })) as string[];
-      if (accounts?.some((a) => a.toLowerCase() === expectedAddress.toLowerCase())) return p;
-    } catch { /* try the next candidate */ }
-  }
-  return candidates[0] ?? null;
-}
-
-/** Switch (or add, if not present) `provider` to `network` — the shared
- *  switch/add/error-message logic behind both the network switcher UI and
- *  ensureBscNetwork below. */
-export async function switchEvmNetwork(provider: EIP1193Provider, network: EvmNetworkOption): Promise<{ ok: boolean; reason?: string }> {
-  const isPhantom = (provider as { isPhantom?: boolean })?.isPhantom;
-  const unsupportedMsg = isPhantom
-    ? `Phantom doesn't support ${network.name} — connect with MetaMask (or another EVM wallet) instead.`
-    : `Your wallet couldn't switch to ${network.name}.`;
-  try {
-    await provider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: network.chainId }] });
-    return { ok: true };
-  } catch (e) {
-    const code = (e as { code?: number })?.code;
-    if (code === 4902) {
-      try {
-        await provider.request({
-          method: 'wallet_addEthereumChain',
-          params: [{
-            chainId: network.chainId,
-            chainName: network.name,
-            nativeCurrency: network.nativeCurrency,
-            rpcUrls: network.rpcUrls,
-            blockExplorerUrls: network.blockExplorerUrls,
-          }],
-        });
-        return { ok: true };
-      } catch {
-        return { ok: false, reason: unsupportedMsg };
-      }
-    }
-    return { ok: false, reason: unsupportedMsg };
-  }
-}
-
-/** Thin BSC-specific wrapper kept for the existing approval-flow call site
- *  — see switchEvmNetwork/EVM_NETWORKS above for the general version this
- *  now delegates to. */
-export async function getBscCapableProvider(expectedAddress: string): Promise<EIP1193Provider | null> {
-  return getEvmProviderFor(expectedAddress, '0x38');
-}
-
-/**
- * Aster's approveAgent signature is hardcoded to chainId 56 (BSC) — some
- * wallets reject eth_signTypedData_v4 if that domain chainId doesn't match
- * the wallet's active network, so switch (or add, if not present) before
- * ever requesting the signature.
- *
- * NOTE: this fails unconditionally for Phantom (see getEvmProviderFor's
- * doc comment) — the caller should route through getBscCapableProvider()
- * first so a same-address MetaMask (or similar) gets used instead when
- * Phantom is what's connected.
- */
-export async function ensureBscNetwork(provider: EIP1193Provider): Promise<{ ok: boolean; reason?: string }> {
-  return switchEvmNetwork(provider, EVM_NETWORKS[0]);
-}
+// Network-switching (EVM_NETWORKS, getEvmProviderFor, switchEvmNetwork,
+// getBscCapableProvider, ensureBscNetwork) lives in ./wallet — it's a
+// nav-level concern shared by the wallet connect button, not Aster-
+// specific — re-exported here so existing imports from this file keep
+// working.
+export {
+  EVM_NETWORKS,
+  getEvmProviderFor,
+  switchEvmNetwork,
+  getBscCapableProvider,
+  ensureBscNetwork,
+  type EvmNetworkOption,
+} from './wallet';
 
 export interface AsterIncomeEntry {
   symbol: string;

@@ -159,7 +159,10 @@ export function getLang(): string { return currentLang; }
 export function setLang(lang: string): void {
   if (!T[lang]) return;
   currentLang = lang;
-  if (typeof window !== 'undefined') localStorage.setItem('rdo-lang', lang);
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('rdo-lang', lang);
+    window.dispatchEvent(new Event('rdo:langchange'));
+  }
   applyTranslations();
 }
 

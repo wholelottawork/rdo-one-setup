@@ -1,17 +1,29 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
+import { useWallet, getEVMProvider } from '@/lib/wallet';
+import { WalletControls } from './WalletControls';
 
 export default function TradingTerminal() {
+  // Wallet connect/disconnect now lives in the shared nav (SiteNav /
+  // lib/wallet's WalletProvider) — no more terminal-local wallet
+  // modal or module-singleton. Bridged into the vanilla-DOM effect below
+  // via refs, same pattern as the portfolio/transfer page retrofits.
+  const { evmAddress, connect } = useWallet();
+  const evmAddressRef = useRef(evmAddress);
+  evmAddressRef.current = evmAddress;
+  const connectRef = useRef(connect);
+  connectRef.current = connect;
+  const onEvmConnectedRef = useRef<((addr: string) => void) | null>(null);
+
+  useEffect(() => {
+    if (evmAddress) onEvmConnectedRef.current?.(evmAddress);
+  }, [evmAddress]);
+
   useEffect(() => {
     // Dynamically import all modules after mount (browser-only)
     async function init() {
       const { showToast }       = await import('@/lib/toast');
-      const {
-        connectWallet, connectExtension, connectAntarctic,
-        closeWalletModal, closeWalletModalForce,
-        getEVMAddress, getEVMProvider,
-      }                         = await import('@/lib/wallet');
       const {
         loadBalance, getPositions, getMarketPrice,
         getCandles, openPosition, closePosition, cancelOrder,
@@ -20,7 +32,12 @@ export default function TradingTerminal() {
         getL2Book, startBookStream,
       }                         = await import('@/lib/trading');
       const { initChart, setCandles, pushTick } = await import('@/lib/chart');
-      const { t, setLang, getLang, applyTranslations } = await import('@/lib/i18n');
+      const { t, applyTranslations } = await import('@/lib/i18n');
+
+      // Shim matching the old lib/wallet.ts module-singleton's synchronous
+      // getter shape — keeps every getEVMAddress() call site below
+      // unchanged, now backed by the shared Context via evmAddressRef.
+      function getEVMAddress() { return evmAddressRef.current; }
 
       const HL_MARKETS = [
         'BTC','ETH','SOL','BNB','XRP','ADA','AVAX','DOGE','LINK','DOT',
@@ -731,18 +748,31 @@ export default function TradingTerminal() {
       }
 
       async function connectWalletFn() {
-        const addr = await connectWallet();
-        if (addr) {
-          const btn = document.getElementById('tradeBtn');
-          if (btn) {
-            btn.textContent = (isBuy ? 'Buy / Long ' : 'Sell / Short ') + currentMarket;
-            btn.className   = 'tp-action-btn ' + (isBuy ? 'tp-buy-bg' : 'tp-sell-bg');
-          }
-          await refreshPositions(addr);
-          setInterval(() => refreshPositions(addr), 15000);
-        }
-        return addr;
+        await connectRef.current();
       }
+
+      // Fires whenever evmAddress goes from unset to set — covers both
+      // "clicked Connect on this page" and "already connected via the nav
+      // on a different page, then navigated here." positionsPollStarted
+      // guards against starting a duplicate polling interval if this fires
+      // more than once (e.g. React StrictMode's double-invoke in dev).
+      let positionsPollStarted = false;
+      async function onEvmConnected(addr: string) {
+        // WalletDropdown (React-driven, off useWallet() directly) now owns
+        // the header wallet button's display — no imperative DOM update
+        // needed here for it anymore.
+        const btn = document.getElementById('tradeBtn');
+        if (btn) {
+          btn.textContent = (isBuy ? 'Buy / Long ' : 'Sell / Short ') + currentMarket;
+          btn.className   = 'tp-action-btn ' + (isBuy ? 'tp-buy-bg' : 'tp-sell-bg');
+        }
+        await refreshPositions(addr);
+        if (!positionsPollStarted) {
+          positionsPollStarted = true;
+          setInterval(() => { if (evmAddressRef.current) refreshPositions(evmAddressRef.current); }, 15000);
+        }
+      }
+      onEvmConnectedRef.current = onEvmConnected;
 
       // ── clock ──────────────────────────────────────────────────
       function startClock() {
@@ -760,42 +790,19 @@ export default function TradingTerminal() {
       }
 
       // ── language ───────────────────────────────────────────────
+      // The picker itself is now the shared WalletControls component
+      // (React-driven, off lib/i18n directly) — this just keeps this
+      // page's own non-data-i18n content in sync: the market list's
+      // column headers are baked into innerHTML strings at render time
+      // (see renderMarketList), so applyTranslations()'s generic
+      // [data-i18n] re-scan can't reach them — they need an explicit
+      // re-render, same as the vanilla lang picker used to trigger.
       function initLang() {
         applyTranslations();
-        const dd  = document.getElementById('langDropdown');
-        const bdp = document.getElementById('langBackdrop');
-        if (!dd) return;
-        highlightLangOption();
-        const closeLang = () => { dd.classList.add('hidden'); bdp?.classList.add('hidden'); };
-        dd.querySelectorAll('.lang-option').forEach(btn => {
-          btn.addEventListener('click', () => {
-            setLang((btn as HTMLElement).dataset.lang!);
-            highlightLangOption();
-            closeLang();
-            const list = document.getElementById('mktList');
-            const markets = currentMode === 'aster' ? ASTER_MARKETS : HL_MARKETS;
-            if (list) renderMarketList(markets, list);
-          });
-        });
-        bdp?.addEventListener('click', closeLang);
-        document.addEventListener('click', e => {
-          if (!e.target) return;
-          if (!(e.target as HTMLElement).closest('.lang-wrap') && e.target !== bdp) closeLang();
-        });
-      }
-
-      function toggleLangDropdown() {
-        const dd  = document.getElementById('langDropdown');
-        const bdp = document.getElementById('langBackdrop');
-        const isHidden = dd?.classList.contains('hidden');
-        dd?.classList.toggle('hidden');
-        bdp?.classList.toggle('hidden', !isHidden);
-      }
-
-      function highlightLangOption() {
-        const lang = getLang();
-        document.querySelectorAll('.lang-option').forEach(b => {
-          b.classList.toggle('active', (b as HTMLElement).dataset.lang === lang);
+        window.addEventListener('rdo:langchange', () => {
+          const list = document.getElementById('mktList');
+          const markets = currentMode === 'aster' ? ASTER_MARKETS : HL_MARKETS;
+          if (list) renderMarketList(markets, list);
         });
       }
 
@@ -1096,7 +1103,6 @@ export default function TradingTerminal() {
           if (e && e.target !== document.getElementById('depositModal')) return;
           document.getElementById('depositModal')?.classList.add('hidden');
         },
-        connectExtension, connectAntarctic, closeWalletModal, closeWalletModalForce,
         openOnramp()  { document.getElementById('onrampModal')?.classList.remove('hidden'); },
         closeOnramp(e?: Event) {
           if (e && e.target !== document.getElementById('onrampModal')) return;
@@ -1110,7 +1116,6 @@ export default function TradingTerminal() {
           if (feed) feed.innerHTML = '<div class="xt-empty">X integration coming soon.</div>';
         },
         toggleOrderBook() { document.getElementById('obMini')?.classList.toggle('collapsed'); },
-        toggleLang: toggleLangDropdown,
         toggleModeHelp,
       };
 
@@ -1210,18 +1215,7 @@ export default function TradingTerminal() {
           <span id="balanceDisplay" className="hdr-balance hidden">$0.00</span>
           <button id="depositBtn" className="deposit-btn hidden" onClick={() => (window as any).rdo?.openDeposit()} data-i18n="deposit">DEPOSIT</button>
           <button id="rubBtn" className="rub-btn hidden" onClick={() => (window as any).rdo?.openOnramp()}>₽ RUB</button>
-          <div className="lang-wrap">
-            <button className="lang-btn" id="langBtn" onClick={() => (window as any).rdo?.toggleLang()} aria-label="Language">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><ellipse cx="12" cy="12" rx="4" ry="10"/><path d="M2 12h20"/></svg>
-            </button>
-            <div className="lang-dropdown hidden" id="langDropdown">
-              <button className="lang-option" data-lang="en">English</button>
-              <button className="lang-option" data-lang="ru">Русский</button>
-              <button className="lang-option" data-lang="zh">中文</button>
-            </div>
-          </div>
-          <div className="mode-backdrop hidden" id="langBackdrop"></div>
-          <button id="walletBtn" className="wallet-btn" onClick={() => (window as any).rdo?.connectWallet()} data-i18n="connect">Connect</button>
+          <WalletControls />
         </div>
       </header>
 
@@ -1461,28 +1455,6 @@ export default function TradingTerminal() {
             <div className="deposit-route"><span className="deposit-route-from">Solana (SOL / USDC)</span><span className="deposit-route-arrow">→</span><span className="deposit-route-to">HyperEVM via LI.FI</span><span className="deposit-route-time">~2 min</span></div>
             <div className="deposit-route"><span className="deposit-route-from">Ethereum (ETH / USDC)</span><span className="deposit-route-arrow">→</span><span className="deposit-route-to">HyperEVM via LI.FI</span><span className="deposit-route-time">~3 min</span></div>
             <div className="deposit-route"><span className="deposit-route-from" data-i18n="directDeposit">Direct USDC deposit</span><span className="deposit-route-arrow">→</span><span className="deposit-route-to" data-i18n="sendToAddr">Send to address above on HyperEVM</span><span className="deposit-route-time">~1 min</span></div>
-          </div>
-        </div>
-      </div>
-
-      {/* Wallet modal */}
-      <div id="walletModal" className="modal-overlay hidden" onClick={(e) => (window as any).rdo?.closeWalletModal(e)}>
-        <div className="modal-box wm-box">
-          <div className="modal-header" style={{padding:'16px 18px 0'}}>
-            <div><div className="modal-title">CONNECT WALLET</div><div className="modal-sub">Choose how to connect</div></div>
-            <span className="modal-close" onClick={() => (window as any).rdo?.closeWalletModalForce()}>✕</span>
-          </div>
-          <div className="wm-options">
-            <button className="wm-opt" onClick={() => (window as any).rdo?.connectExtension()}>
-              <div className="wm-opt-icon">💻</div>
-              <div className="wm-opt-body"><div className="wm-opt-name">Browser Extension</div><div className="wm-opt-sub">MetaMask · Phantom</div></div>
-              <span className="wm-opt-arrow">›</span>
-            </button>
-            <button className="wm-opt wm-opt-featured" onClick={() => (window as any).rdo?.connectAntarctic()}>
-              <div className="wm-opt-icon wm-opt-icon-aw">🐧</div>
-              <div className="wm-opt-body"><div className="wm-opt-name">Antarctic Wallet</div><div className="wm-opt-sub">Scan QR with mobile app</div></div>
-              <span className="wm-opt-badge">Recommended</span>
-            </button>
           </div>
         </div>
       </div>

@@ -361,18 +361,15 @@ body.mode-aster { --hl-accent: #a78bfa; --hl-accent-dark: rgba(139,92,246,0.15);
 .lang-option:hover { background: var(--hl-bg-hover); color: var(--hl-text-primary); }
 .lang-option.active { color: var(--hl-text-primary); font-weight: 700; }
 
-.wallet-btn {
-  font-family: var(--hl-font); font-size: 12px; font-weight: 600;
-  padding: 6px 14px; background: transparent;
-  border: 1px solid rgba(255,255,255,0.07); color: #4a9e6e;
-  border-radius: 6px; cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s; letter-spacing: 0.3px;
-}
-.wallet-btn:hover { background: rgba(74,222,128,0.08); border-color: rgba(74,222,128,0.25); color: #4ade80; }
-.wallet-btn.connected {
-  background: transparent; border: 1px solid var(--hl-border);
-  color: var(--hl-text-secondary);
-}
+/* WalletControls' network switcher (.net-switch-btn, defined in
+   subpage.css) is shared across every page, but the terminal's header
+   (.hdr-right) is far tighter than the simple nav bar on the other
+   pages — it also has to fit the stats row (.hdr-stats, which shrinks
+   and clips via overflow:hidden as this side grows). Drop the network
+   name text here specifically so the icon + chevron alone don't crowd
+   the stats out; the full name is still one click away in the dropdown,
+   and every other page keeps showing it in full. */
+.hdr-right .net-switch-btn span:not(.net-dot) { display: none; }
 
 /* ── WORKSPACE ──────────────────────────────────────────────── */
 .workspace {

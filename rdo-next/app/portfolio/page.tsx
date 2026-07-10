@@ -1,6 +1,8 @@
 'use client';
-import { useEffect } from 'react';
-import { ensureAsterAgentApproved, ensureBscNetwork, getBscCapableProvider, getAsterIncomeHistory, EVM_NETWORKS, getEvmProviderFor, switchEvmNetwork } from '@/lib/aster-agent';
+import { useEffect, useRef } from 'react';
+import { ensureAsterAgentApproved, ensureBscNetwork, getBscCapableProvider, getAsterIncomeHistory } from '@/lib/aster-agent';
+import { useWallet } from '@/lib/wallet';
+import { SiteNav } from '@/components/SiteNav';
 
 const PAGE_CSS = `
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -10,13 +12,6 @@ a{text-decoration:none;color:inherit}
 ::-webkit-scrollbar{width:6px;height:6px}
 ::-webkit-scrollbar-track{background:var(--bg)}
 ::-webkit-scrollbar-thumb{background:var(--bg3);border-radius:3px}
-#rdo-nav{position:fixed;top:0;left:0;right:0;height:var(--nav);min-height:var(--nav);max-height:var(--nav);overflow:hidden;background:var(--bg);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;padding:0 24px;z-index:1000}
-.nav-logo{font-size:13px;font-weight:800;letter-spacing:.5px;color:#f5f1ea;flex-shrink:0}
-.nav-logo span{color:var(--accent)}
-.nav-div{width:1px;height:18px;background:var(--border);margin:0 4px;flex-shrink:0}
-#rdo-nav a{font-size:12px;font-weight:500;color:var(--text3);padding:5px 12px;border-radius:7px;transition:color .12s,background .12s;flex-shrink:0}
-#rdo-nav a:hover{color:var(--text);background:#1a1a1a}
-#rdo-nav a.active{color:var(--text);background:#1f1f1f;font-weight:600}
 main{max-width:1400px;margin:0 auto;padding:0 24px 60px;padding-top:calc(var(--nav) + 8px)}
 .section-divider{display:flex;align-items:center;gap:12px;margin:28px 0 20px}
 .section-divider span{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.1em;white-space:nowrap}
@@ -26,18 +21,11 @@ main{max-width:1400px;margin:0 auto;padding:0 24px 60px;padding-top:calc(var(--n
 .phantom-logo svg{width:36px;height:36px}
 .connect-title{font-size:16px;font-weight:700}
 .connect-sub{font-size:12px;color:var(--text3);max-width:280px}
-.connect-btn{display:inline-flex;align-items:center;gap:7px;background:#ab9ff2;color:#1a1044;font-weight:700;font-size:12px;padding:9px 22px;border-radius:var(--r);cursor:pointer;border:none;font-family:inherit;transition:opacity .15s}
-.connect-btn:hover{opacity:.9}
-.connect-btn:disabled{opacity:.5;cursor:not-allowed}
-.install-hint{font-size:11px;color:var(--text3);display:none}
-.install-hint a{color:var(--accent)}
 #portfolio-screen{display:none}
 .pf-topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:12px;flex-wrap:wrap}
 .addr-row{display:flex;align-items:center;gap:8px}
 .addr-chip{font-size:11px;font-weight:600;font-family:monospace;color:var(--text2);background:var(--bg2);border:1px solid var(--border);border-radius:20px;padding:4px 12px;cursor:pointer;transition:border-color .12s,color .12s}
 .addr-chip:hover{border-color:var(--accent);color:var(--accent)}
-.disc-btn{font-size:11px;color:var(--text3);background:transparent;border:none;cursor:pointer;font-family:inherit;padding:3px 8px;border-radius:3px;transition:color .12s,background .12s}
-.disc-btn:hover{color:var(--red);background:rgba(237,112,136,.08)}
 .refresh-btn{font-size:11px;font-weight:600;color:var(--text3);background:var(--bg2);border:1px solid var(--border);border-radius:4px;padding:5px 12px;cursor:pointer;font-family:inherit;transition:color .12s,border-color .12s}
 .refresh-btn:hover{color:var(--accent);border-color:var(--accent)}
 .total-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:20px 22px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
@@ -74,14 +62,6 @@ main{max-width:1400px;margin:0 auto;padding:0 24px 60px;padding-top:calc(var(--n
 .hl-load-btn:hover{opacity:.88}
 .hl-evm-btn{font-size:12px;font-weight:600;color:var(--text2);background:transparent;border:1px solid var(--border);border-radius:4px;padding:7px 14px;cursor:pointer;font-family:inherit;transition:all .15s;display:flex;align-items:center;gap:6px;white-space:nowrap}
 .hl-evm-btn:hover{border-color:var(--accent);color:var(--accent)}
-.net-switch-wrap{position:relative}
-.net-switch-btn{font-size:12px;font-weight:600;color:var(--text2);background:transparent;border:1px solid var(--border);border-radius:4px;padding:7px 10px;cursor:pointer;font-family:inherit;transition:all .15s;display:flex;align-items:center;gap:7px;white-space:nowrap}
-.net-switch-btn:hover{border-color:var(--accent);color:var(--accent)}
-.net-dot{width:16px;height:16px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0}
-.net-dropdown{position:absolute;top:calc(100% + 6px);right:0;z-index:900;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:6px;min-width:170px;box-shadow:0 8px 24px rgba(0,0,0,.5)}
-.net-option{display:flex;align-items:center;gap:9px;width:100%;padding:8px 10px;border:none;background:transparent;color:var(--text2);font-size:12px;font-family:inherit;text-align:left;cursor:pointer;border-radius:6px}
-.net-option:hover{background:var(--bg3)}
-.net-opt-check{margin-left:auto;color:var(--accent);font-weight:700}
 .pnl-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px;flex-wrap:wrap}
 .pnl-title{font-size:18px;font-weight:800;letter-spacing:.5px;color:var(--text)}
 .pnl-addr-sub{font-size:11px;color:var(--text3);margin-top:2px}
@@ -282,6 +262,42 @@ main{max-width:1400px;margin:0 auto;padding:0 24px 60px;padding-top:calc(var(--n
 `;
 
 export default function PortfolioPage() {
+  const { evmAddress, solAddress } = useWallet();
+  const solAddressRef = useRef(solAddress);
+  solAddressRef.current = solAddress;
+  const evmAddressRef = useRef(evmAddress);
+  evmAddressRef.current = evmAddress;
+  // Bridges the shared wallet Context (connect/disconnect now lives ONLY in
+  // SiteNav) into this page's vanilla-DOM effect closure below — the
+  // on*ConnectedRef handlers are assigned inside that effect (they need
+  // access to its el()/set() helpers and local render state), these
+  // separate reactive effects just invoke them when the nav's wallet state
+  // changes, without re-running the whole one-time DOM setup.
+  const onSolConnectedRef = useRef<((addr: string) => void) | null>(null);
+  const onSolDisconnectedRef = useRef<(() => void) | null>(null);
+  const onEvmConnectedRef = useRef<((addr: string) => void) | null>(null);
+  const onEvmDisconnectedRef = useRef<(() => void) | null>(null);
+  const onConnAnyChangedRef = useRef<((connected: boolean) => void) | null>(null);
+
+  useEffect(() => {
+    if (solAddress) onSolConnectedRef.current?.(solAddress);
+    else onSolDisconnectedRef.current?.();
+  }, [solAddress]);
+
+  useEffect(() => {
+    if (evmAddress) onEvmConnectedRef.current?.(evmAddress);
+    else onEvmDisconnectedRef.current?.();
+  }, [evmAddress]);
+
+  // The top gate (#connect-screen vs #portfolio-screen) reflects the nav's
+  // connection as a whole, not Solana specifically — an EVM-only wallet
+  // (no Phantom) is still "connected" and should see the portfolio screen
+  // (EVM balance card etc.), just with the Solana assets list showing its
+  // own "connect a Solana wallet" placeholder instead of blocking everything.
+  useEffect(() => {
+    onConnAnyChangedRef.current?.(!!(solAddress || evmAddress));
+  }, [solAddress, evmAddress]);
+
   useEffect(() => {
     const SOL_MINT   = 'So11111111111111111111111111111111111111112';
     const USDC_MINT  = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
@@ -291,9 +307,7 @@ export default function PortfolioPage() {
     const ARB_RPC    = 'https://arb1.arbitrum.io/rpc';
     const USDC_ARB   = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831';
 
-    let pubkey: string | null = null;
     let tokenMeta: Record<string, any> = {};
-    let evmAddr: string | null = null;
     let walletAssets: any[] = [];
     let depToken: any = null;
     let depTokListOpen = false;
@@ -322,93 +336,84 @@ export default function PortfolioPage() {
       return 0;
     }
 
-    function phantom() { return (window as any)?.phantom?.solana ?? (window as any)?.solana ?? null; }
-
-    async function connectWallet() {
-      const p = phantom();
-      if (!p?.isPhantom) { const h = el('install-hint'); if (h) h.style.display = 'block'; return; }
-      const btn = el('connect-btn') as HTMLButtonElement | null;
-      if (btn) { btn.disabled = true; btn.textContent = 'Connecting…'; }
-      try {
-        const resp = await p.connect();
-        pubkey = resp.publicKey.toString();
-        showPortfolio();
-      } catch {
-        if (btn) { btn.disabled = false; btn.innerHTML = phantomBtnHTML(); }
-      }
-    }
-
-    async function disconnectWallet() {
-      try { await phantom()?.disconnect(); } catch {}
-      pubkey = null;
-      clearEVMAddr();
-      const cs = el('connect-screen'); if (cs) cs.style.display = 'flex';
-      const ps = el('portfolio-screen'); if (ps) ps.style.display = 'none';
-      const btn = el('connect-btn') as HTMLButtonElement | null;
-      if (btn) { btn.disabled = false; btn.innerHTML = phantomBtnHTML(); }
-    }
-
-    function phantomBtnHTML() {
-      return `<svg width="16" height="16" viewBox="0 0 128 128" fill="none"><path d="M110.584 64.9142H99.142C99.142 41.8864 80.6366 23.0625 57.9584 23.0625C35.5556 23.0625 17.2065 41.508 16.8677 64.0735C16.5221 87.0972 35.3756 106 58.2219 106H63.3743C85.6702 106 116.581 88.3047 116.581 66.8896C116.581 65.6864 115.684 64.9142 110.584 64.9142Z" fill="white"/></svg> Connect Phantom`;
-    }
-
-    function showPortfolio() {
-      const cs = el('connect-screen'); if (cs) cs.style.display = 'none';
-      const ps = el('portfolio-screen'); if (ps) ps.style.display = 'block';
-      const chip = el('addr-chip'); if (chip && pubkey) chip.textContent = shorten(pubkey);
+    // Connection itself now lives ONLY in the nav (SiteNav /
+    // lib/wallet's WalletProvider) — these just react to
+    // solAddress appearing/disappearing there instead of running their own
+    // phantom.connect()/disconnect() flow. Screen-level gating is handled
+    // separately by onConnAnyChanged below, since this page is usable with
+    // an EVM-only nav connection too.
+    function onSolConnected(addr: string) {
+      const chip = el('addr-chip'); if (chip) chip.textContent = shorten(addr);
       loadPortfolio();
-      autoDetectEVM();
     }
+    onSolConnectedRef.current = onSolConnected;
 
-    async function autoDetectEVM() {
-      const phEvm = (window as any).phantom?.ethereum;
-      if (phEvm) {
-        try {
-          let accs = await phEvm.request({ method: 'eth_accounts' });
-          if (!accs?.[0]) accs = await phEvm.request({ method: 'eth_requestAccounts' });
-          if (accs?.[0]) { setEVMAddr(accs[0], 'Phantom'); return; }
-        } catch {}
-      }
-      const prov = (window as any).ethereum;
-      if (prov && !prov.isPhantom) {
-        try {
-          const accs = await prov.request({ method: 'eth_accounts' });
-          if (accs?.[0]) { setEVMAddr(accs[0], 'Wallet'); return; }
-        } catch {}
-      }
+    function onSolDisconnected() {
+      const chip = el('addr-chip'); if (chip) chip.textContent = '—';
+      set('total-val', '$—'); set('total-sub', 'No Solana wallet connected');
+      const ab = el('assets-body');
+      if (ab) ab.innerHTML = '<div class="empty-assets">Connect a Solana wallet (e.g. Phantom) from the top nav to view SPL holdings.</div>';
     }
+    onSolDisconnectedRef.current = onSolDisconnected;
 
-    function setEVMAddr(addr: string, source: string) {
-      evmAddr = addr;
-      const inp = el('hl-addr-input') as HTMLInputElement | null;
-      if (inp) inp.value = addr;
+    // The one thing that actually gates #connect-screen vs #portfolio-screen
+    // — "connected" means either chain, matching the nav's own definition
+    // (SiteNav.tsx: `const connected = !!(evmAddress || solAddress)`).
+    function onConnAnyChanged(connected: boolean) {
+      const cs = el('connect-screen'); if (cs) cs.style.display = connected ? 'none' : 'flex';
+      const ps = el('portfolio-screen'); if (ps) ps.style.display = connected ? 'block' : 'none';
+    }
+    onConnAnyChangedRef.current = onConnAnyChanged;
+
+    // Connection itself now lives ONLY in the nav — this reacts to
+    // evmAddress appearing/disappearing there and drives BOTH the HL and
+    // Aster tabs (they used to have two separate "Connect EVM Wallet"
+    // buttons and two separate detect flows; both read the same shared
+    // address now).
+    function onEvmConnected(addr: string) {
+      // Deliberately NOT pre-filling hl-addr-input/aster-addr-input with
+      // addr — the address is already visible once (pnl-addr-sub, and the
+      // nav's own chip); echoing it a second time into an editable text
+      // box read as clutter. The inputs stay empty/placeholder, reserved
+      // for looking up a DIFFERENT address; handleHLLoad/handleAsterLoad
+      // fall back to the connected address when left empty.
+      //
+      // Deliberately NOT calling loadAsterData here — unlike HL, loading
+      // Aster data can require an on-chain approval signature (see
+      // ensureAsterAgentApproved), so it should only ever happen from a
+      // deliberate action (switching to the EXTRA tab, or clicking Load
+      // there), never as a side effect of connecting a wallet that was
+      // only ever used for HL/BASIC. switchPortfolioMode('aster') already
+      // covers "the user just opened the tab."
       loadHLData(addr);
       loadEVMBalance(addr);
-      const btn = el('hl-evm-btn');
-      if (btn) {
-        btn.innerHTML = `<svg width="8" height="8" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4" fill="#1fa67d"/></svg> ${source}: ${shorten(addr)}`;
-        (btn as HTMLElement).style.borderColor = 'var(--green)';
-        (btn as HTMLElement).style.color = 'var(--green)';
-        (btn as any).onclick = () => clearEVMAddr();
-        btn.title = 'Click to disconnect';
-      }
     }
+    onEvmConnectedRef.current = onEvmConnected;
 
-    function clearEVMAddr() {
-      evmAddr = null;
-      const inp = el('hl-addr-input') as HTMLInputElement | null;
-      if (inp) inp.value = '';
-      const btn = el('hl-evm-btn');
-      if (btn) {
-        btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 2v20M2 12h20"/></svg> Connect EVM Wallet`;
-        (btn as HTMLElement).style.borderColor = '';
-        (btn as HTMLElement).style.color = '';
-        (btn as any).onclick = () => connectEVM();
-        btn.title = '';
-      }
+    function onEvmDisconnected() {
+      const hlInp = el('hl-addr-input') as HTMLInputElement | null;
+      if (hlInp) hlInp.value = '';
       const card = el('evm-bal-card');
       if (card) card.classList.remove('visible');
+      const asterInp = el('aster-addr-input') as HTMLInputElement | null;
+      if (asterInp) asterInp.value = '';
     }
+    onEvmDisconnectedRef.current = onEvmDisconnected;
+
+    // Initial sync: the reactive [solAddress]/[evmAddress] effects above
+    // only invoke these refs, and those refs are still null during THIS
+    // same-commit pass (they're assigned right here, after those effects
+    // already ran) — so on mount they no-op. That's invisible when the
+    // wallet is genuinely disconnected (matches the default JSX), but if
+    // the user already connected on another page and navigated here via
+    // client-side routing, evmAddress/solAddress in context are non-null
+    // from the very first render — without this, the page would be stuck
+    // showing #connect-screen forever, since nothing changes again to
+    // re-trigger those effects. Read straight from the refs (already
+    // current for this render) so this is correct regardless of timing.
+    if (solAddressRef.current) onSolConnected(solAddressRef.current); else onSolDisconnected();
+    if (evmAddressRef.current) onEvmConnected(evmAddressRef.current); else onEvmDisconnected();
+    onConnAnyChanged(!!(solAddressRef.current || evmAddressRef.current));
 
     async function loadEVMBalance(addr: string) {
       const card = el('evm-bal-card');
@@ -450,11 +455,11 @@ export default function PortfolioPage() {
       return r.json();
     }
     async function getSolBal() {
-      const { result } = await rpc('getBalance', [pubkey, {commitment:'confirmed'}]);
+      const { result } = await rpc('getBalance', [solAddressRef.current, {commitment:'confirmed'}]);
       return (result?.value ?? 0) / 1e9;
     }
     async function getTokenAccs() {
-      const { result } = await rpc('getTokenAccountsByOwner', [pubkey, {programId:TOKEN_PROG}, {encoding:'jsonParsed',commitment:'confirmed'}]);
+      const { result } = await rpc('getTokenAccountsByOwner', [solAddressRef.current, {programId:TOKEN_PROG}, {encoding:'jsonParsed',commitment:'confirmed'}]);
       return (result?.value ?? []).map((a: any) => ({ mint: a.account.data.parsed.info.mint, balance: a.account.data.parsed.info.tokenAmount.uiAmount ?? 0 })).filter((t: any) => t.balance > 0);
     }
     async function getJupPrices(mints: string[]) {
@@ -517,39 +522,15 @@ export default function PortfolioPage() {
       }
     }
 
-    async function connectEVM() {
-      const phEvm = (window as any).phantom?.ethereum;
-      if (phEvm) {
-        try {
-          let accs = await phEvm.request({ method: 'eth_accounts' });
-          if (!accs?.[0]) accs = await phEvm.request({ method: 'eth_requestAccounts' });
-          if (accs?.[0]) { setEVMAddr(accs[0], 'Phantom'); return; }
-        } catch(e: any) { if (e.code !== 4001) evmHint('Enable EVM in Phantom → Settings → Networks, then try again.'); return; }
-      }
-      const provider = (window as any).ethereum;
-      if (!provider) { evmHint('No EVM wallet found — install MetaMask or Rabby, or enter address manually.'); return; }
-      try {
-        let accs = await provider.request({ method: 'eth_accounts' });
-        if (!accs?.[0]) accs = await provider.request({ method: 'eth_requestAccounts' });
-        if (accs?.[0]) setEVMAddr(accs[0], 'Wallet');
-      } catch(e: any) { if (e.code !== 4001) evmHint('Connection failed — enter your Hyperliquid address manually.'); }
-    }
-    function evmHint(msg: string) {
-      const inp = el('hl-addr-input') as HTMLInputElement | null;
-      if (!inp) return;
-      inp.placeholder = msg; inp.style.borderColor='var(--red)';
-      setTimeout(()=>{ if (inp) { inp.placeholder='Enter Hyperliquid wallet address (0x…)'; inp.style.borderColor=''; } }, 5000);
-    }
-
     function handleHLLoad() {
       const inp = el('hl-addr-input') as HTMLInputElement | null;
-      const addr = inp?.value.trim() || '';
+      const addr = inp?.value.trim() || evmAddressRef.current || '';
       if (!addr) return;
       loadHLData(addr);
     }
 
     async function loadHLData(address: string) {
-      set('pnl-addr-sub', address.slice(0,10)+'…'+address.slice(-6));
+      if (portfolioMode === 'hl') set('pnl-addr-sub', address.slice(0,10)+'…'+address.slice(-6));
       ['s-total-pnl','s-win-rate','s-trades','s-hold','s-best','s-worst'].forEach(id => set(id,'…'));
       const tb = el('trades-body'); if (tb) tb.innerHTML = '<div class="hl-placeholder">Loading trades…</div>';
       const db = el('dist-bars'); if (db) db.innerHTML = '<div style="color:var(--text3);font-size:11px;text-align:center;padding:40px 0">Loading…</div>';
@@ -785,7 +766,7 @@ export default function PortfolioPage() {
 
     function shareCard() {
       const inp = el('hl-addr-input') as HTMLInputElement | null;
-      const addr = inp?.value.trim() || pubkey || '';
+      const addr = inp?.value.trim() || evmAddressRef.current || '';
       if (!addr) return;
       const url = `${location.origin}${location.pathname}?hl=${addr}`;
       navigator.clipboard.writeText(url).catch(()=>{});
@@ -1009,7 +990,7 @@ export default function PortfolioPage() {
       const title = el('dep-modal-title'); if (title) title.textContent='Bridge via LI.FI';
       const hlInp = el('hl-addr-input') as HTMLInputElement | null;
       let url='/lifi.html?mode=deposit';
-      const addr=evmAddr||hlInp?.value.trim()||'';
+      const addr=evmAddressRef.current||hlInp?.value.trim()||'';
       if(addr) url+='&toAddress='+encodeURIComponent(addr);
       url+='&fromToken='+encodeURIComponent(depToken.mint===SOL_MINT?'SOL':depToken.mint);
       if(amt>0) url+='&fromAmount='+amt;
@@ -1018,7 +999,7 @@ export default function PortfolioPage() {
     }
     function openPerpsDeposit(){
       const hlInp = el('hl-addr-input') as HTMLInputElement | null;
-      const addr=evmAddr||hlInp?.value.trim()||'';
+      const addr=evmAddressRef.current||hlInp?.value.trim()||'';
       const dm = el('deposit-modal'); if (dm) dm.classList.add('open');
       const pick = el('dep-step-pick'); if (pick) pick.style.display='none';
       const lifi = el('dep-step-lifi'); if (lifi) lifi.style.display='';
@@ -1032,13 +1013,20 @@ export default function PortfolioPage() {
     function openConvert(){ const cm = el('convert-modal'); if (cm) cm.classList.add('open'); const f = el('lifi-convert-frame') as HTMLIFrameElement | null; if(f&&!f.src) f.src='/lifi.html?mode=convert'; }
     function closeConvert(){ const cm = el('convert-modal'); if (cm) cm.classList.remove('open'); }
     async function copyFullAddr() {
-      if (!pubkey) return;
-      await navigator.clipboard.writeText(pubkey).catch(()=>{});
+      const addr = solAddressRef.current;
+      if (!addr) return;
+      await navigator.clipboard.writeText(addr).catch(()=>{});
       const chip=el('addr-chip');
       if (!chip) return;
       const orig=chip.textContent||'';
       chip.textContent='✓ Copied'; setTimeout(()=>{ if (chip) chip.textContent=orig; },1500);
     }
+
+    // Guards loadAsterData against re-running (and re-checking Aster
+    // approval, which can mean another signature prompt if the approval
+    // check itself is slow/flaky) every time the user just switches tabs
+    // back to EXTRA — only reload when the address actually changes.
+    let asterLoadedFor: string | null = null;
 
     function switchPortfolioMode(mode: string) {
       portfolioMode = mode;
@@ -1049,66 +1037,23 @@ export default function PortfolioPage() {
       const title = el('pf-section-title');
       if (title) { title.textContent = mode === 'hl' ? 'TRADER PNL' : 'ASTER PNL'; (title as HTMLElement).style.color = mode === 'aster' ? '#f59e0b' : ''; }
       if (mode === 'aster') {
+        set('pnl-addr-sub', asterLoadedFor ? asterLoadedFor.slice(0,10)+'…'+asterLoadedFor.slice(-6) : '');
         const inp = el('aster-addr-input') as HTMLInputElement | null;
-        const asterAddr = inp?.value.trim() || '';
-        if (asterAddr) loadAsterData(asterAddr);
-        else if (evmAddr) { if (inp) inp.value = evmAddr; loadAsterData(evmAddr); }
+        const asterAddr = inp?.value.trim() || evmAddressRef.current || '';
+        if (asterAddr && asterAddr !== asterLoadedFor) loadAsterData(asterAddr);
       }
     }
 
     function handleAsterLoad() {
       const inp = el('aster-addr-input') as HTMLInputElement | null;
-      const addr = inp?.value.trim() || '';
+      const addr = inp?.value.trim() || evmAddressRef.current || '';
       if (!addr) return;
       loadAsterData(addr);
     }
 
-    async function connectAsterEVM() {
-      const phEvm = (window as any).phantom?.ethereum;
-      if (phEvm) {
-        try {
-          let accs = await phEvm.request({ method: 'eth_accounts' });
-          if (!accs?.[0]) accs = await phEvm.request({ method: 'eth_requestAccounts' });
-          if (accs?.[0]) { const inp = el('aster-addr-input') as HTMLInputElement | null; if (inp) inp.value = accs[0]; loadAsterData(accs[0]); return; }
-        } catch {}
-      }
-      const provider = (window as any).ethereum;
-      if (provider) {
-        try {
-          let accs = await provider.request({ method: 'eth_accounts' });
-          if (!accs?.[0]) accs = await provider.request({ method: 'eth_requestAccounts' });
-          if (accs?.[0]) { const inp = el('aster-addr-input') as HTMLInputElement | null; if (inp) inp.value = accs[0]; loadAsterData(accs[0]); return; }
-        } catch {}
-      }
-      const inp = el('aster-addr-input') as HTMLInputElement | null;
-      if (inp) { inp.placeholder='No EVM wallet found — enter address manually'; inp.style.borderColor='var(--red)'; setTimeout(()=>{ if (inp) { inp.placeholder='Enter Aster / EVM wallet address (0x…)'; inp.style.borderColor=''; } },4000); }
-    }
-
-    // Reflects the CONNECTED wallet's actual current chain in the network
-    // chip/dropdown — this is what makes the BSC switch during approval
-    // visible instead of a silent side effect: the chip updates the moment
-    // the wallet's chain changes (approval-triggered or user-triggered via
-    // the dropdown itself) and shows the user exactly what network they're
-    // on and lets them switch back afterward.
-    let netListenerProvider: any = null;
-    function updateAsterNetDisplay(chainIdHex: string) {
-      const wrap = el('asterNetWrap'); if (wrap) wrap.style.display = '';
-      const net = EVM_NETWORKS.find(n => n.chainId.toLowerCase() === (chainIdHex || '').toLowerCase());
-      const dot = el('asterNetDot'); const label = el('asterNetLabel');
-      if (dot) { dot.textContent = net?.short ?? '?'; (dot as HTMLElement).style.background = net?.bg ?? 'var(--bg3)'; (dot as HTMLElement).style.color = net?.color ?? 'var(--text3)'; }
-      if (label) label.textContent = net?.name ?? 'Unsupported network';
-      document.querySelectorAll('.net-opt-check').forEach((c: Element) => {
-        (c as HTMLElement).style.display = (c as HTMLElement).dataset.check?.toLowerCase() === (chainIdHex || '').toLowerCase() ? '' : 'none';
-      });
-    }
-    function watchAsterNetwork(provider: any) {
-      if (!provider || netListenerProvider === provider) return;
-      netListenerProvider?.removeListener?.('chainChanged', updateAsterNetDisplay);
-      netListenerProvider = provider;
-      provider.request({ method: 'eth_chainId' }).then(updateAsterNetDisplay).catch(() => {});
-      provider.on?.('chainChanged', updateAsterNetDisplay);
-    }
     async function loadAsterData(address: string) {
+      asterLoadedFor = address;
+      if (portfolioMode === 'aster') set('pnl-addr-sub', address.slice(0,10)+'…'+address.slice(-6));
       ['as-pv-equity','as-pv-upnl','as-pv-ntl','as-pv-avail','as-pv-margin','as-pv-lev'].forEach(id=>set(id,'…'));
       const ph = el('as-pv-placeholder'); if (ph) ph.style.display='none';
       const pw = el('as-pv-positions-wrap'); if (pw) pw.style.display='none';
@@ -1122,15 +1067,46 @@ export default function PortfolioPage() {
       // for a signature when this address hasn't already approved it —
       // "one time, and again only if needed," no separate button.
       const provider = (window as any).phantom?.ethereum ?? (window as any).ethereum ?? null;
-      watchAsterNetwork(provider);
-      const approval = await ensureAsterAgentApproved(address, async () => {
+
+      // Aster's backend requires domain.chainId=56 baked into the SIGNED
+      // PAYLOAD (confirmed against Aster's own reference client) — that is
+      // NOT the same thing as the wallet's active network needing to BE
+      // BNB Chain. EIP-712 signing doesn't care what network the wallet is
+      // connected to; only some wallets (MetaMask, confirmed via their own
+      // GitHub issues) apply their own guard that refuses/hangs when
+      // domain.chainId doesn't match the active network. So: try signing
+      // on whatever network the wallet is ALREADY on first. If the wallet
+      // doesn't enforce that guard, this succeeds with zero network-switch
+      // prompt. Only fall back to forcing a BSC switch if that first
+      // attempt fails or hangs — bounded by a timeout, since MetaMask's own
+      // bug reports show it can hang forever rather than erroring cleanly
+      // on a mismatched chainId.
+      async function buildSigner(forceSwitch: boolean) {
         if (!provider) throw new Error('connect an EVM wallet to approve the Aster agent');
-        const bscProvider = (await getBscCapableProvider(address)) ?? provider;
-        const net = await ensureBscNetwork(bscProvider);
-        if (!net.ok) throw new Error(net.reason ?? "switch your wallet to BNB Smart Chain (BSC) — Aster's approval signature requires it");
+        let signingProvider = provider;
+        if (forceSwitch) {
+          const bscProvider = (await getBscCapableProvider(address)) ?? provider;
+          const net = await ensureBscNetwork(bscProvider);
+          if (!net.ok) throw new Error(net.reason ?? "switch your wallet to BNB Smart Chain (BSC) — Aster's approval signature requires it");
+          signingProvider = bscProvider;
+        }
         const { ethers } = await import('ethers');
-        return new ethers.BrowserProvider(bscProvider).getSigner();
-      });
+        return new ethers.BrowserProvider(signingProvider).getSigner();
+      }
+      function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+        return new Promise((resolve, reject) => {
+          const timer = setTimeout(() => reject(new Error('Signature request timed out')), ms);
+          p.then(v => { clearTimeout(timer); resolve(v); }, e => { clearTimeout(timer); reject(e); });
+        });
+      }
+
+      let approval = await withTimeout(
+        ensureAsterAgentApproved(address, () => buildSigner(false)),
+        30000,
+      ).catch(e => ({ ok: false, alreadyApproved: false, message: e instanceof Error ? e.message : 'Signing failed' }));
+      if (!approval.ok && !approval.alreadyApproved) {
+        approval = await ensureAsterAgentApproved(address, () => buildSigner(true));
+      }
       if (!approval.ok) {
         ['as-pv-equity','as-pv-upnl','as-pv-ntl','as-pv-avail','as-pv-margin','as-pv-lev'].forEach(id=>set(id,'—'));
         const ph1 = el('as-pv-placeholder'); if (ph1) { ph1.style.display='block'; ph1.innerHTML=`Could not load Aster portfolio: ${approval.message}<br><span style="font-size:10px;color:var(--text3)">Collateral: USDT · Max leverage: 200x</span>`; }
@@ -1268,8 +1244,6 @@ export default function PortfolioPage() {
     function openAsterDeposit() { window.open('https://www.asterdex.com','_blank','noopener'); }
 
     // Expose all functions to window
-    (window as any).connectWallet = connectWallet;
-    (window as any).disconnectWallet = disconnectWallet;
     (window as any).copyFullAddr = copyFullAddr;
     (window as any).loadPortfolio = loadPortfolio;
     (window as any).openDeposit = openDeposit;
@@ -1280,11 +1254,9 @@ export default function PortfolioPage() {
     (window as any).closeCalendarModal = closeCalendarModal;
     (window as any).setRange = setRange;
     (window as any).handleHLLoad = handleHLLoad;
-    (window as any).connectEVM = connectEVM;
     (window as any).addHyperEVM = addHyperEVM;
     (window as any).openPerpsDeposit = openPerpsDeposit;
     (window as any).handleAsterLoad = handleAsterLoad;
-    (window as any).connectAsterEVM = connectAsterEVM;
     (window as any).openAsterDeposit = openAsterDeposit;
     (window as any).calPrev = calPrev;
     (window as any).calNext = calNext;
@@ -1300,28 +1272,18 @@ export default function PortfolioPage() {
     (window as any).shareCard = shareCard;
     (window as any).downloadCard = downloadCard;
 
-    // Init EVM buttons (dynamic onclick — not React onClick)
-    const hlEvmBtn = el('hl-evm-btn');
-    if (hlEvmBtn) (hlEvmBtn as any).onclick = connectEVM;
-    const asterEvmBtn = el('aster-evm-btn');
-    if (asterEvmBtn) (asterEvmBtn as any).onclick = connectAsterEVM;
-
-    // Auto-connect (replaces window.addEventListener('load', ...))
     const urlHL = new URLSearchParams(location.search).get('hl');
     if (urlHL) {
       const inp = el('hl-addr-input') as HTMLInputElement | null;
       if (inp) inp.value = urlHL;
       loadHLData(urlHL);
     }
-    const p = phantom();
-    if (!p) {
-      const hint = el('install-hint'); if (hint) hint.style.display = 'block';
-    } else {
-      p.on('disconnect', () => { if (pubkey) disconnectWallet(); });
-      p.connect({ onlyIfTrusted: true })
-        .then((resp: any) => { pubkey = resp.publicKey.toString(); showPortfolio(); })
-        .catch(() => {});
-    }
+
+    // Wallet connect/disconnect now lives ONLY in the nav (SiteNav) — the
+    // onSol/onEvmConnected(Ref) handlers above already cover both the
+    // "already connected when this page mounts" and "connects later via
+    // the nav" cases via the reactive effects, so there's nothing left to
+    // wire here beyond the ?hl= deep link above.
 
     // Keyboard shortcuts
     const onKeyDown = (e: KeyboardEvent) => {
@@ -1329,65 +1291,9 @@ export default function PortfolioPage() {
     };
     document.addEventListener('keydown', onKeyDown);
 
-    // Aster network switcher — makes the BSC switch (needed for Aster's
-    // approval signature) a visible, user-controlled action instead of a
-    // silent side effect of clicking Load/Connect. See
-    // updateAsterNetDisplay/watchAsterNetwork above.
-    const netBtn = document.getElementById('asterNetBtn');
-    const netDd = document.getElementById('asterNetDropdown') as HTMLElement | null;
-    if (netBtn) netBtn.addEventListener('click', () => {
-      if (netDd) netDd.style.display = netDd.style.display === 'none' ? '' : 'none';
-    });
-    document.addEventListener('click', (ev: MouseEvent) => {
-      if (!(ev.target as Element)?.closest('.net-switch-wrap') && netDd) netDd.style.display = 'none';
-    });
-    netDd?.querySelectorAll('.net-option').forEach((b: Element) => {
-      b.addEventListener('click', async () => {
-        const chainId = (b as HTMLElement).dataset.chain || '';
-        const network = EVM_NETWORKS.find(n => n.chainId === chainId);
-        if (netDd) netDd.style.display = 'none';
-        if (!network) return;
-        const addr = (document.getElementById('aster-addr-input') as HTMLInputElement | null)?.value?.trim();
-        const provider = addr ? await getEvmProviderFor(addr, chainId) : ((window as any).phantom?.ethereum ?? (window as any).ethereum ?? null);
-        if (!provider) return;
-        const result = await switchEvmNetwork(provider, network);
-        if (result.ok) {
-          watchAsterNetwork(provider);
-        } else {
-          const label = document.getElementById('asterNetLabel');
-          const dot = document.getElementById('asterNetDot');
-          if (label) label.textContent = 'Unsupported';
-          if (dot) { dot.textContent = '!'; (dot as HTMLElement).style.background = '#3a1414'; (dot as HTMLElement).style.color = 'var(--red)'; }
-          console.warn('[Aster network switch]', result.reason);
-          setTimeout(() => { provider.request({ method: 'eth_chainId' }).then(updateAsterNetDisplay).catch(() => {}); }, 3000);
-        }
-      });
-    });
-
     // i18n
-    import('@/lib/i18n').then(({ applyTranslations, setLang, getLang }: any) => {
+    import('@/lib/i18n').then(({ applyTranslations }) => {
       applyTranslations();
-      const dd = document.getElementById('langDropdown') as HTMLElement | null;
-      const langBtn = document.getElementById('langBtn');
-      if (langBtn) langBtn.addEventListener('click', () => {
-        if (dd) dd.style.display = dd.style.display === 'none' ? '' : 'none';
-      });
-      dd?.querySelectorAll('.lang-option').forEach((b: Element) => {
-        (b as HTMLElement).addEventListener('click', () => {
-          setLang((b as HTMLElement).dataset.lang || 'en');
-          if (dd) dd.style.display = 'none';
-          updateLangHL();
-        });
-      });
-      document.addEventListener('click', (ev: MouseEvent) => {
-        if (!(ev.target as Element)?.closest('.lang-wrap') && dd) dd.style.display = 'none';
-      });
-      function updateLangHL() {
-        document.querySelectorAll('.lang-option').forEach((b: Element) => {
-          (b as HTMLElement).style.color = (b as HTMLElement).dataset.lang === getLang() ? 'var(--accent,#50d2c1)' : '';
-        });
-      }
-      updateLangHL();
     }).catch(() => {});
 
     return () => { document.removeEventListener('keydown', onKeyDown); };
@@ -1396,46 +1302,21 @@ export default function PortfolioPage() {
   return (
     <>
       <style dangerouslySetInnerHTML={{__html: PAGE_CSS}} />
-      <nav id="rdo-nav">
-        <div className="nav-logo">RDO<span>ONE</span></div>
-        <div className="nav-div"></div>
-        <a href="/" data-i18n="trade">Trade</a>
-        <a href="/markets" data-i18n="markets">Markets</a>
-        <a href="/news" data-i18n="news">News</a>
-        <a href="/portfolio" className="active" data-i18n="portfolio">Portfolio</a>
-        <a href="/transfer" data-i18n="transfer">Transfer</a>
-        <div style={{marginLeft:'auto'}}></div>
-        <div className="lang-wrap" style={{position:'relative'}}>
-          <button className="lang-btn" id="langBtn" aria-label="Language" style={{display:'flex',alignItems:'center',justifyContent:'center',width:'28px',height:'28px',background:'transparent',border:'1px solid var(--border)',borderRadius:'4px',color:'var(--text3)',cursor:'pointer'}}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><ellipse cx="12" cy="12" rx="4" ry="10"/><path d="M2 12h20"/></svg>
-          </button>
-          <div className="lang-dropdown" id="langDropdown" style={{position:'absolute',top:'calc(100% + 6px)',right:'0',zIndex:900,background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:'4px',padding:'4px 0',minWidth:'110px',boxShadow:'0 8px 24px rgba(0,0,0,.5)',display:'none'}}>
-            <button className="lang-option" data-lang="en" style={{display:'block',width:'100%',padding:'7px 14px',border:'none',background:'transparent',color:'var(--text3)',fontSize:'12px',textAlign:'left',cursor:'pointer'}}>English</button>
-            <button className="lang-option" data-lang="ru" style={{display:'block',width:'100%',padding:'7px 14px',border:'none',background:'transparent',color:'var(--text3)',fontSize:'12px',textAlign:'left',cursor:'pointer'}}>Русский</button>
-            <button className="lang-option" data-lang="zh" style={{display:'block',width:'100%',padding:'7px 14px',border:'none',background:'transparent',color:'var(--text3)',fontSize:'12px',textAlign:'left',cursor:'pointer'}}>中文</button>
-          </div>
-        </div>
-      </nav>
+      <SiteNav activePage="portfolio" />
 
       <main>
         <div id="connect-screen">
           <div className="phantom-logo">
             <svg viewBox="0 0 128 128" fill="none"><path d="M110.584 64.9142H99.142C99.142 41.8864 80.6366 23.0625 57.9584 23.0625C35.5556 23.0625 17.2065 41.508 16.8677 64.0735C16.5221 87.0972 35.3756 106 58.2219 106H63.3743C85.6702 106 116.581 88.3047 116.581 66.8896C116.581 65.6864 115.684 64.9142 110.584 64.9142Z" fill="white"/></svg>
           </div>
-          <div className="connect-title" data-i18n="connectPhantom">Connect your Phantom wallet</div>
-          <div className="connect-sub" data-i18n="connectPhantomSub">View your Solana holdings, deposit, swap, and convert assets.</div>
-          <button className="connect-btn" id="connect-btn" onClick={() => (window as any).connectWallet()}>
-            <svg width="16" height="16" viewBox="0 0 128 128" fill="none"><path d="M110.584 64.9142H99.142C99.142 41.8864 80.6366 23.0625 57.9584 23.0625C35.5556 23.0625 17.2065 41.508 16.8677 64.0735C16.5221 87.0972 35.3756 106 58.2219 106H63.3743C85.6702 106 116.581 88.3047 116.581 66.8896C116.581 65.6864 115.684 64.9142 110.584 64.9142Z" fill="white"/></svg>
-            Connect Phantom
-          </button>
-          <div className="install-hint" id="install-hint">Phantom not detected — <a href="https://phantom.app" target="_blank" rel="noopener">install Phantom</a> then refresh.</div>
+          <div className="connect-title">Connect your wallet</div>
+          <div className="connect-sub">Connect from the top nav to view your Solana holdings, deposit, swap, and convert assets.</div>
         </div>
 
         <div id="portfolio-screen">
           <div className="pf-topbar">
             <div className="addr-row">
               <div className="addr-chip" id="addr-chip" onClick={() => (window as any).copyFullAddr()} title="Click to copy">—</div>
-              <button className="disc-btn" onClick={() => (window as any).disconnectWallet()} data-i18n="disconnect">Disconnect</button>
             </div>
             <button className="refresh-btn" onClick={() => (window as any).loadPortfolio()}>↺ Refresh</button>
           </div>
@@ -1504,12 +1385,8 @@ export default function PortfolioPage() {
 
         <div id="pnl-section-hl">
           <div className="hl-connect-bar">
-            <input className="hl-addr-input" id="hl-addr-input" placeholder="Enter Hyperliquid wallet address (0x…)" />
+            <input className="hl-addr-input" id="hl-addr-input" placeholder="Leave empty to use your connected wallet, or enter an address to inspect" />
             <button className="hl-load-btn" onClick={() => (window as any).handleHLLoad()}>Load</button>
-            <button className="hl-evm-btn" id="hl-evm-btn" data-i18n="connectEvmWallet">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 2v20M2 12h20"/></svg>
-              Connect EVM Wallet
-            </button>
             <button className="hl-evm-btn" id="add-network-btn" onClick={() => (window as any).addHyperEVM()} title="Add HyperEVM network to your wallet">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg>
               Add HyperEVM
@@ -1582,37 +1459,10 @@ export default function PortfolioPage() {
 
         <div id="pnl-section-aster" style={{display:'none'}}>
           <div className="hl-connect-bar">
-            <input className="hl-addr-input" id="aster-addr-input" placeholder="Enter Aster / EVM wallet address (0x…)" />
+            <input className="hl-addr-input" id="aster-addr-input" placeholder="Leave empty to use your connected wallet, or enter an address to inspect" />
             <button className="aster-load-btn" onClick={() => (window as any).handleAsterLoad()}>Load</button>
-            <button className="hl-evm-btn" id="aster-evm-btn">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 2v20M2 12h20"/></svg>
-              Connect EVM Wallet
-            </button>
-            <div className="net-switch-wrap" id="asterNetWrap" style={{display:'none'}}>
-              <button className="net-switch-btn" id="asterNetBtn" title="Aster's approval requires BNB Chain — switch here instead of it happening silently">
-                <span className="net-dot" id="asterNetDot">?</span>
-                <span id="asterNetLabel">Network</span>
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6"/></svg>
-              </button>
-              <div className="net-dropdown" id="asterNetDropdown" style={{display:'none'}}>
-                <button className="net-option" data-chain="0x38">
-                  <span className="net-dot" style={{background:'#3a2f0a',color:'#F0B90B'}}>B</span>
-                  <span>BNB Chain</span>
-                  <span className="net-opt-check" data-check="0x38" style={{display:'none'}}>✓</span>
-                </button>
-                <button className="net-option" data-chain="0x1">
-                  <span className="net-dot" style={{background:'#1b2429',color:'#627EEA'}}>Ξ</span>
-                  <span>Ethereum</span>
-                  <span className="net-opt-check" data-check="0x1" style={{display:'none'}}>✓</span>
-                </button>
-                <button className="net-option" data-chain="0xa4b1">
-                  <span className="net-dot" style={{background:'#0f2a3d',color:'#28A0F0'}}>A</span>
-                  <span>Arbitrum</span>
-                  <span className="net-opt-check" data-check="0xa4b1" style={{display:'none'}}>✓</span>
-                </button>
-              </div>
-            </div>
           </div>
+          <div style={{fontSize:'11px',color:'var(--text3)',margin:'-8px 0 12px'}}>Aster requires a one-time signature to approve trading — most wallets can sign it on your current network; if yours can't, it'll prompt you to switch to BNB Chain just for that signature.</div>
           <div className="pnl-layout">
             <div className="pnl-main">
               <div className="pnl-stats">
