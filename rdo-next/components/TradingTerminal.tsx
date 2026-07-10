@@ -1699,24 +1699,24 @@ export default function TradingTerminal() {
   return (
     <div id="app">
       {/* ══ HEADER ═══════════════════════════════════════════════ */}
-      <header className="hdr bord ">
-        <div className="hdr-left bord">
-          <div className="hdr-logo">
-            <span className="logo-rdo">RDO</span>
-            <span className="logo-one">ONE</span>
+      <header className="flex items-center justify-between px-3 gap-0 bg-black border-b border-[#1f1f1f] relative z-[200] h-[var(--hdr)]">
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-baseline gap-0.5 pr-1">
+            <span className="text-[13px] font-bold text-[#50d2c1] tracking-[0.5px]">RDO</span>
+            <span className="text-[13px] font-light text-white">ONE</span>
           </div>
-          <div className="hdr-div"></div>
-          <div className="mode-switch-wrap">
-            <div className="mode-switch" id="modeSwitch">
+          <div className="w-px h-[18px] bg-[#1f1f1f] shrink-0"></div>
+          <div className="relative flex items-center gap-2.5 shrink-0">
+            <div className="flex items-center bg-[#0d0d0d] border border-[#1f1f1f] rounded-md p-0.5 gap-0.5 shrink-0" id="modeSwitch">
               <button
-                className="mode-btn mode-hl active"
+                className="mode-btn mode-hl active font-[var(--hl-font)] text-[11px] font-bold tracking-[0.5px] py-[3px] px-2.5 rounded border-none cursor-pointer text-[#878c8f] bg-transparent transition-all duration-150 flex items-center gap-1"
                 id="modeBtnHL"
                 onClick={() => (window as any).rdo?.switchMode("hl")}
               >
                 BASIC
               </button>
               <button
-                className="mode-btn mode-aster"
+                className="mode-btn mode-aster font-[var(--hl-font)] text-[11px] font-bold tracking-[0.5px] py-[3px] px-2.5 rounded border-none cursor-pointer text-[#878c8f] bg-transparent transition-all duration-150 flex items-center gap-1"
                 id="modeBtnAster"
                 onClick={() => (window as any).rdo?.switchMode("aster")}
               >
@@ -1724,25 +1724,25 @@ export default function TradingTerminal() {
               </button>
             </div>
             <button
-              className="mode-help-btn"
+              className="w-4 h-4 rounded-full border border-[#1f1f1f] bg-[#0d0d0d] text-[#6b7173] text-[10px] font-bold font-[var(--hl-font)] cursor-pointer leading-none flex items-center justify-center transition-all duration-150 shrink-0 hover:border-[#50d2c1] hover:text-[#50d2c1]"
               id="modeHelpBtn"
               onClick={() => (window as any).rdo?.toggleModeHelp()}
             >
               ?
             </button>
             <div
-              className="mode-backdrop hidden"
+              className="hidden fixed inset-0 z-[998] backdrop-blur-[4px] bg-black/25"
               id="modeBackdrop"
               onClick={() => (window as any).rdo?.toggleModeHelp()}
             ></div>
-            <div className="mode-backdrop hidden" id="mktBackdrop"></div>
-            <div className="mode-popup hidden" id="modePopup">
-              <div className="mode-popup-row">
-                <span className="mode-popup-tag basic">BASIC</span>
-                <div className="mode-popup-info">
-                  <strong data-i18n="basicTitle">RDO ONE x HYPE x LI.FI</strong>
+            <div className="hidden fixed inset-0 z-[499] backdrop-blur-[4px] bg-black/25" id="mktBackdrop"></div>
+            <div className="hidden absolute top-[calc(100%+8px)] left-0 bg-[#0d0d0d] border border-[#1f1f1f] rounded-lg py-3 px-3.5 min-w-[430px] z-[999] shadow-[0_8px_24px_rgba(0,0,0,0.4)]" id="modePopup">
+              <div className="flex gap-2.5 items-start">
+                <span className="text-[10px] font-bold tracking-[0.5px] py-0.5 px-[7px] rounded shrink-0 mt-0.5 bg-[rgba(10,153,129,0.20)] text-[#50d2c1]">BASIC</span>
+                <div className="text-[11px] leading-[1.6] text-[#878c8f]">
+                  <strong className="text-white text-[11px]" data-i18n="basicTitle">RDO ONE x HYPE x LI.FI</strong>
                   <br />
-                  <b data-i18n="basicLev">Up to 40x leverage</b>
+                  <b className="text-white text-[11px]" data-i18n="basicLev">Up to 40x leverage</b>
                   <br />
                   <span data-i18n="basicDesc">
                     Crypto perps only / Non-custodial / Any collateral
@@ -1757,15 +1757,15 @@ export default function TradingTerminal() {
                   </span>
                 </div>
               </div>
-              <div className="mode-popup-divider"></div>
-              <div className="mode-popup-row">
-                <span className="mode-popup-tag extra">EXTRA</span>
-                <div className="mode-popup-info">
-                  <strong data-i18n="extraTitle">
+              <div className="h-px bg-[#1f1f1f] my-2.5"></div>
+              <div className="flex gap-2.5 items-start">
+                <span className="text-[10px] font-bold tracking-[0.5px] py-0.5 px-[7px] rounded shrink-0 mt-0.5 bg-[rgba(139,92,246,0.15)] text-[#a78bfa]">EXTRA</span>
+                <div className="text-[11px] leading-[1.6] text-[#878c8f]">
+                  <strong className="text-white text-[11px]" data-i18n="extraTitle">
                     RDO ONE x ASTER x LI.FI
                   </strong>
                   <br />
-                  <b data-i18n="extraLev">Up to 200x leverage</b>
+                  <b className="text-white text-[11px]" data-i18n="extraLev">Up to 200x leverage</b>
                   <br />
                   <span data-i18n="extraDesc">
                     Crypto perps only / Hybrid-custodial / Any collateral
@@ -1780,93 +1780,93 @@ export default function TradingTerminal() {
               </div>
             </div>
           </div>
-          <div className="hdr-div"></div>
-          <nav className="hdr-nav">
-            <a className="hdr-nav-link active" href="/" data-i18n="trade">
+          <div className="w-px h-[18px] bg-[#1f1f1f] shrink-0"></div>
+          <nav className="flex items-center gap-1 mx-4">
+            <a className="text-xs font-medium text-white no-underline py-[5px] px-3 rounded-[7px] transition-colors duration-150 bg-[#1f1f1f] font-semibold pb-[5px]" href="/" data-i18n="trade">
               Trade
             </a>
-            <a className="hdr-nav-link" href="/markets" data-i18n="markets">
+            <a className="text-xs font-medium text-[#878c8f] no-underline py-[5px] px-3 rounded-[7px] transition-colors duration-150 hover:text-white hover:bg-[#1a1a1a]" href="/markets" data-i18n="markets">
               Markets
             </a>
-            <a className="hdr-nav-link" href="/news" data-i18n="news">
+            <a className="text-xs font-medium text-[#878c8f] no-underline py-[5px] px-3 rounded-[7px] transition-colors duration-150 hover:text-white hover:bg-[#1a1a1a]" href="/news" data-i18n="news">
               News
             </a>
-            <a className="hdr-nav-link" href="/portfolio" data-i18n="portfolio">
+            <a className="text-xs font-medium text-[#878c8f] no-underline py-[5px] px-3 rounded-[7px] transition-colors duration-150 hover:text-white hover:bg-[#1a1a1a]" href="/portfolio" data-i18n="portfolio">
               Portfolio
             </a>
-            <a className="hdr-nav-link" href="/transfer" data-i18n="transfer">
+            <a className="text-xs font-medium text-[#878c8f] no-underline py-[5px] px-3 rounded-[7px] transition-colors duration-150 hover:text-white hover:bg-[#1a1a1a]" href="/transfer" data-i18n="transfer">
               Transfer
             </a>
           </nav>
-          <div className="hdr-div"></div>
-          <button className="mkt-btn" id="mktBtn">
+          <div className="w-px h-[18px] bg-[#1f1f1f] shrink-0"></div>
+          <button className="flex items-center gap-1 font-[var(--hl-font)] text-[13px] font-semibold text-white bg-transparent border-none cursor-pointer py-1 px-2 rounded-md transition-colors duration-150 hover:bg-[#0d0d0d]" id="mktBtn">
             <span id="mktSymbol">BTC-USDC</span>
-            <span className="mkt-arrow">▾</span>
+            <span className="text-[10px] text-[#878c8f] mt-px">▾</span>
           </button>
-          <div id="mktDropdown" className="mkt-dropdown hidden">
+          <div id="mktDropdown" className="mkt-dropdown hidden absolute top-[calc(var(--hdr)+2px)] left-[120px] bg-[#0d0d0d] border border-[#1f1f1f] rounded-[10px] z-[500] w-[260px] shadow-[0_8px_24px_rgba(0,0,0,0.6)]">
             <input
               id="mktSearch"
-              className="mkt-search"
+              className="w-full py-2 px-3 bg-transparent border-0 border-b border-[#1f1f1f] font-[var(--hl-font)] text-xs text-white outline-none placeholder:text-[#878c8f]"
               placeholder="Search market..."
               autoComplete="off"
               data-i18n="searchMarket"
               data-i18n-attr="placeholder"
             />
-            <div className="mkt-list" id="mktList"></div>
-            <div className="mkt-hints">
-              <span className="mkt-hint">
-                <kbd>↑↓</kbd> Navigate
+            <div className="max-h-[280px] overflow-y-auto" id="mktList"></div>
+            <div className="flex items-center gap-4 py-2 px-3 border-t border-[#1f1f1f]">
+              <span className="flex items-center gap-[5px] text-[11px] text-[#878c8f]">
+                <kbd className="font-[var(--hl-font)] text-[10px] font-semibold text-white bg-white/[0.08] border border-[#1f1f1f] rounded-[3px] py-px px-[5px] leading-[1.6]">↑↓</kbd> Navigate
               </span>
-              <span className="mkt-hint">
-                <kbd>Enter</kbd> Select
+              <span className="flex items-center gap-[5px] text-[11px] text-[#878c8f]">
+                <kbd className="font-[var(--hl-font)] text-[10px] font-semibold text-white bg-white/[0.08] border border-[#1f1f1f] rounded-[3px] py-px px-[5px] leading-[1.6]">Enter</kbd> Select
               </span>
-              <span className="mkt-hint">
-                <kbd>Esc</kbd> Close
+              <span className="flex items-center gap-[5px] text-[11px] text-[#878c8f]">
+                <kbd className="font-[var(--hl-font)] text-[10px] font-semibold text-white bg-white/[0.08] border border-[#1f1f1f] rounded-[3px] py-px px-[5px] leading-[1.6]">Esc</kbd> Close
               </span>
             </div>
           </div>
         </div>
-        <div className="hdr-stats bord">
-          <div className="hdr-stat">
-            <span className="hdr-stat-label" data-i18n="mark">
+        <div className="flex items-center gap-0 flex-1 overflow-hidden px-3 py-0">
+          <div className="flex flex-col items-start py-0 px-3.5 border-r border-[#1f1f1f] gap-px shrink-0 first:pl-0">
+            <span className="text-[9px] text-[#878c8f] tracking-[0.4px] uppercase" data-i18n="mark">
               Mark
             </span>
-            <span className="hdr-stat-val" id="statMark">
+            <span className="text-[11px] text-white font-medium" id="statMark">
               —
             </span>
           </div>
-          <div className="hdr-stat">
-            <span className="hdr-stat-label" data-i18n="change24h">
+          <div className="flex flex-col items-start py-0 px-3.5 border-r border-[#1f1f1f] gap-px shrink-0 first:pl-0">
+            <span className="text-[9px] text-[#878c8f] tracking-[0.4px] uppercase" data-i18n="change24h">
               24h Change
             </span>
-            <span className="hdr-stat-val" id="statChange">
+            <span className="text-[11px] text-white font-medium" id="statChange">
               —
             </span>
           </div>
-          <div className="hdr-stat">
-            <span className="hdr-stat-label" data-i18n="volume24h">
+          <div className="flex flex-col items-start py-0 px-3.5 border-r border-[#1f1f1f] gap-px shrink-0 first:pl-0">
+            <span className="text-[9px] text-[#878c8f] tracking-[0.4px] uppercase" data-i18n="volume24h">
               24h Volume
             </span>
-            <span className="hdr-stat-val" id="statVolume">
+            <span className="text-[11px] text-white font-medium" id="statVolume">
               —
             </span>
           </div>
-          <div className="hdr-stat">
-            <span className="hdr-stat-label" data-i18n="fundingCountdown">
+          <div className="flex flex-col items-start py-0 px-3.5 border-r border-[#1f1f1f] gap-px shrink-0 first:pl-0">
+            <span className="text-[9px] text-[#878c8f] tracking-[0.4px] uppercase" data-i18n="fundingCountdown">
               Funding / Countdown
             </span>
-            <span className="hdr-stat-val" id="statFunding">
+            <span className="text-[11px] text-white font-medium" id="statFunding">
               — / —
             </span>
           </div>
         </div>
-        <div className="hdr-right border border-green-400 ml-auto">
-          <span id="balanceDisplay" className="hdr-balance hidden">
+        <div className="flex items-center gap-2 shrink-0">
+          <span id="balanceDisplay" className="text-[11px] font-semibold text-[#50d2c1] px-2 tracking-[0.3px] hidden">
             $0.00
           </span>
           <button
             id="depositBtn"
-            className="deposit-btn hidden"
+            className="font-[var(--hl-font)] text-[11px] font-semibold py-[5px] px-3 bg-transparent border border-[#50d2c1] text-[#50d2c1] rounded-md cursor-pointer tracking-[0.5px] hover:bg-[#50d2c1] hover:text-[#04060c] hidden"
             onClick={() => (window as any).rdo?.openDeposit()}
             data-i18n="deposit"
           >
@@ -1874,7 +1874,7 @@ export default function TradingTerminal() {
           </button>
           <button
             id="rubBtn"
-            className="rub-btn hidden"
+            className="font-[var(--hl-font)] text-[11px] font-bold py-[5px] px-[11px] bg-transparent border border-[#5a3800] rounded-md text-[#d4870a] cursor-pointer tracking-[0.3px] hover:border-[#d4870a] hover:text-[#f0a020] hover:bg-[rgba(212,135,10,0.08)] hidden"
             onClick={() => (window as any).rdo?.openOnramp()}
           >
             ₽ RUB
@@ -1884,10 +1884,10 @@ export default function TradingTerminal() {
       </header>
 
       {/* ══ WORKSPACE ════════════════════════════════════════════ */}
-      <div className="workspace">
+      <div className="grid overflow-hidden border-b border-[#1f1f1f]" style={{ gridTemplateColumns: "var(--xt) 1fr var(--tr) var(--tp)" }}>
         {/* X Tracker */}
-        <aside className="xt-col">
-          <div className="xt-hdr">
+        <aside className="flex flex-col border-r border-[#1f1f1f] bg-[var(--hl-bg-base)] overflow-hidden relative">
+          <div className="flex items-center justify-between pl-6 pr-4 h-12 shrink-0 border-b border-[#1f1f1f]">
             <span className="xt-title" data-i18n="tracker">
               Tracker
             </span>
@@ -1900,22 +1900,22 @@ export default function TradingTerminal() {
               Connect X
             </button>
           </div>
-          <div className="xt-feed" id="xtFeed">
+          <div className="flex-1 overflow-y-auto" id="xtFeed">
             <div className="xt-empty">
               Connect your X account to see real-time news and mentions for{" "}
-              <span className="xt-ticker" id="xtTicker">
+              <span className="text-[var(--hl-accent)] font-semibold" id="xtTicker">
                 BTC
               </span>
             </div>
           </div>
-          <div className="xt-resize-handle" id="xtResizeHandle"></div>
+          <div className="xt-resize-handle absolute top-0 -right-[3px] w-[6px] h-full z-10 cursor-col-resize" id="xtResizeHandle"></div>
         </aside>
 
         {/* Chart */}
-        <section className="chart-col">
-          <div className="chart-subhdr">
-            <div className="chart-subhdr-left">
-              <span id="chartLabel" className="chart-label">
+        <section className="flex flex-col border-r border-[#1f1f1f] overflow-hidden bg-[var(--hl-bg-page)]">
+          <div className="relative flex items-center justify-between px-2 border-b border-[#1f1f1f] bg-[var(--hl-bg-page)] shrink-0 h-12">
+            <div className="flex items-center gap-3 min-w-0">
+              <span id="chartLabel" className="text-[11px] text-[var(--hl-text-secondary)] whitespace-nowrap">
                 BTCUSD · 1m · RDO ONE
               </span>
               <span id="chartOhlc" className="chart-ohlc">
@@ -1923,7 +1923,7 @@ export default function TradingTerminal() {
                 <b id="oL">—</b>&nbsp; C <b id="oC">—</b>
               </span>
             </div>
-            <div className="chart-intervals">
+            <div className="absolute left-1/2 -translate-x-1/2 flex gap-px shrink-0">
               <button className="iv-btn active" data-iv="1">
                 1m
               </button>
@@ -1946,12 +1946,12 @@ export default function TradingTerminal() {
                 1D
               </button>
             </div>
-            <div className="chart-subhdr-tools">
-              <button className="chart-tool-btn" title="Indicators">
+            <div className="shrink-0">
+              <button className="font-[var(--hl-font)] text-[11px] font-bold text-[var(--hl-text-secondary)] bg-transparent border-none rounded-[7px] py-1 px-2.5 cursor-pointer transition-colors duration-100 hover:text-white hover:bg-[#1a1a1a]" title="Indicators">
                 <span data-i18n="indicators">Indicators</span>
               </button>
               <button
-                className="chart-tool-btn"
+                className="font-[var(--hl-font)] text-[11px] font-bold text-[var(--hl-text-secondary)] bg-transparent border-none rounded-[7px] py-1 px-2.5 cursor-pointer transition-colors duration-100 hover:text-white hover:bg-[#1a1a1a]"
                 onClick={() => (window as any).toggleObFloat?.()}
                 title="Order Book"
               >
@@ -1959,8 +1959,8 @@ export default function TradingTerminal() {
               </button>
             </div>
           </div>
-          <div className="chart-body">
-            <div className="draw-tools">
+          <div className="flex flex-1 overflow-hidden relative">
+            <div className="flex flex-col items-center w-[30px] border-r border-[#1f1f1f] bg-[var(--hl-bg-page)] py-1.5 gap-0.5 shrink-0">
               <button className="dt" title="Cursor">
                 ✛
               </button>
@@ -1989,51 +1989,51 @@ export default function TradingTerminal() {
                 ⊙
               </button>
             </div>
-            <div className="canvas-wrap" id="priceChart"></div>
+            <div className="flex-1 relative overflow-hidden min-h-0" id="priceChart"></div>
           </div>
         </section>
 
         {/* Live Trades */}
-        <section className="tr-col">
-          <div className="tr-col-hdr">
-            <span className="tr-col-title" data-i18n="liveTrades">
+        <section className="flex flex-col border-r border-[#1f1f1f] bg-[var(--hl-bg-base)] overflow-hidden">
+          <div className="flex items-center justify-between px-4 h-12 shrink-0 border-b border-[#1f1f1f]">
+            <span className="text-[11px] font-semibold text-white" data-i18n="liveTrades">
               Live Trades
             </span>
-            <span className="tr-col-pair" id="tradesPair">
+            <span className="text-[10px] text-[var(--hl-text-secondary)]" id="tradesPair">
               BTC-USDC
             </span>
           </div>
-          <div className="tr-col-labels">
-            <span data-i18n="price">Price</span>
-            <span data-i18n="size">Size</span>
-            <span data-i18n="time">Time</span>
+          <div className="grid grid-cols-3 px-4 py-[3px] border-b border-[#1f1f1f] shrink-0">
+            <span className="text-[9px] text-[var(--hl-text-light)] uppercase tracking-[0.3px]" data-i18n="price">Price</span>
+            <span className="text-[9px] text-[var(--hl-text-light)] uppercase tracking-[0.3px] text-right" data-i18n="size">Size</span>
+            <span className="text-[9px] text-[var(--hl-text-light)] uppercase tracking-[0.3px] text-right" data-i18n="time">Time</span>
           </div>
-          <div id="tradesList" className="tr-col-list"></div>
+          <div id="tradesList" className="flex-1 overflow-y-auto"></div>
         </section>
 
         {/* Trade Panel */}
-        <aside className="tp-col">
-          <div className="tp-margin-row">
+        <aside className="flex flex-col bg-[var(--hl-bg-base)] overflow-y-auto">
+          <div className="flex items-center gap-1 py-2 px-2 pb-1.5 border-b border-[#1f1f1f] shrink-0 h-12 box-border">
             <select className="tp-select" id="marginType">
               <option data-i18n="cross">Cross</option>
               <option data-i18n="isolated">Isolated</option>
             </select>
-            <div className="tp-lev-wrap">
+            <div className="flex items-center gap-px bg-[var(--hl-bg-elevated)] border border-[var(--hl-border)] rounded-[var(--hl-radius)] py-1 px-1.5">
               <input
                 id="levInput"
-                className="tp-lev-input"
+                className="w-[30px] bg-transparent border-none outline-none font-[var(--hl-font)] text-[11px] text-white text-center"
                 type="number"
                 min={1}
                 max={50}
                 defaultValue={20}
               />
-              <span className="tp-lev-x">x</span>
+              <span className="text-[10px] text-[var(--hl-text-secondary)]">x</span>
             </div>
             <select className="tp-select">
               <option data-i18n="unified">Unified</option>
             </select>
           </div>
-          <div className="tp-order-tabs">
+          <div className="flex border-b border-[#1f1f1f] shrink-0 h-8">
             <button
               className="tp-otab active"
               data-ot="market"
@@ -2045,7 +2045,7 @@ export default function TradingTerminal() {
               Limit
             </button>
           </div>
-          <div className="tp-sides">
+          <div className="grid grid-cols-2 gap-1 py-2 px-2 pb-1.5 shrink-0">
             <button
               id="btnBuy"
               className="tp-side tp-buy active"
@@ -2063,36 +2063,36 @@ export default function TradingTerminal() {
               Sell / Short
             </button>
           </div>
-          <div className="tp-form">
-            <div className="tp-info-row">
-              <span className="tp-info-label" data-i18n="availableTrade">
+          <div className="px-2 pb-2 flex flex-col gap-1.5 shrink-0">
+            <div className="flex justify-between items-center text-[11px]">
+              <span className="text-[var(--hl-text-secondary)]" data-i18n="availableTrade">
                 Available to Trade
               </span>
-              <span id="tpAvail" className="tp-info-val">
+              <span id="tpAvail" className="text-[var(--hl-text-soft)]">
                 0.00 USDC
               </span>
             </div>
-            <div className="tp-info-row">
-              <span className="tp-info-label" data-i18n="currentPosition">
+            <div className="flex justify-between items-center text-[11px]">
+              <span className="text-[var(--hl-text-secondary)]" data-i18n="currentPosition">
                 Current Position
               </span>
-              <span id="tpCurPos" className="tp-info-val">
+              <span id="tpCurPos" className="text-[var(--hl-text-soft)]">
                 0.00000 BTC
               </span>
             </div>
-            <div className="tp-field-label" data-i18n="size">
+            <div className="text-[9px] text-[var(--hl-text-secondary)] tracking-[0.4px] uppercase mt-0.5" data-i18n="size">
               Size
             </div>
             <div className="tp-size-wrap">
               <input
                 id="sizeInput"
-                className="tp-size-input"
+                className="flex-1 bg-transparent border-none outline-none font-[var(--hl-font)] text-[13px] font-medium text-white py-[7px] px-2 placeholder:text-[var(--hl-text-secondary)] placeholder:text-[11px]"
                 type="number"
                 placeholder="0"
                 min={0}
                 onChange={() => (window as any).rdo?.updateStats()}
               />
-              <div className="tp-size-unit" id="sizeUnit">
+              <div className="py-0 px-2 text-[10px] text-[var(--hl-text-secondary)] border-l border-[var(--hl-border)] cursor-default" id="sizeUnit">
                 BTC
               </div>
             </div>
@@ -2105,14 +2105,14 @@ export default function TradingTerminal() {
               defaultValue={0}
               onChange={(e) => (window as any).rdo?.onSlider(e.target.value)}
             />
-            <div className="tp-slider-marks">
+            <div className="flex justify-between text-[8px] text-[var(--hl-text-secondary)]">
               <span>0%</span>
               <span>25%</span>
               <span>50%</span>
               <span>75%</span>
               <span>100%</span>
             </div>
-            <div className="tp-options">
+            <div className="flex flex-col gap-1 mt-0.5">
               <label className="tp-check">
                 <input type="checkbox" id="chkReduce" />
                 <span data-i18n="reduceOnly">Reduce Only</span>
@@ -2130,76 +2130,76 @@ export default function TradingTerminal() {
               Connect
             </button>
             <div id="tradeErr" className="tp-err hidden"></div>
-            <div className="tp-stats">
-              <div className="tp-stat-row">
+            <div className="flex flex-col gap-1 border-t border-[#1f1f1f] pt-2 mt-0.5">
+              <div className="flex justify-between text-[11px] text-[var(--hl-text-secondary)]">
                 <span data-i18n="liqPrice">Liquidation Price</span>
                 <span id="stLiq">N/A</span>
               </div>
-              <div className="tp-stat-row">
+              <div className="flex justify-between text-[11px] text-[var(--hl-text-secondary)]">
                 <span data-i18n="orderValue">Order Value</span>
                 <span id="stVal">N/A</span>
               </div>
-              <div className="tp-stat-row">
+              <div className="flex justify-between text-[11px] text-[var(--hl-text-secondary)]">
                 <span data-i18n="marginRequired">Margin Required</span>
                 <span id="stMargin">--</span>
               </div>
-              <div className="tp-stat-row">
+              <div className="flex justify-between text-[11px] text-[var(--hl-text-secondary)]">
                 <span data-i18n="slippage">Slippage</span>
                 <span id="stSlip">--</span>
               </div>
-              <div className="tp-stat-row">
+              <div className="flex justify-between text-[11px] text-[var(--hl-text-secondary)]">
                 <span data-i18n="fee">Fee</span>
                 <span id="stFee">0.0450% / 0.0150%</span>
               </div>
             </div>
-            <div className="tp-section-title" data-i18n="accountEquity">
+            <div className="text-[9px] tracking-[0.8px] text-[var(--hl-text-secondary)] uppercase py-1.5 pt-1.5 pb-0.5 border-t border-[#1f1f1f] mt-1" data-i18n="accountEquity">
               Account Equity
             </div>
-            <div className="tp-stats">
-              <div className="tp-stat-row">
+            <div className="flex flex-col gap-1 border-t border-[#1f1f1f] pt-2 mt-0.5">
+              <div className="flex justify-between text-[11px] text-[var(--hl-text-secondary)]">
                 <span data-i18n="spot">Spot</span>
                 <span id="eqSpot">$0.00</span>
               </div>
-              <div className="tp-stat-row">
+              <div className="flex justify-between text-[11px] text-[var(--hl-text-secondary)]">
                 <span>
-                  <a href="#" className="tp-link" data-i18n="perps">
+                  <a href="#" className="tp-link text-[var(--hl-text-secondary)] no-underline font-semibold hover:text-[var(--hl-accent)]" data-i18n="perps">
                     Perps
                   </a>
                 </span>
                 <span id="eqPerps">$0.00</span>
               </div>
             </div>
-            <div className="tp-section-title" data-i18n="perpsOverview">
+            <div className="text-[9px] tracking-[0.8px] text-[var(--hl-text-secondary)] uppercase py-1.5 pt-1.5 pb-0.5 border-t border-[#1f1f1f] mt-1" data-i18n="perpsOverview">
               Perps Overview
             </div>
-            <div className="tp-stats">
-              <div className="tp-stat-row">
+            <div className="flex flex-col gap-1 border-t border-[#1f1f1f] pt-2 mt-0.5">
+              <div className="flex justify-between text-[11px] text-[var(--hl-text-secondary)]">
                 <span>
-                  <a href="#" className="tp-link" data-i18n="balance">
+                  <a href="#" className="tp-link text-[var(--hl-text-secondary)] no-underline font-semibold hover:text-[var(--hl-accent)]" data-i18n="balance">
                     Balance
                   </a>
                 </span>
                 <span id="ovBalance">$0.00</span>
               </div>
-              <div className="tp-stat-row">
+              <div className="flex justify-between text-[11px] text-[var(--hl-text-secondary)]">
                 <span data-i18n="unrealizedPnl">Unrealized PnL</span>
                 <span id="ovPnl">$0.00</span>
               </div>
-              <div className="tp-stat-row">
+              <div className="flex justify-between text-[11px] text-[var(--hl-text-secondary)]">
                 <span data-i18n="crossMarginRatio">Cross Margin Ratio</span>
                 <span id="ovCmr">0.00%</span>
               </div>
-              <div className="tp-stat-row">
+              <div className="flex justify-between text-[11px] text-[var(--hl-text-secondary)]">
                 <span>
-                  <a href="#" className="tp-link" data-i18n="maintenanceMargin">
+                  <a href="#" className="tp-link text-[var(--hl-text-secondary)] no-underline font-semibold hover:text-[var(--hl-accent)]" data-i18n="maintenanceMargin">
                     Maintenance Margin
                   </a>
                 </span>
                 <span id="ovMm">$0.00</span>
               </div>
-              <div className="tp-stat-row">
+              <div className="flex justify-between text-[11px] text-[var(--hl-text-secondary)]">
                 <span>
-                  <a href="#" className="tp-link" data-i18n="crossAccountLev">
+                  <a href="#" className="tp-link text-[var(--hl-text-secondary)] no-underline font-semibold hover:text-[var(--hl-accent)]" data-i18n="crossAccountLev">
                     Cross Account Leverage
                   </a>
                 </span>
@@ -2211,101 +2211,104 @@ export default function TradingTerminal() {
       </div>
 
       {/* ══ BOTTOM RESIZE ════════════════════════════════════════ */}
-      <div className="btm-resize-handle" id="btmResizeHandle"></div>
+      <div
+        className="h-1 bg-[#1f1f1f] cursor-ns-resize flex-shrink-0 relative transition-colors duration-150 hover:bg-[#50d2c1]"
+        id="btmResizeHandle"
+      ></div>
 
       {/* ══ BOTTOM PANEL ════════════════════════════════════════ */}
-      <section className="btm-panel">
-        <div className="btm-tabs">
+      <section className="flex flex-col bg-black overflow-hidden">
+        <div className="flex items-center pt-1 px-4 pb-2 border-b border-[#1f1f1f] overflow-x-auto flex-shrink-0 gap-1">
           <button
-            className="btm-tab active"
+            className="font-[Inter,system-ui,sans-serif] text-[11px] py-1 px-2.5 whitespace-nowrap bg-transparent border-none rounded-[7px] text-[#878c8f] cursor-pointer transition-colors duration-150 text-white font-semibold bg-[#1f1f1f]"
             data-bt="positions"
             data-i18n="positions"
           >
             Positions
           </button>
-          <button className="btm-tab" data-bt="balances" data-i18n="balances">
+          <button className="font-[Inter,system-ui,sans-serif] text-[11px] py-1 px-2.5 whitespace-nowrap bg-transparent border-none rounded-[7px] text-[#878c8f] cursor-pointer transition-colors duration-150 hover:text-white hover:bg-[#1a1a1a]" data-bt="balances" data-i18n="balances">
             Balances
           </button>
           <button
-            className="btm-tab"
+            className="font-[Inter,system-ui,sans-serif] text-[11px] py-1 px-2.5 whitespace-nowrap bg-transparent border-none rounded-[7px] text-[#878c8f] cursor-pointer transition-colors duration-150 hover:text-white hover:bg-[#1a1a1a]"
             data-bt="open-orders"
             data-i18n="openOrders"
           >
             Open Orders
           </button>
           <button
-            className="btm-tab"
+            className="font-[Inter,system-ui,sans-serif] text-[11px] py-1 px-2.5 whitespace-nowrap bg-transparent border-none rounded-[7px] text-[#878c8f] cursor-pointer transition-colors duration-150 hover:text-white hover:bg-[#1a1a1a]"
             data-bt="trade-history"
             data-i18n="tradeHistory"
           >
             Trade History
           </button>
           <button
-            className="btm-tab"
+            className="font-[Inter,system-ui,sans-serif] text-[11px] py-1 px-2.5 whitespace-nowrap bg-transparent border-none rounded-[7px] text-[#878c8f] cursor-pointer transition-colors duration-150 hover:text-white hover:bg-[#1a1a1a]"
             data-bt="funding"
             data-i18n="fundingHistory"
           >
             Funding History
           </button>
           <button
-            className="btm-tab"
+            className="font-[Inter,system-ui,sans-serif] text-[11px] py-1 px-2.5 whitespace-nowrap bg-transparent border-none rounded-[7px] text-[#878c8f] cursor-pointer transition-colors duration-150 hover:text-white hover:bg-[#1a1a1a]"
             data-bt="order-history"
             data-i18n="orderHistory"
           >
             Order History
           </button>
-          <button className="btm-tab" data-bt="liq-map">
+          <button className="font-[Inter,system-ui,sans-serif] text-[11px] py-1 px-2.5 whitespace-nowrap bg-transparent border-none rounded-[7px] text-[#878c8f] cursor-pointer transition-colors duration-150 hover:text-white hover:bg-[#1a1a1a]" data-bt="liq-map">
             Liq Map
           </button>
         </div>
-        <div className="btm-content">
-          <div id="btPositions" className="btm-pane">
-            <div className="btm-col-hdr">
-              <span data-i18n="market">Market</span>
-              <span data-i18n="mode">Mode</span>
-              <span data-i18n="size">Size</span>
-              <span data-i18n="positionValue">Position Value</span>
-              <span data-i18n="entryPrice">Entry Price</span>
-              <span data-i18n="markPrice">Mark Price</span>
-              <span data-i18n="pnlRoe">PNL (ROE %)</span>
-              <span data-i18n="liqPriceShort">Liq. Price</span>
-              <span data-i18n="margin">Margin</span>
-              <span data-i18n="funding">Funding</span>
+        <div className="flex-1 overflow-hidden">
+          <div id="btPositions" className="h-full overflow-y-auto">
+            <div className="flex px-4 py-2 border-b border-[#1f1f1f] sticky top-0 bg-black">
+              <span className="flex-1 min-w-0 text-[11px] text-[#878c8f] whitespace-nowrap overflow-hidden text-ellipsis" data-i18n="market">Market</span>
+              <span className="flex-1 min-w-0 text-[11px] text-[#878c8f] whitespace-nowrap overflow-hidden text-ellipsis" data-i18n="mode">Mode</span>
+              <span className="flex-1 min-w-0 text-[11px] text-[#878c8f] whitespace-nowrap overflow-hidden text-ellipsis" data-i18n="size">Size</span>
+              <span className="flex-1 min-w-0 text-[11px] text-[#878c8f] whitespace-nowrap overflow-hidden text-ellipsis" data-i18n="positionValue">Position Value</span>
+              <span className="flex-1 min-w-0 text-[11px] text-[#878c8f] whitespace-nowrap overflow-hidden text-ellipsis" data-i18n="entryPrice">Entry Price</span>
+              <span className="flex-1 min-w-0 text-[11px] text-[#878c8f] whitespace-nowrap overflow-hidden text-ellipsis" data-i18n="markPrice">Mark Price</span>
+              <span className="flex-1 min-w-0 text-[11px] text-[#878c8f] whitespace-nowrap overflow-hidden text-ellipsis" data-i18n="pnlRoe">PNL (ROE %)</span>
+              <span className="flex-1 min-w-0 text-[11px] text-[#878c8f] whitespace-nowrap overflow-hidden text-ellipsis" data-i18n="liqPriceShort">Liq. Price</span>
+              <span className="flex-1 min-w-0 text-[11px] text-[#878c8f] whitespace-nowrap overflow-hidden text-ellipsis" data-i18n="margin">Margin</span>
+              <span className="flex-1 min-w-0 text-[11px] text-[#878c8f] whitespace-nowrap overflow-hidden text-ellipsis" data-i18n="funding">Funding</span>
             </div>
-            <div id="posRows" className="btm-rows">
-              <div className="btm-empty" data-i18n="noPositions">
+            <div id="posRows" className="p-0">
+              <div className="py-5 px-3 text-[11px] text-[#878c8f] tracking-[0.4px]" data-i18n="noPositions">
                 No open positions yet
               </div>
             </div>
           </div>
-          <div id="btBalances" className="btm-pane hidden">
-            <div className="btm-empty" data-i18n="connectBalances">
+          <div id="btBalances" className="h-full overflow-y-auto hidden">
+            <div className="py-5 px-3 text-[11px] text-[#878c8f] tracking-[0.4px]" data-i18n="connectBalances">
               Connect wallet to view balances
             </div>
           </div>
-          <div id="btOpenOrders" className="btm-pane hidden">
-            <div className="btm-empty" data-i18n="noOpenOrders">
+          <div id="btOpenOrders" className="h-full overflow-y-auto hidden">
+            <div className="py-5 px-3 text-[11px] text-[#878c8f] tracking-[0.4px]" data-i18n="noOpenOrders">
               No open orders
             </div>
           </div>
-          <div id="btTradeHistory" className="btm-pane hidden">
-            <div className="btm-empty" data-i18n="noTradeHistory">
+          <div id="btTradeHistory" className="h-full overflow-y-auto hidden">
+            <div className="py-5 px-3 text-[11px] text-[#878c8f] tracking-[0.4px]" data-i18n="noTradeHistory">
               No trade history
             </div>
           </div>
-          <div id="btFunding" className="btm-pane hidden">
-            <div className="btm-empty" data-i18n="noFundingHistory">
+          <div id="btFunding" className="h-full overflow-y-auto hidden">
+            <div className="py-5 px-3 text-[11px] text-[#878c8f] tracking-[0.4px]" data-i18n="noFundingHistory">
               No funding history
             </div>
           </div>
-          <div id="btOrderHistory" className="btm-pane hidden">
-            <div className="btm-empty" data-i18n="noOrderHistory">
+          <div id="btOrderHistory" className="h-full overflow-y-auto hidden">
+            <div className="py-5 px-3 text-[11px] text-[#878c8f] tracking-[0.4px]" data-i18n="noOrderHistory">
               No order history
             </div>
           </div>
           <div
             id="btLiqMap"
-            className="btm-pane hidden"
+            className="h-full overflow-y-auto hidden"
             style={{ display: "none", padding: 0, flexDirection: "row" }}
           >
             <div
@@ -2885,11 +2888,11 @@ export default function TradingTerminal() {
       <div id="toastWrap" className="toast-wrap"></div>
 
       {/* Floating order book */}
-      <div id="obFloat" className="ob-float" style={{ display: "none" }}>
-        <div className="ob-float-hdr" id="obFloatHdr">
-          <span className="ob-float-title">Order Book</span>
+      <div id="obFloat" className="fixed z-[9999] flex flex-col w-[320px] max-h-[80vh] bg-[var(--hl-bg-elevated)] border border-[var(--hl-border)] rounded-[var(--hl-radius)] shadow-[0_8px_32px_rgba(0,0,0,0.6)] overflow-hidden" style={{ display: "none" }}>
+        <div className="flex items-center py-2 px-3 bg-[var(--hl-bg-overlay)] border-b border-[var(--hl-border)] cursor-grab select-none shrink-0 active:cursor-grabbing" id="obFloatHdr">
+          <span className="text-[11px] font-bold tracking-[0.05em] uppercase text-[var(--hl-text-secondary)] flex-1">Order Book</span>
           <button
-            className="ob-float-close"
+            className="bg-none border-none text-[var(--hl-text-muted)] text-[13px] cursor-pointer px-0.5 leading-none hover:text-white"
             onClick={() => {
               const el = document.getElementById("obFloat");
               if (el) el.style.display = "none";
@@ -2898,13 +2901,13 @@ export default function TradingTerminal() {
             ✕
           </button>
         </div>
-        <div className="ob-mini" id="obMini">
+        <div className="ob-mini border-t border-[var(--hl-border)] shrink-0 mt-2" id="obMini">
           <div
-            className="ob-mini-hdr"
+            className="ob-mini-hdr flex items-center justify-between py-1.5 px-2 pb-2.5"
             onClick={() => (window as any).rdo?.toggleOrderBook()}
             style={{ cursor: "pointer" }}
           >
-            <span className="ob-mini-title" data-i18n="orderBook">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.3px] text-[var(--hl-text-secondary)] whitespace-nowrap mr-1.5" data-i18n="orderBook">
               Order Book
             </span>
             <button
@@ -2912,33 +2915,33 @@ export default function TradingTerminal() {
               id="obToggleBtn"
               aria-label="Toggle order book"
             ></button>
-            <div className="ob-colhdr" id="obColHdr" style={{ flex: 1 }}>
-              <span data-i18n="price">Price</span>
-              <span data-i18n="size">Size</span>
-              <span data-i18n="total">Total</span>
+            <div className="ob-colhdr grid grid-cols-3 px-2 ml-auto" id="obColHdr" style={{ flex: 1 }}>
+              <span className="text-[9px] text-[var(--hl-text-light)] uppercase tracking-[0.3px]" data-i18n="price">Price</span>
+              <span className="text-[9px] text-[var(--hl-text-light)] uppercase tracking-[0.3px] text-right" data-i18n="size">Size</span>
+              <span className="text-[9px] text-[var(--hl-text-light)] uppercase tracking-[0.3px] text-right" data-i18n="total">Total</span>
             </div>
           </div>
           <div id="obBody">
-            <div id="obAsks" className="ob-asks ob-asks-mini"></div>
-            <div className="ob-spread-row">
-              <span className="ob-spread-label" data-i18n="spread">
+            <div id="obAsks" className="overflow-hidden flex flex-col flex-col-reverse"></div>
+            <div className="flex items-center gap-1.5 py-1 px-2 border-y border-[#1f1f1f] shrink-0 my-2">
+              <span className="text-[9px] text-[var(--hl-text-secondary)] flex-1 uppercase tracking-[0.4px]" data-i18n="spread">
                 Spread
               </span>
-              <span id="obSpreadVal" className="ob-spread-val">
+              <span id="obSpreadVal" className="text-[11px] text-white">
                 —
               </span>
-              <span id="obSpreadPct" className="ob-spread-pct"></span>
+              <span id="obSpreadPct" className="text-[9px] text-[var(--hl-text-muted)]"></span>
             </div>
-            <div id="obBids" className="ob-bids"></div>
-            <div className="ob-ratio" id="obRatio">
+            <div id="obBids" className="overflow-hidden pb-2"></div>
+            <div className="flex h-[22px] shrink-0 border-t border-[#1f1f1f] text-[10px] font-bold overflow-hidden" id="obRatio">
               <div
-                className="ob-ratio-bid"
+                className="flex items-center pl-[7px] transition-[width] duration-300 whitespace-nowrap overflow-hidden"
                 id="obRatioBid"
                 style={{ width: "50%" }}
               >
                 B 50.0%
               </div>
-              <div className="ob-ratio-ask" id="obRatioAsk">
+              <div className="flex items-center justify-end pr-[7px] flex-1 transition-[width] duration-300 whitespace-nowrap overflow-hidden" id="obRatioAsk">
                 50.0% S
               </div>
             </div>
