@@ -37,14 +37,14 @@ export function WalletControls() {
     <>
       <NetworkSwitcher onChange={setActiveNetwork} />
 
-      <div className="lang-wrap" ref={langRef}>
-        <button className="lang-btn" onClick={() => setLangOpen(o => !o)} aria-label="Language">
+      <div className="relative shrink-0" ref={langRef}>
+        <button className="flex items-center justify-center w-7 h-7 bg-transparent border border-[#1f1f1f] rounded text-[#878c8f] cursor-pointer transition-colors duration-150 hover:border-[#50d2c1] hover:text-[#50d2c1]" onClick={() => setLangOpen(o => !o)} aria-label="Language">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><ellipse cx="12" cy="12" rx="4" ry="10" /><path d="M2 12h20" /></svg>
         </button>
         {langOpen && (
-          <div className="lang-dropdown">
+          <div className="absolute top-[calc(100%+6px)] right-0 z-[900] bg-[#0d0d0d] border border-[#1f1f1f] rounded py-1 min-w-[110px] shadow-[0_8px_24px_rgba(0,0,0,0.5)]">
             {(['en', 'ru', 'zh'] as const).map(l => (
-              <button key={l} className={`lang-option${lang === l ? ' active' : ''}`} onClick={() => { setLang(l); setLangState(l); setLangOpen(false); }}>
+              <button key={l} className={`block w-full py-[7px] px-3.5 border-none bg-transparent text-xs font-[inherit] text-left cursor-pointer transition-colors duration-150 hover:text-white hover:bg-[#161616] ${lang === l ? 'text-[#50d2c1]' : 'text-[#878c8f]'}`} onClick={() => { setLang(l); setLangState(l); setLangOpen(false); }}>
                 {l === 'en' ? 'English' : l === 'ru' ? 'Русский' : '中文'}
               </button>
             ))}

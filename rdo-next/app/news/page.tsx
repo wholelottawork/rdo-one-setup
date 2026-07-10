@@ -2,41 +2,6 @@
 import { useEffect } from 'react';
 import { SiteNav } from '@/components/SiteNav';
 
-const PAGE_CSS = `
-main{max-width:1200px;margin:0 auto;padding:0 24px 40px;padding-top:calc(40px + 8px)}
-.page-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px}
-h1{font-size:18px;font-weight:700;letter-spacing:-.03em}
-.hdr-right{display:flex;align-items:center;gap:10px}
-.article{background:#0d0d0d;border:1px solid #1f1f1f;border-radius:6px;overflow:hidden;display:flex;flex-direction:column;cursor:pointer;transition:border-color .15s}
-.article:hover{border-color:#50d2c1}
-.article:hover .art-title{color:#50d2c1}
-.art-img-wrap{width:100%;aspect-ratio:16/7;overflow:hidden;background:#161616;flex-shrink:0}
-.art-img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .3s}
-.article:hover .art-img{transform:scale(1.03)}
-.art-img-ph{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:28px;color:#878c8f}
-.art-body{padding:12px 14px;flex:1;display:flex;flex-direction:column;gap:7px}
-.art-meta{display:flex;justify-content:space-between;align-items:center;gap:6px}
-.art-src{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.art-time{font-size:10px;color:#878c8f;white-space:nowrap;flex-shrink:0}
-.art-title{font-size:13px;font-weight:600;line-height:1.45;color:#fff;transition:color .15s;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
-.art-excerpt{font-size:11px;color:#878c8f;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.art-tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:2px}
-.art-tag{font-size:9px;font-weight:600;padding:2px 6px;border-radius:3px;background:#161616;color:#878c8f;text-transform:uppercase;letter-spacing:.04em}
-.state-box{grid-column:1/-1;padding:60px 20px;text-align:center;color:#878c8f;font-size:12px}
-.state-icon{font-size:32px;margin-bottom:10px}
-.sk-card{background:#0d0d0d;border:1px solid #1f1f1f;border-radius:6px;overflow:hidden}
-.sk-img{width:100%;aspect-ratio:16/7;background:#161616;animation:pulse 1.5s ease-in-out infinite}
-.sk-body{padding:12px 14px;display:flex;flex-direction:column;gap:8px}
-.sk-line{border-radius:3px;background:#161616;animation:pulse 1.5s ease-in-out infinite}
-#load-more-wrap{margin-top:20px;text-align:center;display:none}
-.feed-status{font-size:10px;color:#878c8f;margin-bottom:8px}
-.feed-status span{color:#50d2c1}
-.lang-wrap{position:relative}
-.lang-btn{display:flex;align-items:center;justify-content:center;width:28px;height:28px;background:transparent;border:1px solid #1f1f1f;border-radius:4px;color:#878c8f;cursor:pointer}
-.lang-dropdown{position:absolute;top:calc(100% + 6px);right:0;z-index:900;background:#0d0d0d;border:1px solid #1f1f1f;border-radius:4px;padding:4px 0;min-width:110px;box-shadow:0 8px 24px rgba(0,0,0,.5);display:none}
-.lang-option{display:block;width:100%;padding:7px 14px;border:none;background:transparent;color:#878c8f;font-size:12px;text-align:left;cursor:pointer;font-family:inherit}
-`;
-
 export default function NewsPage() {
   useEffect(() => {
     const R2J = 'https://api.rss2json.com/v1/api.json?rss_url=';
@@ -154,34 +119,34 @@ export default function NewsPage() {
 
     function skeletons(n: number) {
       return Array.from({ length: n }, () => `
-        <div class="sk-card">
-          <div class="sk-img"></div>
-          <div class="sk-body">
-            <div class="sk-line" style="width:50%;height:8px"></div>
-            <div class="sk-line" style="width:100%;height:11px;margin-top:2px"></div>
-            <div class="sk-line" style="width:85%;height:11px"></div>
-            <div class="sk-line" style="width:60%;height:11px"></div>
-            <div class="sk-line" style="width:40%;height:8px;margin-top:4px"></div>
+        <div class="bg-[#0d0d0d] border border-[#1f1f1f] rounded-md overflow-hidden">
+          <div class="w-full aspect-[16/7] bg-[#161616] animate-pulse"></div>
+          <div class="px-3.5 py-3 flex flex-col gap-2">
+            <div class="rounded-sm bg-[#161616] animate-pulse" style="width:50%;height:8px"></div>
+            <div class="rounded-sm bg-[#161616] animate-pulse" style="width:100%;height:11px;margin-top:2px"></div>
+            <div class="rounded-sm bg-[#161616] animate-pulse" style="width:85%;height:11px"></div>
+            <div class="rounded-sm bg-[#161616] animate-pulse" style="width:60%;height:11px"></div>
+            <div class="rounded-sm bg-[#161616] animate-pulse" style="width:40%;height:8px;margin-top:4px"></div>
           </div>
         </div>`).join('');
     }
 
     function articleCard(a: any) {
       const link = a.link.replace(/'/g, "&#39;");
-      return `<div class="article" onclick="window.open('${link}','_blank','noopener')">
-        <div class="art-img-wrap">
+      return `<div class="article bg-[#0d0d0d] border border-[#1f1f1f] rounded-md overflow-hidden flex flex-col cursor-pointer transition-colors duration-150 hover:border-[#50d2c1] group" onclick="window.open('${link}','_blank','noopener')">
+        <div class="w-full aspect-[16/7] overflow-hidden bg-[#161616] shrink-0">
           ${a.img
-            ? `<img class="art-img" src="${a.img}" alt="" loading="lazy" onerror="this.parentElement.innerHTML='<div class=art-img-ph>📰</div>'">`
-            : '<div class="art-img-ph">📰</div>'}
+            ? `<img class="w-full h-full object-cover block transition-transform duration-300 group-hover:scale-[1.03]" src="${a.img}" alt="" loading="lazy" onerror="this.parentElement.innerHTML='<div class=\\'w-full h-full flex items-center justify-center text-[28px] text-[#878c8f]\\'>📰</div>'">`
+            : '<div class="w-full h-full flex items-center justify-center text-[28px] text-[#878c8f]">📰</div>'}
         </div>
-        <div class="art-body">
-          <div class="art-meta">
-            <span class="art-src" style="color:${a.sourceColor}">${a.source}</span>
-            <span class="art-time">${a.pubDate ? timeAgo(a.pubDate) : ''}</span>
+        <div class="px-3.5 py-3 flex-1 flex flex-col gap-[7px]">
+          <div class="flex justify-between items-center gap-1.5">
+            <span class="text-[10px] font-bold uppercase tracking-wider overflow-hidden text-ellipsis whitespace-nowrap" style="color:${a.sourceColor}">${a.source}</span>
+            <span class="text-[10px] text-[#878c8f] whitespace-nowrap shrink-0">${a.pubDate ? timeAgo(a.pubDate) : ''}</span>
           </div>
-          <div class="art-title">${a.title}</div>
-          ${a.desc ? `<div class="art-excerpt">${a.desc.slice(0, 200)}</div>` : ''}
-          ${a.cats.length ? `<div class="art-tags">${a.cats.map((c: string) => `<span class="art-tag">${c}</span>`).join('')}</div>` : ''}
+          <div class="text-[13px] font-semibold leading-[1.45] text-white transition-colors duration-150 group-hover:text-[#50d2c1] line-clamp-3">${a.title}</div>
+          ${a.desc ? `<div class="text-[11px] text-[#878c8f] leading-[1.5] line-clamp-2">${a.desc.slice(0, 200)}</div>` : ''}
+          ${a.cats.length ? `<div class="flex flex-wrap gap-1 mt-0.5">${a.cats.map((c: string) => `<span class="text-[9px] font-semibold px-1.5 py-0.5 rounded-[3px] bg-[#161616] text-[#878c8f] uppercase tracking-wide">${c}</span>`).join('')}</div>` : ''}
         </div>
       </div>`;
     }
@@ -231,7 +196,7 @@ export default function NewsPage() {
       const statusEl = el('feed-status');
       if (statusEl) {
         const ok = SOURCES.length - failed.length;
-        statusEl.innerHTML = `<span>${ok}</span>/${SOURCES.length} sources loaded · ${allArticles.length} articles` +
+        statusEl.innerHTML = `<span class="text-[#50d2c1]">${ok}</span>/${SOURCES.length} sources loaded · ${allArticles.length} articles` +
           (failed.length ? ` · failed: ${failed.join(', ')}` : '');
       }
       return allArticles;
@@ -259,7 +224,7 @@ export default function NewsPage() {
       const grid = el('news-grid');
       if (!grid) return;
       if (!visibleArticles.length) {
-        grid.innerHTML = `<div class="state-box"><div class="state-icon">📭</div><div>No articles found.</div></div>`;
+        grid.innerHTML = `<div class="col-span-full py-[60px] px-5 text-center text-[#878c8f] text-xs"><div class="text-[32px] mb-2.5">📭</div><div>No articles found.</div></div>`;
         const lmw = el('load-more-wrap'); if (lmw) lmw.style.display = 'none';
         return;
       }
@@ -290,7 +255,7 @@ export default function NewsPage() {
         render(applyFilters(all));
       } catch (e: any) {
         const grid2 = el('news-grid');
-        if (grid2) grid2.innerHTML = `<div class="state-box"><div class="state-icon">⚠️</div><div>Failed to load: ${e.message}</div></div>`;
+        if (grid2) grid2.innerHTML = `<div class="col-span-full py-[60px] px-5 text-center text-[#878c8f] text-xs"><div class="text-[32px] mb-2.5">⚠️</div><div>Failed to load: ${e.message}</div></div>`;
       }
       if (btn) (btn as HTMLButtonElement).disabled = false;
       loading = false;
@@ -354,15 +319,13 @@ export default function NewsPage() {
 
   return (
     <>
-      <style dangerouslySetInnerHTML={{__html: PAGE_CSS}} />
-
       <SiteNav activePage="news" />
 
-      <main>
-        <div className="page-hdr">
-          <h1 data-i18n="cryptoNews">Crypto News</h1>
-          <div className="hdr-right">
-            <span id="update-ts" />
+      <main className="max-w-[1200px] mx-auto px-6 pb-10 pt-[48px]">
+        <div className="flex justify-between items-center mb-4 flex-wrap gap-2.5">
+          <h1 className="text-lg font-bold tracking-tight" data-i18n="cryptoNews">Crypto News</h1>
+          <div className="flex items-center gap-2.5">
+            <span id="update-ts" className="text-[11px] text-[#878c8f]" />
             <button className="refresh-btn" id="refresh-btn" onClick={() => (window as any).refresh()} data-i18n="refresh">Refresh</button>
           </div>
         </div>
@@ -370,7 +333,7 @@ export default function NewsPage() {
         <div className="source-row" id="src-filters" />
         <div className="feed-status" id="feed-status" />
         <div className="news-grid" id="news-grid" />
-        <div id="load-more-wrap">
+        <div className="mt-5 text-center hidden" id="load-more-wrap">
           <button className="load-more-btn" onClick={() => (window as any).showMore()}>Load More</button>
         </div>
       </main>
