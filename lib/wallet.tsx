@@ -19,6 +19,40 @@ export function getEVMProvider(): EIP1193Provider | null {
   return window.phantom?.ethereum ?? window.ethereum ?? null;
 }
 
+/**
+ * Picks an EVM provider that can actually switch to BNB Smart Chain for
+ * `expectedAddress` — needed because Phantom's EVM mode has a hardcoded
+ * chain allowlist (Ethereum, Base, Polygon, Monad testnet — confirmed
+ * against Phantom's own docs/help center) that does NOT include BSC.
+ * wallet_switchEthereumChain AND wallet_addEthereumChain both fail for
+ * Phantom + BSC; there's no request payload that works around it, it's a
+ * capability gap, not a formatting bug. Aster's approveAgent signature is
+ * hardcoded to require chainId 56, so if Phantom is the active wallet and
+ * another injected wallet (e.g. MetaMask) already has the SAME address
+ * connected, prefer that one for this specific signature — checked via
+ * eth_accounts, which never prompts, so this never surprises the user with
+ * an unexpected connection request. Falls back to whatever's available
+ * (typically Phantom) if no matching alternative exists, so the caller can
+ * still surface a clear, specific error instead of a silent failure.
+ */
+export async function getBscCapableProvider(expectedAddress: string): Promise<EIP1193Provider | null> {
+  if (typeof window === 'undefined') return null;
+  const w = window as unknown as { ethereum?: (EIP1193Provider & { providers?: EIP1193Provider[]; isPhantom?: boolean }); phantom?: { ethereum?: EIP1193Provider & { isPhantom?: boolean } } };
+  const candidates: (EIP1193Provider & { isPhantom?: boolean })[] = [];
+  if (Array.isArray(w.ethereum?.providers)) candidates.push(...(w.ethereum.providers as (EIP1193Provider & { isPhantom?: boolean })[]));
+  else if (w.ethereum) candidates.push(w.ethereum);
+  if (w.phantom?.ethereum && !candidates.includes(w.phantom.ethereum)) candidates.push(w.phantom.ethereum);
+
+  const nonPhantom = candidates.filter((p) => !p.isPhantom);
+  for (const p of nonPhantom) {
+    try {
+      const accounts = (await p.request({ method: 'eth_accounts' })) as string[];
+      if (accounts?.some((a) => a.toLowerCase() === expectedAddress.toLowerCase())) return p;
+    } catch { /* try the next candidate */ }
+  }
+  return candidates[0] ?? null;
+}
+
 export function getSolanaProvider(): unknown | null {
   if (typeof window === 'undefined') return null;
   return window.phantom?.solana ?? null;

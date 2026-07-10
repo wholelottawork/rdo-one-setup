@@ -4,7 +4,7 @@ import './portfolio.css';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "@/lib/i18n";
-import { useWallet, getEVMProvider } from "@/lib/wallet";
+import { useWallet, getEVMProvider, getBscCapableProvider } from "@/lib/wallet";
 import { useShell } from "@/app/_components/ShellContext";
 import { useHLSocket } from "@/lib/hl-socket";
 import {
@@ -294,13 +294,24 @@ export default function PortfolioPage() {
   // reject eth_signTypedData_v4 if that domain chainId doesn't match the
   // wallet's currently active network, so switch (or add, if not present)
   // before ever requesting the signature.
-  async function ensureBscNetwork(provider: EIP1193): Promise<boolean> {
+  //
+  // NOTE: this fails unconditionally for Phantom — its EVM mode only
+  // supports Ethereum/Base/Polygon/Monad testnet (confirmed against
+  // Phantom's own docs), BSC isn't in that list at all, and there's no
+  // wallet_addEthereumChain payload that changes that. The caller should
+  // route through getBscCapableProvider() first so a same-address MetaMask
+  // (or similar) gets used instead when Phantom is what's connected.
+  async function ensureBscNetwork(provider: EIP1193): Promise<{ ok: boolean; reason?: string }> {
+    const isPhantom = (provider as unknown as { isPhantom?: boolean })?.isPhantom;
+    const unsupportedMsg = isPhantom
+      ? "Phantom doesn't support BNB Smart Chain, which Aster's approval requires — connect with MetaMask (or another BSC-compatible wallet) instead."
+      : "Your wallet couldn't switch to BNB Smart Chain, which Aster's approval requires.";
     try {
       await provider.request({
         method: "wallet_switchEthereumChain",
         params: [{ chainId: "0x38" }],
       });
-      return true;
+      return { ok: true };
     } catch (e) {
       const code = (e as { code?: number })?.code;
       if (code === 4902) {
@@ -317,12 +328,12 @@ export default function PortfolioPage() {
               },
             ],
           });
-          return true;
+          return { ok: true };
         } catch {
-          return false;
+          return { ok: false, reason: unsupportedMsg };
         }
       }
-      return false;
+      return { ok: false, reason: unsupportedMsg };
     }
   }
 
@@ -570,14 +581,15 @@ export default function PortfolioPage() {
     setAsterApproveMsg(null);
     try {
       const result = await ensureAsterAgentApproved(evmAddr, async () => {
-        const onBsc = await ensureBscNetwork(provider as unknown as EIP1193);
-        if (!onBsc) {
+        const bscProvider = (await getBscCapableProvider(evmAddr)) ?? provider;
+        const net = await ensureBscNetwork(bscProvider as unknown as EIP1193);
+        if (!net.ok) {
           throw new Error(
-            "switch your wallet to BNB Smart Chain (BSC) — Aster's approval signature requires it",
+            net.reason ?? "switch your wallet to BNB Smart Chain (BSC) — Aster's approval signature requires it",
           );
         }
         const { ethers } = await import("ethers");
-        return new ethers.BrowserProvider(provider as never).getSigner();
+        return new ethers.BrowserProvider(bscProvider as never).getSigner();
       });
       setAsterApproveMsg(
         result.ok

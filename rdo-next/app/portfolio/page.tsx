@@ -1,6 +1,6 @@
 'use client';
 import { useEffect } from 'react';
-import { ensureAsterAgentApproved, ensureBscNetwork, getAsterIncomeHistory } from '@/lib/aster-agent';
+import { ensureAsterAgentApproved, ensureBscNetwork, getBscCapableProvider, getAsterIncomeHistory, EVM_NETWORKS, getEvmProviderFor, switchEvmNetwork } from '@/lib/aster-agent';
 
 const PAGE_CSS = `
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -74,6 +74,14 @@ main{max-width:1400px;margin:0 auto;padding:0 24px 60px;padding-top:calc(var(--n
 .hl-load-btn:hover{opacity:.88}
 .hl-evm-btn{font-size:12px;font-weight:600;color:var(--text2);background:transparent;border:1px solid var(--border);border-radius:4px;padding:7px 14px;cursor:pointer;font-family:inherit;transition:all .15s;display:flex;align-items:center;gap:6px;white-space:nowrap}
 .hl-evm-btn:hover{border-color:var(--accent);color:var(--accent)}
+.net-switch-wrap{position:relative}
+.net-switch-btn{font-size:12px;font-weight:600;color:var(--text2);background:transparent;border:1px solid var(--border);border-radius:4px;padding:7px 10px;cursor:pointer;font-family:inherit;transition:all .15s;display:flex;align-items:center;gap:7px;white-space:nowrap}
+.net-switch-btn:hover{border-color:var(--accent);color:var(--accent)}
+.net-dot{width:16px;height:16px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0}
+.net-dropdown{position:absolute;top:calc(100% + 6px);right:0;z-index:900;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:6px;min-width:170px;box-shadow:0 8px 24px rgba(0,0,0,.5)}
+.net-option{display:flex;align-items:center;gap:9px;width:100%;padding:8px 10px;border:none;background:transparent;color:var(--text2);font-size:12px;font-family:inherit;text-align:left;cursor:pointer;border-radius:6px}
+.net-option:hover{background:var(--bg3)}
+.net-opt-check{margin-left:auto;color:var(--accent);font-weight:700}
 .pnl-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px;flex-wrap:wrap}
 .pnl-title{font-size:18px;font-weight:800;letter-spacing:.5px;color:var(--text)}
 .pnl-addr-sub{font-size:11px;color:var(--text3);margin-top:2px}
@@ -1076,6 +1084,30 @@ export default function PortfolioPage() {
       if (inp) { inp.placeholder='No EVM wallet found — enter address manually'; inp.style.borderColor='var(--red)'; setTimeout(()=>{ if (inp) { inp.placeholder='Enter Aster / EVM wallet address (0x…)'; inp.style.borderColor=''; } },4000); }
     }
 
+    // Reflects the CONNECTED wallet's actual current chain in the network
+    // chip/dropdown — this is what makes the BSC switch during approval
+    // visible instead of a silent side effect: the chip updates the moment
+    // the wallet's chain changes (approval-triggered or user-triggered via
+    // the dropdown itself) and shows the user exactly what network they're
+    // on and lets them switch back afterward.
+    let netListenerProvider: any = null;
+    function updateAsterNetDisplay(chainIdHex: string) {
+      const wrap = el('asterNetWrap'); if (wrap) wrap.style.display = '';
+      const net = EVM_NETWORKS.find(n => n.chainId.toLowerCase() === (chainIdHex || '').toLowerCase());
+      const dot = el('asterNetDot'); const label = el('asterNetLabel');
+      if (dot) { dot.textContent = net?.short ?? '?'; (dot as HTMLElement).style.background = net?.bg ?? 'var(--bg3)'; (dot as HTMLElement).style.color = net?.color ?? 'var(--text3)'; }
+      if (label) label.textContent = net?.name ?? 'Unsupported network';
+      document.querySelectorAll('.net-opt-check').forEach((c: Element) => {
+        (c as HTMLElement).style.display = (c as HTMLElement).dataset.check?.toLowerCase() === (chainIdHex || '').toLowerCase() ? '' : 'none';
+      });
+    }
+    function watchAsterNetwork(provider: any) {
+      if (!provider || netListenerProvider === provider) return;
+      netListenerProvider?.removeListener?.('chainChanged', updateAsterNetDisplay);
+      netListenerProvider = provider;
+      provider.request({ method: 'eth_chainId' }).then(updateAsterNetDisplay).catch(() => {});
+      provider.on?.('chainChanged', updateAsterNetDisplay);
+    }
     async function loadAsterData(address: string) {
       ['as-pv-equity','as-pv-upnl','as-pv-ntl','as-pv-avail','as-pv-margin','as-pv-lev'].forEach(id=>set(id,'…'));
       const ph = el('as-pv-placeholder'); if (ph) ph.style.display='none';
@@ -1084,18 +1116,20 @@ export default function PortfolioPage() {
       ['as-total-pnl','as-win-rate','as-trades','as-hold','as-best','as-worst'].forEach(id=>set(id,'…'));
 
       // Aster deprecated the old public v2/account bulk endpoint this used to
-      // call — the current V3 Pro API requires our shared trading agent to
-      // be approved first. ensureAsterAgentApproved probes silently and only
-      // prompts the wallet for a signature when this address hasn't already
-      // approved (e.g. via the main app, same shared agent) — "one time, and
-      // again only if needed," no separate button.
+      // call — the current V3 Pro API requires this address's own dedicated
+      // agent (server/lib/agent-keystore.js) to be approved first.
+      // ensureAsterAgentApproved probes silently and only prompts the wallet
+      // for a signature when this address hasn't already approved it —
+      // "one time, and again only if needed," no separate button.
       const provider = (window as any).phantom?.ethereum ?? (window as any).ethereum ?? null;
+      watchAsterNetwork(provider);
       const approval = await ensureAsterAgentApproved(address, async () => {
         if (!provider) throw new Error('connect an EVM wallet to approve the Aster agent');
-        const onBsc = await ensureBscNetwork(provider);
-        if (!onBsc) throw new Error("switch your wallet to BNB Smart Chain (BSC) — Aster's approval signature requires it");
+        const bscProvider = (await getBscCapableProvider(address)) ?? provider;
+        const net = await ensureBscNetwork(bscProvider);
+        if (!net.ok) throw new Error(net.reason ?? "switch your wallet to BNB Smart Chain (BSC) — Aster's approval signature requires it");
         const { ethers } = await import('ethers');
-        return new ethers.BrowserProvider(provider).getSigner();
+        return new ethers.BrowserProvider(bscProvider).getSigner();
       });
       if (!approval.ok) {
         ['as-pv-equity','as-pv-upnl','as-pv-ntl','as-pv-avail','as-pv-margin','as-pv-lev'].forEach(id=>set(id,'—'));
@@ -1294,6 +1328,41 @@ export default function PortfolioPage() {
       if (e.key === 'Escape') { closeDeposit(); closeSwap(); closeConvert(); closeCalendarModal(); }
     };
     document.addEventListener('keydown', onKeyDown);
+
+    // Aster network switcher — makes the BSC switch (needed for Aster's
+    // approval signature) a visible, user-controlled action instead of a
+    // silent side effect of clicking Load/Connect. See
+    // updateAsterNetDisplay/watchAsterNetwork above.
+    const netBtn = document.getElementById('asterNetBtn');
+    const netDd = document.getElementById('asterNetDropdown') as HTMLElement | null;
+    if (netBtn) netBtn.addEventListener('click', () => {
+      if (netDd) netDd.style.display = netDd.style.display === 'none' ? '' : 'none';
+    });
+    document.addEventListener('click', (ev: MouseEvent) => {
+      if (!(ev.target as Element)?.closest('.net-switch-wrap') && netDd) netDd.style.display = 'none';
+    });
+    netDd?.querySelectorAll('.net-option').forEach((b: Element) => {
+      b.addEventListener('click', async () => {
+        const chainId = (b as HTMLElement).dataset.chain || '';
+        const network = EVM_NETWORKS.find(n => n.chainId === chainId);
+        if (netDd) netDd.style.display = 'none';
+        if (!network) return;
+        const addr = (document.getElementById('aster-addr-input') as HTMLInputElement | null)?.value?.trim();
+        const provider = addr ? await getEvmProviderFor(addr, chainId) : ((window as any).phantom?.ethereum ?? (window as any).ethereum ?? null);
+        if (!provider) return;
+        const result = await switchEvmNetwork(provider, network);
+        if (result.ok) {
+          watchAsterNetwork(provider);
+        } else {
+          const label = document.getElementById('asterNetLabel');
+          const dot = document.getElementById('asterNetDot');
+          if (label) label.textContent = 'Unsupported';
+          if (dot) { dot.textContent = '!'; (dot as HTMLElement).style.background = '#3a1414'; (dot as HTMLElement).style.color = 'var(--red)'; }
+          console.warn('[Aster network switch]', result.reason);
+          setTimeout(() => { provider.request({ method: 'eth_chainId' }).then(updateAsterNetDisplay).catch(() => {}); }, 3000);
+        }
+      });
+    });
 
     // i18n
     import('@/lib/i18n').then(({ applyTranslations, setLang, getLang }: any) => {
@@ -1519,6 +1588,30 @@ export default function PortfolioPage() {
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 2v20M2 12h20"/></svg>
               Connect EVM Wallet
             </button>
+            <div className="net-switch-wrap" id="asterNetWrap" style={{display:'none'}}>
+              <button className="net-switch-btn" id="asterNetBtn" title="Aster's approval requires BNB Chain — switch here instead of it happening silently">
+                <span className="net-dot" id="asterNetDot">?</span>
+                <span id="asterNetLabel">Network</span>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+              </button>
+              <div className="net-dropdown" id="asterNetDropdown" style={{display:'none'}}>
+                <button className="net-option" data-chain="0x38">
+                  <span className="net-dot" style={{background:'#3a2f0a',color:'#F0B90B'}}>B</span>
+                  <span>BNB Chain</span>
+                  <span className="net-opt-check" data-check="0x38" style={{display:'none'}}>✓</span>
+                </button>
+                <button className="net-option" data-chain="0x1">
+                  <span className="net-dot" style={{background:'#1b2429',color:'#627EEA'}}>Ξ</span>
+                  <span>Ethereum</span>
+                  <span className="net-opt-check" data-check="0x1" style={{display:'none'}}>✓</span>
+                </button>
+                <button className="net-option" data-chain="0xa4b1">
+                  <span className="net-dot" style={{background:'#0f2a3d',color:'#28A0F0'}}>A</span>
+                  <span>Arbitrum</span>
+                  <span className="net-opt-check" data-check="0xa4b1" style={{display:'none'}}>✓</span>
+                </button>
+              </div>
+            </div>
           </div>
           <div className="pnl-layout">
             <div className="pnl-main">

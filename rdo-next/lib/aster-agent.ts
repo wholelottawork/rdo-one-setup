@@ -283,14 +283,77 @@ export async function ensureAsterAgentApproved(
   }
 }
 
-/** Aster's registerAndApproveAgent signature is hardcoded to chainId 56
- *  (BSC) — some wallets reject eth_signTypedData_v4 if that domain chainId
- *  doesn't match the wallet's active network, so switch (or add, if not
- *  present) before ever requesting the signature. */
-export async function ensureBscNetwork(provider: EIP1193Provider): Promise<boolean> {
+export interface EvmNetworkOption {
+  chainId: string; // hex, e.g. '0x38'
+  name: string;
+  short: string; // small badge glyph, matches this file's evm-tok-dot convention
+  color: string;
+  bg: string;
+  nativeCurrency: { name: string; symbol: string; decimals: number };
+  rpcUrls: string[];
+  blockExplorerUrls: string[];
+}
+
+// The networks this app's Aster/portfolio flow cares about — BNB Chain for
+// Aster's approval signature, Ethereum as the common default, Arbitrum for
+// the perps-deposit flow elsewhere on this page. Matches the network
+// switcher on Aster's own site (asterdex.com), which is THEIR app chrome —
+// not proof every wallet supports every entry here (see the Phantom note
+// on getEvmProviderFor below).
+export const EVM_NETWORKS: EvmNetworkOption[] = [
+  { chainId: '0x38', name: 'BNB Chain', short: 'B', color: '#F0B90B', bg: '#3a2f0a', nativeCurrency: { name: 'BNB', symbol: 'BNB', decimals: 18 }, rpcUrls: ['https://bsc-dataseed.binance.org/'], blockExplorerUrls: ['https://bscscan.com'] },
+  { chainId: '0x1', name: 'Ethereum', short: 'Ξ', color: '#627EEA', bg: '#1b2429', nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 }, rpcUrls: ['https://eth.llamarpc.com'], blockExplorerUrls: ['https://etherscan.io'] },
+  { chainId: '0xa4b1', name: 'Arbitrum', short: 'A', color: '#28A0F0', bg: '#0f2a3d', nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 }, rpcUrls: ['https://arb1.arbitrum.io/rpc'], blockExplorerUrls: ['https://arbiscan.io'] },
+];
+
+/**
+ * Picks an EVM provider that can actually switch to `chainId` for
+ * `expectedAddress` — needed because Phantom's EVM mode has a hardcoded
+ * chain allowlist (Ethereum, Base, Polygon, Monad testnet — confirmed
+ * against Phantom's own docs/help center) that does NOT include BNB Chain
+ * or Arbitrum. wallet_switchEthereumChain AND wallet_addEthereumChain both
+ * fail for Phantom on those; there's no request payload that works around
+ * it, it's a capability gap, not a formatting bug. If Phantom is the active
+ * wallet and another injected wallet (e.g. MetaMask) already has the SAME
+ * address connected, prefer that one instead — checked via eth_accounts,
+ * which never prompts, so this never surprises the user with an unexpected
+ * connection request. Falls back to whatever's available (typically
+ * Phantom) if no matching alternative exists, so the caller can still
+ * surface a clear, specific error instead of a silent failure. Ethereum
+ * mainnet is one of the few chains Phantom natively supports, so it's
+ * exempted from the swap.
+ */
+export async function getEvmProviderFor(expectedAddress: string, chainId: string): Promise<EIP1193Provider | null> {
+  if (typeof window === 'undefined') return null;
+  const w = window as unknown as { ethereum?: (EIP1193Provider & { providers?: EIP1193Provider[]; isPhantom?: boolean }); phantom?: { ethereum?: EIP1193Provider & { isPhantom?: boolean } } };
+  const candidates: (EIP1193Provider & { isPhantom?: boolean })[] = [];
+  if (Array.isArray(w.ethereum?.providers)) candidates.push(...(w.ethereum.providers as (EIP1193Provider & { isPhantom?: boolean })[]));
+  else if (w.ethereum) candidates.push(w.ethereum);
+  if (w.phantom?.ethereum && !candidates.includes(w.phantom.ethereum)) candidates.push(w.phantom.ethereum);
+
+  if (chainId === '0x1') return candidates[0] ?? null;
+
+  const nonPhantom = candidates.filter((p) => !p.isPhantom);
+  for (const p of nonPhantom) {
+    try {
+      const accounts = (await p.request({ method: 'eth_accounts' })) as string[];
+      if (accounts?.some((a) => a.toLowerCase() === expectedAddress.toLowerCase())) return p;
+    } catch { /* try the next candidate */ }
+  }
+  return candidates[0] ?? null;
+}
+
+/** Switch (or add, if not present) `provider` to `network` — the shared
+ *  switch/add/error-message logic behind both the network switcher UI and
+ *  ensureBscNetwork below. */
+export async function switchEvmNetwork(provider: EIP1193Provider, network: EvmNetworkOption): Promise<{ ok: boolean; reason?: string }> {
+  const isPhantom = (provider as { isPhantom?: boolean })?.isPhantom;
+  const unsupportedMsg = isPhantom
+    ? `Phantom doesn't support ${network.name} — connect with MetaMask (or another EVM wallet) instead.`
+    : `Your wallet couldn't switch to ${network.name}.`;
   try {
-    await provider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x38' }] });
-    return true;
+    await provider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: network.chainId }] });
+    return { ok: true };
   } catch (e) {
     const code = (e as { code?: number })?.code;
     if (code === 4902) {
@@ -298,20 +361,42 @@ export async function ensureBscNetwork(provider: EIP1193Provider): Promise<boole
         await provider.request({
           method: 'wallet_addEthereumChain',
           params: [{
-            chainId: '0x38',
-            chainName: 'BNB Smart Chain',
-            nativeCurrency: { name: 'BNB', symbol: 'BNB', decimals: 18 },
-            rpcUrls: ['https://bsc-dataseed.binance.org/'],
-            blockExplorerUrls: ['https://bscscan.com'],
+            chainId: network.chainId,
+            chainName: network.name,
+            nativeCurrency: network.nativeCurrency,
+            rpcUrls: network.rpcUrls,
+            blockExplorerUrls: network.blockExplorerUrls,
           }],
         });
-        return true;
+        return { ok: true };
       } catch {
-        return false;
+        return { ok: false, reason: unsupportedMsg };
       }
     }
-    return false;
+    return { ok: false, reason: unsupportedMsg };
   }
+}
+
+/** Thin BSC-specific wrapper kept for the existing approval-flow call site
+ *  — see switchEvmNetwork/EVM_NETWORKS above for the general version this
+ *  now delegates to. */
+export async function getBscCapableProvider(expectedAddress: string): Promise<EIP1193Provider | null> {
+  return getEvmProviderFor(expectedAddress, '0x38');
+}
+
+/**
+ * Aster's approveAgent signature is hardcoded to chainId 56 (BSC) — some
+ * wallets reject eth_signTypedData_v4 if that domain chainId doesn't match
+ * the wallet's active network, so switch (or add, if not present) before
+ * ever requesting the signature.
+ *
+ * NOTE: this fails unconditionally for Phantom (see getEvmProviderFor's
+ * doc comment) — the caller should route through getBscCapableProvider()
+ * first so a same-address MetaMask (or similar) gets used instead when
+ * Phantom is what's connected.
+ */
+export async function ensureBscNetwork(provider: EIP1193Provider): Promise<{ ok: boolean; reason?: string }> {
+  return switchEvmNetwork(provider, EVM_NETWORKS[0]);
 }
 
 export interface AsterIncomeEntry {
