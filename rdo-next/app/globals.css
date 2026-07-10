@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+@source "../components/**/*";
+@source "../lib/**/*";
+
 /* ── HYPERLIQUID DESIGN TOKENS ──────────────────────────────── */
 
 :root {

@@ -42,6 +42,7 @@ export interface EvmNetworkOption {
   short: string; // small badge glyph for the nav chip
   color: string;
   bg: string;
+  icon: string; // chain icon URL (shown in place of text)
   nativeCurrency?: { name: string; symbol: string; decimals: number };
   rpcUrls?: string[];
   blockExplorerUrls?: string[];
@@ -54,10 +55,10 @@ export interface EvmNetworkOption {
 // there's no "switch" request to make. BNB Chain is listed first since
 // it's this app's most common target (Aster's approveAgent signature).
 export const EVM_NETWORKS: EvmNetworkOption[] = [
-  { chainId: '0x38', name: 'BNB Chain', short: 'B', color: '#F0B90B', bg: '#3a2f0a', nativeCurrency: { name: 'BNB', symbol: 'BNB', decimals: 18 }, rpcUrls: ['https://bsc-dataseed.binance.org/'], blockExplorerUrls: ['https://bscscan.com'] },
-  { chainId: '0x1', name: 'Ethereum', short: 'Ξ', color: '#627EEA', bg: '#1b2429', nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 }, rpcUrls: ['https://eth.llamarpc.com'], blockExplorerUrls: ['https://etherscan.io'] },
-  { chainId: '0xa4b1', name: 'Arbitrum', short: 'A', color: '#28A0F0', bg: '#0f2a3d', nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 }, rpcUrls: ['https://arb1.arbitrum.io/rpc'], blockExplorerUrls: ['https://arbiscan.io'] },
-  { chainId: 'solana', name: 'Solana', short: 'S', color: '#9945FF', bg: '#241a3d' },
+  { chainId: '0x38', name: 'BNB Chain', short: 'B', color: '#F0B90B', bg: '#3a2f0a', icon: 'https://cryptologos.cc/logos/bnb-bnb-logo.png', nativeCurrency: { name: 'BNB', symbol: 'BNB', decimals: 18 }, rpcUrls: ['https://bsc-dataseed.binance.org/'], blockExplorerUrls: ['https://bscscan.com'] },
+  { chainId: '0x1', name: 'Ethereum', short: 'Ξ', color: '#627EEA', bg: '#1b2429', icon: 'https://cryptologos.cc/logos/ethereum-eth-logo.png', nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 }, rpcUrls: ['https://eth.llamarpc.com'], blockExplorerUrls: ['https://etherscan.io'] },
+  { chainId: '0xa4b1', name: 'Arbitrum', short: 'A', color: '#28A0F0', bg: '#0f2a3d', icon: 'https://cryptologos.cc/logos/arbitrum-arb-logo.png', nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 }, rpcUrls: ['https://arb1.arbitrum.io/rpc'], blockExplorerUrls: ['https://arbiscan.io'] },
+  { chainId: 'solana', name: 'Solana', short: 'S', color: '#9945FF', bg: '#241a3d', icon: 'https://cryptologos.cc/logos/solana-sol-logo.png' },
 ];
 
 /**

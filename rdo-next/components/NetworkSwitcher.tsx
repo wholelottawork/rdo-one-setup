@@ -66,17 +66,27 @@ export function NetworkSwitcher({ onChange }: { onChange?: (network: EvmNetworkO
 
   return (
     <div className="net-switch-wrap" ref={netRef}>
-      <button className="net-switch-btn" onClick={() => setNetOpen(o => !o)}>
-        <span className="net-dot" style={{ background: activeNetwork.bg, color: activeNetwork.color }}>{activeNetwork.short}</span>
-        <span>{activeNetwork.name}</span>
+      <button className="net-switch-btn" onClick={() => setNetOpen(o => !o)} title={activeNetwork.name}>
+        <img
+          src={activeNetwork.icon}
+          alt={activeNetwork.name}
+          width={18}
+          height={18}
+          style={{ borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
+        />
         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
       </button>
       {netOpen && (
         <div className="net-dropdown">
           {EVM_NETWORKS.map(n => (
-            <button key={n.chainId} className="net-option" onClick={() => pickNetwork(n)}>
-              <span className="net-dot" style={{ background: n.bg, color: n.color }}>{n.short}</span>
-              <span>{n.name}</span>
+            <button key={n.chainId} className="net-option" onClick={() => pickNetwork(n)} title={n.name}>
+              <img
+                src={n.icon}
+                alt={n.name}
+                width={18}
+                height={18}
+                style={{ borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
+              />
               {activeNetwork.chainId === n.chainId && <span className="net-opt-check">✓</span>}
             </button>
           ))}
