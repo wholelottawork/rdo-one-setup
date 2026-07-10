@@ -331,7 +331,7 @@ export default function NewsPage() {
         </div>
         <div className="filter-row" id="cat-filters" />
         <div className="source-row" id="src-filters" />
-        <div className="feed-status" id="feed-status" />
+        <div className="feed-status text-[10px] text-[#878c8f] mb-2" id="feed-status" />
         <div className="news-grid" id="news-grid" />
         <div className="mt-5 text-center hidden" id="load-more-wrap">
           <button className="load-more-btn" onClick={() => (window as any).showMore()}>Load More</button>
