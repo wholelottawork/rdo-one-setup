@@ -21,17 +21,26 @@ export function SiteNav({ activePage }: { activePage: 'trade' | 'markets' | 'new
   ];
 
   return (
-    <nav id="rdo-nav">
-      <div className="nav-logo">RDO<span>ONE</span></div>
-      <div className="nav-div" />
+    <nav id="rdo-nav" className="fixed top-0 left-0 right-0 h-10 bg-black border-b border-[#1f1f1f] flex items-center gap-2 px-6 z-[1000]">
+      <div className="text-[13px] font-extrabold tracking-wide text-[#f5f1ea] flex-shrink-0">RDO<span className="text-[#50d2c1]">ONE</span></div>
+      <div className="w-px h-[18px] bg-[#1f1f1f] mx-1 flex-shrink-0" />
       {links.map(l => (
-        <Link key={l.page} href={l.href} className={activePage === l.page ? 'active' : ''}>{l.label}</Link>
+        <Link
+          key={l.page}
+          href={l.href}
+          className={
+            'text-xs font-medium text-[#878c8f] py-[5px] px-3 rounded-[7px] transition-colors duration-150 flex-shrink-0 no-underline hover:text-white hover:bg-[#1a1a1a] ' +
+            (activePage === l.page ? 'text-white bg-[#1f1f1f] font-semibold' : '')
+          }
+        >
+          {l.label}
+        </Link>
       ))}
-      <div style={{ marginLeft: 'auto' }} />
+      <div className="ml-auto" />
 
       <WalletControls />
 
-      <div id="toastWrap" className="toast-wrap"></div>
+      <div id="toastWrap" className="toast-wrap" />
     </nav>
   );
 }

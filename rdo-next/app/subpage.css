@@ -9,19 +9,6 @@ html:has(#rdo-nav), body:has(#rdo-nav) {
   min-height: 100%;
   overflow-y: auto;
 }
-/* overflow was previously hidden here, which clipped the wallet/language/
-   network dropdown panels — they're position:absolute and hang below the
-   40px bar, so anything overflow-clipping the nav hides them entirely
-   (the terminal's own header, .hdr, never had this and never had the
-   problem). All of #rdo-nav's own children already fit within 40px via
-   align-items:center, so dropping this is safe. */
-#rdo-nav{position:fixed;top:0;left:0;right:0;height:40px;background:#000;border-bottom:1px solid #1f1f1f;display:flex;align-items:center;gap:8px;padding:0 24px;z-index:1000}
-.nav-logo{font-size:13px;font-weight:800;letter-spacing:.5px;color:#f5f1ea;flex-shrink:0}
-.nav-logo span{color:#50d2c1}
-.nav-div{width:1px;height:18px;background:#1f1f1f;margin:0 4px;flex-shrink:0}
-#rdo-nav a{font-size:12px;font-weight:500;color:#878c8f;padding:5px 12px;border-radius:7px;transition:color .12s,background .12s;flex-shrink:0;text-decoration:none}
-#rdo-nav a:hover{color:#fff;background:#1a1a1a}
-#rdo-nav a.active{color:#fff;background:#1f1f1f;font-weight:600}
 
 /* ── SHARED NAV: language switcher ──────────────────────────── */
 .lang-wrap{position:relative;flex-shrink:0}
