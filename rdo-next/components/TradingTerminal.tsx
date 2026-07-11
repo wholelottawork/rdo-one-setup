@@ -140,6 +140,7 @@ export default function TradingTerminal() {
       let livePrices: Record<string, number> = {};
       let metaCtxs: Record<string, any> = {};
       let marketLev: Record<string, number> = {};
+      let asterLev: Record<string, number> = {};
       let recentTrades: any[] = [];
       let stopBook: any = null;
       const asterStats: Record<string, any> = {};
@@ -239,6 +240,7 @@ export default function TradingTerminal() {
               '<div style="color:var(--hl-text-muted);font-size:11px;padding:8px;text-align:center">Aster live trades streaming coming soon</div>';
           rebuildDropdown();
           await loadMarket(currentMarket);
+          fetchAsterLeverage();
           fetchAsterMids();
           fetchAsterFunding();
           fetchAsterOI();
@@ -274,6 +276,25 @@ export default function TradingTerminal() {
         const markets = currentMode === "aster" ? ASTER_MARKETS : HL_MARKETS;
         const list = document.getElementById("mktList");
         if (list) renderMarketList(markets, list);
+      }
+
+      // Real per-symbol max leverage from Aster's (signed) leverageBracket
+      // endpoint — NOT a flat 200x. brackets[0] is the highest-leverage tier,
+      // so its initialLeverage is the "up to Nx" headline (200x for BTC/ETH,
+      // but as low as 5x for smaller caps). Static data, so fetch once.
+      async function fetchAsterLeverage() {
+        if (Object.keys(asterLev).length) return;
+        try {
+          const res = await fetch("/aster-leverage-brackets");
+          const data = await res.json();
+          if (!Array.isArray(data)) return;
+          data.forEach((e: any) => {
+            const sym = String(e.symbol ?? "").replace(/USDT$/, "");
+            const lev = e.brackets?.[0]?.initialLeverage;
+            if (sym && lev) asterLev[sym] = lev;
+          });
+          if (currentMode === "aster") rebuildDropdown();
+        } catch {}
       }
 
       async function fetchAsterMids() {
@@ -480,7 +501,13 @@ export default function TradingTerminal() {
         const isAster = currentMode === "aster";
         const mktSuffix = isAster ? "-USDT" : "-USDC";
         const getLev = (sym: string) =>
-          isAster ? "200x" : marketLev[sym] ? marketLev[sym] + "x" : "";
+          isAster
+            ? asterLev[sym]
+              ? asterLev[sym] + "x"
+              : ""
+            : marketLev[sym]
+              ? marketLev[sym] + "x"
+              : "";
         const getPrice = (sym: string) =>
           livePrices[sym]
             ? isAster
