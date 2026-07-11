@@ -15,12 +15,21 @@ export default function TradingTerminal() {
   const connectRef = useRef(connect);
   connectRef.current = connect;
   const onEvmConnectedRef = useRef<((addr: string) => void) | null>(null);
+  const didInitRef = useRef(false);
 
   useEffect(() => {
     if (evmAddress) onEvmConnectedRef.current?.(evmAddress);
   }, [evmAddress]);
 
   useEffect(() => {
+    // React StrictMode double-invokes effects in dev, and this effect binds
+    // DOM listeners / opens the price-stream websocket imperatively with no
+    // cleanup — so without a guard every handler binds twice. That silently
+    // breaks *toggle* handlers (e.g. the market-symbol dropdown button, which
+    // does "if hidden open else close": two listeners fire per click, opening
+    // then immediately re-closing it) and opens duplicate websockets. Run once.
+    if (didInitRef.current) return;
+    didInitRef.current = true;
     // Dynamically import all modules after mount (browser-only)
     async function init() {
       const { showToast } = await import("@/lib/toast");
