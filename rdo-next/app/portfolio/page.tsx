@@ -696,15 +696,20 @@ export default function PortfolioPage() {
       const ph = el('pv-placeholder'); if (ph) ph.style.display = 'none';
       ['pv-equity','pv-upnl','pv-ntl','pv-avail','pv-margin-used','pv-lev'].forEach(id => set(id, '…'));
       try {
-        const res = await fetch(HL_API, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({type:'clearinghouseState',user:address}) });
+        const [res, spotRes] = await Promise.all([
+          fetch(HL_API, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({type:'clearinghouseState',user:address}) }),
+          fetch(HL_API, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({type:'spotClearinghouseState',user:address}) }),
+        ]);
         if (!res.ok) throw new Error('HTTP '+res.status);
         const data = await res.json();
+        const spot = spotRes.ok ? await spotRes.json() : {};
         // marginSummary is the account-wide total (cross + isolated); prefer it.
         // crossMarginSummary covers ONLY cross positions and is all-zeros when
         // the account holds isolated positions — using it first zeroed the whole
         // perps summary (equity/notional/margin) for isolated-margin accounts.
         const ms = data.marginSummary || data.crossMarginSummary || {};
-        const equity     = parseFloat(ms.accountValue   ?? 0);
+        const cross = data.crossMarginSummary || {};
+        const perpEquity = parseFloat(ms.accountValue   ?? 0);
         const ntl        = parseFloat(ms.totalNtlPos    ?? 0);
         const marginUsed = parseFloat(ms.totalMarginUsed ?? 0);
         // Sum each position's own unrealizedPnl — the reliable source. (The
@@ -713,8 +718,19 @@ export default function PortfolioPage() {
         // with it because it recomputes uPnL live from streaming mark prices.)
         const upnl       = (data.assetPositions || []).reduce(
           (s: number, p: any) => s + parseFloat(p.position?.unrealizedPnl ?? 0), 0);
-        const avail      = Math.max(0, equity - marginUsed);
-        const lev        = marginUsed > 0 ? (ntl / equity).toFixed(2)+'x' : '0.00x';
+        // Unified accounts keep collateral in spot USDC and only RESERVE it (hold)
+        // as margin for open positions — so accountValue alone under-reports the
+        // account (it's just the isolated position's margin, ~$4 here). True
+        // equity = perp equity + FREE spot (total-hold); available to trade =
+        // free spot + unused cross margin. Matches the exchange (~$7.70 avail).
+        const STABLES = new Set(['USDC','USDT','USDT0','USDE','USDH','USD']);
+        const spotAvail = ((spot.balances ?? []) as any[])
+          .filter((b) => STABLES.has(b.coin))
+          .reduce((s, b) => s + (parseFloat(b.total ?? 0) - parseFloat(b.hold ?? 0)), 0);
+        const crossFree  = Math.max(0, parseFloat(cross.accountValue ?? 0) - parseFloat(cross.totalMarginUsed ?? 0));
+        const equity     = perpEquity + spotAvail;
+        const avail      = spotAvail + crossFree;
+        const lev        = marginUsed > 0 && equity > 0 ? (ntl / equity).toFixed(2)+'x' : '0.00x';
         const eqEl = el('pv-equity');
         if (eqEl) { eqEl.textContent = '$'+fmt(equity); (eqEl as HTMLElement).style.color = equity >= 0 ? '' : 'var(--red)'; }
         const upnlEl = el('pv-upnl');
