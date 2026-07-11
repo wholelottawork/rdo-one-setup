@@ -792,11 +792,23 @@ export default function TradingTerminal() {
             const addr = getEVMAddress();
             if (!addr) return;
             const tab = (btn as HTMLElement).dataset.bt;
-            if (tab === "trade-history") renderFills(await getUserFills(addr));
+            const aster = currentMode === "aster";
+            if (tab === "trade-history")
+              renderFills(
+                await (aster ? getAsterFillsLocal(addr) : getUserFills(addr)),
+              );
             if (tab === "open-orders")
-              renderOpenOrders(await getOpenOrders(addr));
+              renderOpenOrders(
+                await (aster
+                  ? getAsterOpenOrdersLocal(addr)
+                  : getOpenOrders(addr)),
+              );
             if (tab === "funding")
-              renderFundingHistory(await getFundingHistory(addr));
+              renderFundingHistory(
+                await (aster
+                  ? getAsterFundingLocal(addr)
+                  : getFundingHistory(addr)),
+              );
             if (tab === "balances") await refreshPositions(addr);
           });
         });
@@ -1180,6 +1192,99 @@ export default function TradingTerminal() {
         renderPositions(positions, addr);
       }
 
+      // ── EXTRA/Aster bottom-tab data (open orders / fills / funding) ──
+      async function getAsterOpenOrdersLocal(addr: string) {
+        try {
+          const r = await fetch(
+            `/aster-signed/fapi/v3/allOrders?limit=100&user=${encodeURIComponent(addr)}`,
+          );
+          const data = await r.json();
+          if (!Array.isArray(data)) return [];
+          return data
+            .filter(
+              (o: any) => o.status === "NEW" || o.status === "PARTIALLY_FILLED",
+            )
+            .map((o: any) => ({
+              coin: String(o.symbol ?? "").replace(/USDT$/, ""),
+              side: o.side === "BUY" ? "Buy" : "Sell",
+              price: parseFloat(o.price ?? 0),
+              size: parseFloat(o.origQty ?? 0) - parseFloat(o.executedQty ?? 0),
+              origSize: parseFloat(o.origQty ?? 0),
+              oid: Number(o.orderId ?? 0),
+              time: Number(o.time ?? 0),
+            }));
+        } catch {
+          return [];
+        }
+      }
+
+      async function getAsterFundingLocal(addr: string) {
+        try {
+          const r = await fetch(
+            `/aster-signed/fapi/v3/income?incomeType=FUNDING_FEE&limit=100&user=${encodeURIComponent(addr)}`,
+          );
+          const data = await r.json();
+          if (!Array.isArray(data)) return [];
+          return data.map((f: any) => ({
+            coin: String(f.symbol ?? "").replace(/USDT$/, ""),
+            usdc: parseFloat(f.income ?? 0),
+            rate: 0, // Aster income endpoint has no rate/size
+            size: 0,
+            time: Number(f.time ?? 0),
+          }));
+        } catch {
+          return [];
+        }
+      }
+
+      // Aster has no bulk fills endpoint — pull per-symbol userTrades for the
+      // symbols with an open position (same approach as the root's getAsterFills).
+      async function getAsterFillsLocal(addr: string) {
+        let acct: any = null;
+        try {
+          const r = await fetch(
+            `/aster-signed/fapi/v3/accountWithJoinMargin?user=${encodeURIComponent(addr)}`,
+          );
+          if (r.ok) {
+            const d = await r.json();
+            if (Array.isArray(d.positions)) acct = d;
+          }
+        } catch {}
+        const symbols = (acct?.positions ?? [])
+          .filter((p: any) => parseFloat(p.positionAmt ?? 0) !== 0)
+          .map((p: any) => String(p.symbol))
+          .slice(0, 20);
+        if (!symbols.length) return [];
+        const results = await Promise.allSettled(
+          symbols.map(async (sym: string) => {
+            try {
+              const r = await fetch(
+                `/aster-signed/fapi/v3/userTrades?symbol=${sym}&limit=100&user=${encodeURIComponent(addr)}`,
+              );
+              const data = await r.json();
+              if (!Array.isArray(data)) return [];
+              return data.map((t: any) => ({
+                coin: String(t.symbol ?? "").replace(/USDT$/, ""),
+                side: parseFloat(t.realizedPnl ?? 0) >= 0 ? "Buy" : "Sell",
+                price: parseFloat(t.price ?? 0),
+                size: parseFloat(t.qty ?? 0),
+                fee: parseFloat(t.commission ?? 0),
+                pnl: parseFloat(t.realizedPnl ?? 0),
+                dir: String(t.side ?? ""),
+                time: Number(t.time ?? 0),
+              }));
+            } catch {
+              return [];
+            }
+          }),
+        );
+        const out: any[] = [];
+        results.forEach((r) => {
+          if (r.status === "fulfilled") out.push(...r.value);
+        });
+        return out.sort((a: any, b: any) => b.time - a.time);
+      }
+
       function renderPositions(positions: any[], addr: string) {
         const el = document.getElementById("posRows");
         if (!el) return;
@@ -1286,6 +1391,29 @@ export default function TradingTerminal() {
       async function cancelOrd(oid: number, symbol: string) {
         const addr = getEVMAddress();
         if (!addr) return;
+        if (currentMode === "aster") {
+          try {
+            const r = await fetch(`/aster-signed/fapi/v3/order`, {
+              method: "DELETE",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                symbol: `${symbol}USDT`,
+                orderId: String(oid),
+                user: addr,
+              }),
+            });
+            const d = await r.json();
+            if (d.orderId || d.status === "CANCELED") {
+              showToast("Order cancelled", "ok");
+              renderOpenOrders(await getAsterOpenOrdersLocal(addr));
+            } else {
+              showToast(d.msg ?? "Cancel failed", "err");
+            }
+          } catch (e: any) {
+            showToast(e.message, "err");
+          }
+          return;
+        }
         try {
           const { ethers } = await import("ethers");
           const signer = await new ethers.BrowserProvider(
