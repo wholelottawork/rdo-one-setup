@@ -699,7 +699,11 @@ export default function PortfolioPage() {
         const res = await fetch(HL_API, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({type:'clearinghouseState',user:address}) });
         if (!res.ok) throw new Error('HTTP '+res.status);
         const data = await res.json();
-        const ms = data.crossMarginSummary || data.marginSummary || {};
+        // marginSummary is the account-wide total (cross + isolated); prefer it.
+        // crossMarginSummary covers ONLY cross positions and is all-zeros when
+        // the account holds isolated positions — using it first zeroed the whole
+        // perps summary (equity/notional/margin) for isolated-margin accounts.
+        const ms = data.marginSummary || data.crossMarginSummary || {};
         const equity     = parseFloat(ms.accountValue   ?? 0);
         const ntl        = parseFloat(ms.totalNtlPos    ?? 0);
         const marginUsed = parseFloat(ms.totalMarginUsed ?? 0);

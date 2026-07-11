@@ -148,7 +148,9 @@ export default function TransferPage() {
       try {
         const r = await fetch(HL+'/info', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({type:'clearinghouseState', user:addr})});
         const d = await r.json();
-        const ms = d.crossMarginSummary || d.marginSummary || {};
+        // Prefer marginSummary (account-wide total incl. isolated); crossMarginSummary
+        // is all-zeros for isolated-margin accounts, which zeroed the HL balance.
+        const ms = d.marginSummary || d.crossMarginSummary || {};
         hlEquity = parseFloat(ms.accountValue ?? 0);
         if (wdSrc === 'hl') set('wd-bal', `Balance: $${fmt(hlEquity)} USDC`);
         if (btwDir === 'hl-to-aster') set('btw-bal', `Balance: $${fmt(hlEquity)} USDC`);
