@@ -1161,6 +1161,10 @@ export default function TradingTerminal() {
         }
       }
       onEvmConnectedRef.current = onEvmConnected;
+      // If the wallet was already connected before this async init finished,
+      // the [evmAddress] effect fired while onEvmConnectedRef was still null,
+      // so the initial positions/balance load was skipped. Trigger it now.
+      if (evmAddressRef.current) onEvmConnected(evmAddressRef.current);
 
       // ── clock ──────────────────────────────────────────────────
       function startClock() {
