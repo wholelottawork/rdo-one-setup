@@ -270,6 +270,9 @@ export default function TradingTerminal() {
         if (cl)
           cl.textContent = `${currentMarket}${mode === "aster" ? "USDT" : "USD"} · ${ivLabel(currentIv)} · RDO ONE`;
         updateTradeBtn();
+        // Reload the positions table + balances for the newly-selected venue
+        // (HL vs Aster) — refreshPositions branches on currentMode.
+        if (evmAddressRef.current) refreshPositions(evmAddressRef.current);
       }
 
       function rebuildDropdown() {
@@ -1031,6 +1034,10 @@ export default function TradingTerminal() {
       }
 
       async function refreshPositions(addr: string) {
+        if (currentMode === "aster") {
+          await refreshAsterAccount(addr);
+          return;
+        }
         const acct = await loadAccountState(addr);
         const positions = acct.positions;
         const el = (id: string, val: string) => {
@@ -1049,6 +1056,81 @@ export default function TradingTerminal() {
           "ovLev",
           acct.marginUsed > 0 && acct.perpEquity > 0
             ? (acct.ntl / acct.perpEquity).toFixed(2) + "x"
+            : "0.00x",
+        );
+        const mine = positions.find((p: any) => p.symbol === currentMarket);
+        el(
+          "tpCurPos",
+          mine
+            ? (mine.size >= 0 ? "+" : "") +
+                mine.size.toFixed(5) +
+                " " +
+                currentMarket
+            : "0.00000 " + currentMarket,
+        );
+        renderPositions(positions, addr);
+      }
+
+      // EXTRA/Aster equivalent — its own signed futures account (USDT margin).
+      // availableBalance is what's free to trade; totalMarginBalance is equity.
+      async function refreshAsterAccount(addr: string) {
+        const el = (id: string, val: string) => {
+          const e = document.getElementById(id);
+          if (e) e.textContent = val;
+        };
+        let data: any = null;
+        try {
+          const r = await fetch(
+            `/aster-signed/fapi/v3/accountWithJoinMargin?user=${encodeURIComponent(addr)}`,
+          );
+          if (r.ok) {
+            const d = await r.json();
+            if (Array.isArray(d.positions)) data = d;
+          }
+        } catch {}
+        if (!data) {
+          // Aster agent not approved for this address (or no account yet).
+          el("tpAvail", "$0.00 USDT");
+          el("eqSpot", "$0.00");
+          el("eqPerps", "$0.00");
+          el("ovBalance", "$0.00");
+          el("balanceDisplay", "$0.00");
+          el("ovPnl", "$0.00");
+          el("ovLev", "0.00x");
+          el("tpCurPos", "0.00000 " + currentMarket);
+          renderPositions([], addr);
+          return;
+        }
+        const avail = parseFloat(data.availableBalance ?? 0);
+        const equity = parseFloat(data.totalMarginBalance ?? 0);
+        const upnl = parseFloat(data.totalUnrealizedProfit ?? 0);
+        const marginUsed = parseFloat(data.totalPositionInitialMargin ?? 0);
+        const positions = (data.positions ?? [])
+          .filter((p: any) => parseFloat(p.positionAmt ?? 0) !== 0)
+          .map((p: any) => ({
+            symbol: String(p.symbol).replace(/USDT$/, ""),
+            size: parseFloat(p.positionAmt ?? 0),
+            entryPrice: parseFloat(p.entryPrice ?? 0),
+            leverage: parseFloat(p.leverage ?? 0),
+            pnl: parseFloat(p.unrealizedProfit ?? 0),
+            liqPrice: parseFloat(p.liquidationPrice ?? 0),
+            isLong: parseFloat(p.positionAmt ?? 0) > 0,
+          }));
+        const ntl = positions.reduce(
+          (s: number, p: any) =>
+            s + Math.abs(p.size) * (livePrices[p.symbol] || p.entryPrice),
+          0,
+        );
+        el("tpAvail", "$" + avail.toFixed(2) + " USDT");
+        el("eqSpot", "$0.00");
+        el("eqPerps", "$" + equity.toFixed(2));
+        el("ovBalance", "$" + equity.toFixed(2));
+        el("balanceDisplay", "$" + equity.toFixed(2));
+        el("ovPnl", (upnl >= 0 ? "+" : "") + "$" + upnl.toFixed(2));
+        el(
+          "ovLev",
+          marginUsed > 0 && equity > 0
+            ? (ntl / equity).toFixed(2) + "x"
             : "0.00x",
         );
         const mine = positions.find((p: any) => p.symbol === currentMarket);
@@ -1092,6 +1174,12 @@ export default function TradingTerminal() {
       async function closePos(index: number) {
         const addr = getEVMAddress();
         if (!addr) return;
+        if (currentMode === "aster") {
+          // closePosition() below is HL-only; don't let it act on an HL index
+          // while EXTRA positions are shown. (Aster close is not wired yet.)
+          showErr("Closing EXTRA (Aster) positions here isn't supported yet");
+          return;
+        }
         const positions = await getPositions(addr);
         const p = positions[index];
         if (!p) return;
