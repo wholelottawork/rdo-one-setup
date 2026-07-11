@@ -177,11 +177,15 @@ export async function getFundingHistory(evmAddress: string) {
 
 export async function getMarketPrice(symbol: string) {
   try {
-    const res  = await fetch(`${HL_API}/info`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: 'allMids' }),
-    });
-    const mids = await res.json();
+    // allMids returns every symbol's mid in one payload, so cache the whole
+    // map (5s) — concurrent per-symbol callers share one network round-trip.
+    const mids = await cachedFetch(['hl', 'allMids'], async () => {
+      const res = await fetch(`${HL_API}/info`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'allMids' }),
+      });
+      return res.json();
+    }, 5_000);
     return parseFloat(mids[symbol] ?? 0);
   } catch { return 0; }
 }

@@ -1,6 +1,7 @@
 'use client';
 import { useEffect } from 'react';
 import { SiteNav } from '@/components/SiteNav';
+import { cachedFetch, getQueryClient } from '@/lib/query';
 
 export default function NewsPage() {
   useEffect(() => {
@@ -167,17 +168,22 @@ export default function NewsPage() {
 
     async function fetchAll() {
       if (cacheLoaded) return allArticles;
+      // Each feed is cached (2 min) via the shared client keyed by source, so
+      // leaving and returning to the news page (remount) re-serves parsed
+      // articles from cache instead of re-hitting every RSS proxy.
       const results = await Promise.allSettled(
-        SOURCES.map(s => {
-          if (s.type === 'r2j') {
+        SOURCES.map(s =>
+          cachedFetch(['news', s.id], () => {
+            if (s.type === 'r2j') {
+              return fetch(s.url)
+                .then(r => { if (!r.ok) throw new Error(String(r.status)); return r.json(); })
+                .then(data => { if (data.status !== 'ok') throw new Error(data.message); return parseR2J(data, s); });
+            }
             return fetch(s.url)
-              .then(r => { if (!r.ok) throw new Error(String(r.status)); return r.json(); })
-              .then(data => { if (data.status !== 'ok') throw new Error(data.message); return parseR2J(data, s); });
-          }
-          return fetch(s.url)
-            .then(r => { if (!r.ok) throw new Error(String(r.status)); return r.text(); })
-            .then(xml => parseRSS(xml, s));
-        })
+              .then(r => { if (!r.ok) throw new Error(String(r.status)); return r.text(); })
+              .then(xml => parseRSS(xml, s));
+          }, 120_000)
+        )
       );
       const loaded: any[] = [], failed: string[] = [];
       results.forEach((r, i) => {
@@ -263,6 +269,9 @@ export default function NewsPage() {
 
     async function refresh() {
       cacheLoaded = false; allArticles = [];
+      // Drop cached feeds so an explicit refresh actually re-hits the network
+      // instead of serving within the 2-min staleTime window.
+      getQueryClient().removeQueries({ queryKey: ['news'] });
       const fs = el('feed-status'); if (fs) fs.textContent = '';
       await load();
     }

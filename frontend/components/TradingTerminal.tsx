@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { useWallet, getEVMProvider } from "@/lib/wallet";
 import { WalletControls } from "./WalletControls";
+import { cachedFetch } from "@/lib/query";
 
 export default function TradingTerminal() {
   // Wallet connect/disconnect now lives in the shared nav (SiteNav /
@@ -289,8 +290,13 @@ export default function TradingTerminal() {
       async function fetchAsterLeverage() {
         if (Object.keys(asterLev).length) return;
         try {
-          const res = await fetch("/aster-leverage-brackets");
-          const data = await res.json();
+          // Static per-symbol brackets — cache 10 min so revisiting the
+          // terminal (remount) serves from cache instead of re-fetching.
+          const data = await cachedFetch(
+            ["aster", "leverageBrackets"],
+            async () => (await fetch("/aster-leverage-brackets")).json(),
+            600_000,
+          );
           if (!Array.isArray(data)) return;
           data.forEach((e: any) => {
             const sym = String(e.symbol ?? "").replace(/USDT$/, "");
