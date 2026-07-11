@@ -707,8 +707,12 @@ export default function PortfolioPage() {
         const equity     = parseFloat(ms.accountValue   ?? 0);
         const ntl        = parseFloat(ms.totalNtlPos    ?? 0);
         const marginUsed = parseFloat(ms.totalMarginUsed ?? 0);
-        const rawUsd     = parseFloat(ms.totalRawUsd    ?? equity);
-        const upnl       = equity - rawUsd;
+        // Sum each position's own unrealizedPnl — the reliable source. (The
+        // marginSummary-derived `accountValue - totalRawUsd` ≈ notional, not
+        // uPnL, for isolated/borrowed positions; the root app only got away
+        // with it because it recomputes uPnL live from streaming mark prices.)
+        const upnl       = (data.assetPositions || []).reduce(
+          (s: number, p: any) => s + parseFloat(p.position?.unrealizedPnl ?? 0), 0);
         const avail      = Math.max(0, equity - marginUsed);
         const lev        = marginUsed > 0 ? (ntl / equity).toFixed(2)+'x' : '0.00x';
         const eqEl = el('pv-equity');
