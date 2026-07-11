@@ -1175,9 +1175,7 @@ export default function TradingTerminal() {
         const addr = getEVMAddress();
         if (!addr) return;
         if (currentMode === "aster") {
-          // closePosition() below is HL-only; don't let it act on an HL index
-          // while EXTRA positions are shown. (Aster close is not wired yet.)
-          showErr("Closing EXTRA (Aster) positions here isn't supported yet");
+          await closeAsterPos(index, addr);
           return;
         }
         const positions = await getPositions(addr);
@@ -1202,6 +1200,52 @@ export default function TradingTerminal() {
           }
         } catch (e: any) {
           showToast(e.message, "err");
+        }
+      }
+
+      // Close an Aster position: an opposite-side MARKET order of the exact
+      // position size, signed server-side by the user's agent (no client wallet
+      // prompt). Ported from the root app's asterClosePosition/asterPlaceOrder.
+      async function closeAsterPos(index: number, addr: string) {
+        let data: any = null;
+        try {
+          const r = await fetch(
+            `/aster-signed/fapi/v3/accountWithJoinMargin?user=${encodeURIComponent(addr)}`,
+          );
+          if (r.ok) {
+            const d = await r.json();
+            if (Array.isArray(d.positions)) data = d;
+          }
+        } catch {}
+        // Resolve the same filtered (non-zero) list refreshAsterAccount rendered.
+        const positions = (data?.positions ?? []).filter(
+          (p: any) => parseFloat(p.positionAmt ?? 0) !== 0,
+        );
+        const p = positions[index];
+        if (!p) return;
+        const symbol = String(p.symbol).replace(/USDT$/, "");
+        const amt = parseFloat(p.positionAmt ?? 0);
+        try {
+          const res = await fetch(`/aster-signed/fapi/v3/order`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              symbol: `${symbol}USDT`,
+              side: amt > 0 ? "SELL" : "BUY", // opposite side closes
+              type: "MARKET",
+              quantity: String(Math.abs(amt)),
+              user: addr,
+            }),
+          });
+          const d = await res.json();
+          if (d.orderId || d.status) {
+            showToast(`${symbol} position closed`, "ok");
+            setTimeout(() => refreshPositions(addr), 2000);
+          } else {
+            showToast(d.msg ?? "Close failed", "err");
+          }
+        } catch (e: any) {
+          showToast(e.message ?? "Close failed", "err");
         }
       }
 
