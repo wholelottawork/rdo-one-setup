@@ -1,3 +1,5 @@
+import { cachedFetch } from './query';
+
 const HL_API          = '/api/hl';
 const BUILDER_ADDRESS = '0x0000000000000000000000000000000000000000';
 const BUILDER_FEE     = 1000;
@@ -6,11 +8,15 @@ let assetIndexMap: Record<string, number> = {};
 
 export async function getMetaAndAssetCtxs() {
   try {
-    const res  = await fetch(`${HL_API}/info`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: 'metaAndAssetCtxs' }),
-    });
-    const data     = await res.json();
+    // Cache the network response (it changes slowly); re-derive the maps every
+    // call so assetIndexMap stays populated even on cache hits.
+    const data = await cachedFetch(['hl', 'metaAndAssetCtxs'], async () => {
+      const res = await fetch(`${HL_API}/info`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'metaAndAssetCtxs' }),
+      });
+      return res.json();
+    }, 60_000);
     const universe = data[0]?.universe ?? [];
     const ctxs     = data[1] ?? [];
     universe.forEach((asset: any, i: number) => { assetIndexMap[asset.name] = i; });

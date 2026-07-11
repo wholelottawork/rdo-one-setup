@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 import './subpage.css';
 import { WalletProvider } from '@/lib/wallet';
+import { Providers } from './providers';
 
 export const metadata: Metadata = {
   title: 'RDO ONE — Perpetuals Terminal',
@@ -23,7 +24,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body>
-        <WalletProvider>{children}</WalletProvider>
+        <Providers>
+          <WalletProvider>{children}</WalletProvider>
+        </Providers>
       </body>
     </html>
   );

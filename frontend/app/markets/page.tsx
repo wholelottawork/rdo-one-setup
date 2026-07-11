@@ -1,13 +1,13 @@
 'use client';
 import { useEffect } from 'react';
 import { SiteNav } from '@/components/SiteNav';
+import { cachedFetch } from '@/lib/query';
 
 export default function MarketsPage() {
   useEffect(() => {
     const SYMS = ['BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','XRPUSDT','DOGEUSDT','ADAUSDT','AVAXUSDT','LINKUSDT','DOTUSDT','POLUSDT','UNIUSDT','LTCUSDT','ATOMUSDT','NEARUSDT','APTUSDT','ARBUSDT','OPUSDT','INJUSDT','SUIUSDT','TIAUSDT','JUPUSDT','WIFUSDT','BONKUSDT','PEPEUSDT'];
     const LABEL: Record<string,string> = {BTCUSDT:'BTC',ETHUSDT:'ETH',SOLUSDT:'SOL',BNBUSDT:'BNB',XRPUSDT:'XRP',DOGEUSDT:'DOGE',ADAUSDT:'ADA',AVAXUSDT:'AVAX',LINKUSDT:'LINK',DOTUSDT:'DOT',POLUSDT:'POL',UNIUSDT:'UNI',LTCUSDT:'LTC',ATOMUSDT:'ATOM',NEARUSDT:'NEAR',APTUSDT:'APT',ARBUSDT:'ARB',OPUSDT:'OP',INJUSDT:'INJ',SUIUSDT:'SUI',TIAUSDT:'TIA',JUPUSDT:'JUP',WIFUSDT:'WIF',BONKUSDT:'BONK',PEPEUSDT:'PEPE'};
     const CG_TTL = 70_000;
-    const cgCache: Record<string,{data:any,ts:number}> = {};
     let coins: any[] = [];
     let tickerData: Record<string,{px:number,ch:number}> = {};
     let globalData: any = null;
@@ -45,16 +45,18 @@ export default function MarketsPage() {
     function fmtHLPx(n: number) { if(!isFinite(n)||n==null)return'—';if(n>=10000)return n.toLocaleString('en-US',{maximumFractionDigits:0});if(n>=100)return n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});if(n>=1)return n.toFixed(4);return n.toPrecision(4); }
     function fmtK(n: number) { if(n>=1e6)return'$'+(n/1e6).toFixed(2)+'M';if(n>=1e3)return'$'+(n/1e3).toFixed(1)+'K';return'$'+n.toFixed(2); }
 
+    // Cached via the shared React Query cache (dedupes + persists across
+    // client-side navigations within CG_TTL). Only successful, non-error
+    // responses get cached — errors reject and fall through to null.
     async function cgFetch(path: string) {
-      const now = Date.now();
-      const hit = cgCache[path];
-      if (hit && now - hit.ts < CG_TTL) return hit.data;
       try {
-        const res = await fetch('/coingecko' + path);
-        if (!res.ok) return null;
-        const data = await res.json();
-        if (!data?.status?.error_code) cgCache[path] = { data, ts: now };
-        return data;
+        return await cachedFetch(['coingecko', path], async () => {
+          const res = await fetch('/coingecko' + path);
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          const data = await res.json();
+          if (data?.status?.error_code) throw new Error('CG error');
+          return data;
+        }, CG_TTL);
       } catch { return null; }
     }
 
