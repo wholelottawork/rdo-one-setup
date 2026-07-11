@@ -143,6 +143,7 @@ export default function TradingTerminal() {
       let asterLev: Record<string, number> = {};
       let recentTrades: any[] = [];
       let stopBook: any = null;
+      let asterTradeWs: WebSocket | null = null;
       const asterStats: Record<string, any> = {};
       const hlStats: Record<string, any> = {};
 
@@ -237,7 +238,7 @@ export default function TradingTerminal() {
           const tl = document.getElementById("tradesList");
           if (tl)
             tl.innerHTML =
-              '<div style="color:var(--hl-text-muted);font-size:11px;padding:8px;text-align:center">Aster live trades streaming coming soon</div>';
+              '<div style="color:var(--hl-text-muted);font-size:11px;padding:8px;text-align:center">Connecting to live trades…</div>';
           rebuildDropdown();
           await loadMarket(currentMarket);
           fetchAsterLeverage();
@@ -650,6 +651,9 @@ export default function TradingTerminal() {
         if (currentMode === "aster") {
           const data = await getAsterCandles(sym, currentIv, 200);
           setCandles(data, sym);
+          recentTrades = [];
+          renderTrades();
+          startAsterTrades(sym);
           if (stopBook) {
             clearInterval(stopBook);
             stopBook = null;
@@ -667,6 +671,7 @@ export default function TradingTerminal() {
           const data = await getCandles(sym, currentIv, 200);
           setCandles(data, sym);
           updateHeaderStats();
+          stopAsterTrades();
           if (stopBook) stopBook();
           getL2Book(sym).then((book) => renderOrderBook(sym, book));
           stopBook = startBookStream(sym, renderOrderBook);
@@ -827,7 +832,14 @@ export default function TradingTerminal() {
       }
 
       function onTrade(sym: string, trade: any) {
+        // The HL trade websocket keeps running in EXTRA mode; ignore its trades
+        // there so they don't mix into the Aster live-trades list.
+        if (currentMode !== "hl") return;
         if (sym !== currentMarket) return;
+        pushTrade(trade);
+      }
+
+      function pushTrade(trade: any) {
         recentTrades.unshift(trade);
         if (recentTrades.length > 80) recentTrades.pop();
         renderTrades();
@@ -836,6 +848,13 @@ export default function TradingTerminal() {
       function renderTrades() {
         const tl = document.getElementById("tradesList");
         if (!tl) return;
+        if (!recentTrades.length) {
+          tl.innerHTML =
+            currentMode === "aster"
+              ? '<div style="color:var(--hl-text-muted);font-size:11px;padding:8px;text-align:center">Connecting to live trades…</div>'
+              : "";
+          return;
+        }
         tl.innerHTML = recentTrades
           .slice(0, 50)
           .map((tr) => {
@@ -843,13 +862,65 @@ export default function TradingTerminal() {
             const ts = [d.getHours(), d.getMinutes(), d.getSeconds()]
               .map((n) => n.toString().padStart(2, "0"))
               .join(":");
+            const pxFmt =
+              currentMode === "aster"
+                ? fmtAster(tr.px, currentMarket)
+                : fmt(tr.px, currentMarket);
             return `<div class="trade-row ${tr.side === "buy" ? "t-buy" : "t-sell"}">
-            <span class="tr-price">${fmt(tr.px, currentMarket)}</span>
+            <span class="tr-price">${pxFmt}</span>
             <span class="tr-sz">${fmtSz(tr.sz)}</span>
             <span class="tr-time">${ts}</span>
           </div>`;
           })
           .join("");
+      }
+
+      // Aster public live trades — wss @aggTrade for one symbol. Ported from the
+      // root's useAsterTradeStream. Message: { p: px, q: sz, m: isBuyerMaker, T }.
+      function stopAsterTrades() {
+        if (asterTradeWs) {
+          try {
+            asterTradeWs.close();
+          } catch {}
+          asterTradeWs = null;
+        }
+      }
+
+      function startAsterTrades(sym: string) {
+        stopAsterTrades();
+        const ws = new WebSocket(
+          `wss://fstream.asterdex.com/ws/${sym.toLowerCase()}usdt@aggTrade`,
+        );
+        asterTradeWs = ws;
+        ws.onmessage = ({ data }) => {
+          if (currentMode !== "aster" || currentMarket !== sym) return;
+          try {
+            const msg = JSON.parse(data);
+            const px = parseFloat(msg.p ?? 0);
+            const sz = parseFloat(msg.q ?? 0);
+            if (!px || !sz) return;
+            pushTrade({
+              side: msg.m ? "sell" : "buy",
+              px,
+              sz,
+              time: msg.T || Date.now(),
+            });
+          } catch {}
+        };
+        ws.onclose = () => {
+          if (asterTradeWs !== ws) return; // superseded by a newer stream
+          asterTradeWs = null;
+          if (currentMode === "aster" && currentMarket === sym)
+            setTimeout(() => {
+              if (currentMode === "aster" && currentMarket === sym)
+                startAsterTrades(sym);
+            }, 5000);
+        };
+        ws.onerror = () => {
+          try {
+            ws.close();
+          } catch {}
+        };
       }
 
       function renderFills(fills: any[]) {
