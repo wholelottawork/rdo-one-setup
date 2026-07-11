@@ -996,6 +996,40 @@ export default function TradingTerminal() {
         const orig = btn.textContent!;
         btn.textContent = "Confirming...";
         (btn as HTMLButtonElement).disabled = true;
+        // EXTRA/Aster: signed market order server-side (no wallet prompt). size
+        // is base-coin units; Aster uses the account's own leverage (the root
+        // app doesn't set leverage per order either). Ported from asterPlaceOrder.
+        if (currentMode === "aster") {
+          try {
+            const res = await fetch(`/aster-signed/fapi/v3/order`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                symbol: `${currentMarket}USDT`,
+                side: isBuy ? "BUY" : "SELL",
+                type: "MARKET",
+                quantity: String(size),
+                user: addr,
+              }),
+            });
+            const d = await res.json();
+            if (d.orderId || d.status) {
+              showToast(
+                `${isBuy ? "Long" : "Short"} ${currentMarket} opened`,
+                "ok",
+              );
+              setTimeout(() => refreshPositions(addr), 2000);
+            } else {
+              showErr(d.msg ?? "Order failed");
+            }
+          } catch (e: any) {
+            showErr(e.message ?? "Transaction failed");
+          } finally {
+            btn.textContent = orig;
+            (btn as HTMLButtonElement).disabled = false;
+          }
+          return;
+        }
         try {
           const { ethers } = await import("ethers");
           const signer = await new ethers.BrowserProvider(
