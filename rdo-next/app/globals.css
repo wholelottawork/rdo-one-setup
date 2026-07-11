@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
-@source "../../components/**/*";
-@source "../../lib/**/*";
+@source "../components/**/*";
+@source "../lib/**/*";
 @source "./**/*";
 
 /* ── HYPERLIQUID DESIGN TOKENS ──────────────────────────────── */
@@ -39,12 +39,18 @@
 }
 
 /* ── RESET ──────────────────────────────────────────────────── */
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
+/* Scoped to @layer base: an UNLAYERED universal reset outranks every
+   @layer utilities rule in Tailwind v4's cascade, which would zero out
+   all padding and margin utilities (px, py, m, etc.) and collapse the
+   migrated terminal layout. Inside @layer base, Tailwind utilities win. */
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
 }
 
 html,
@@ -54,8 +60,16 @@ body {
   background: var(--hl-bg-page);
   color: var(--hl-text-primary);
   font-family: var(--hl-font);
-  font-size: 12px;
   -webkit-font-smoothing: antialiased;
+}
+
+/* Base text size lives on <body>, NOT <html>: putting font-size on <html>
+   makes 1rem = 12px, which silently shrinks every rem-based Tailwind utility
+   (text-xs, px-3, gap-2, px-6, …) to 0.75× of the size the migration was
+   authored against (16px root). Keeping <html> at the default 16px makes
+   those utilities render at their intended sizes. */
+body {
+  font-size: 12px;
 }
 
 .hidden {
@@ -1537,4 +1551,181 @@ input[type=number]::-webkit-inner-spin-button {
 
 .onramp-note strong {
   color: var(--hl-accent);
+}
+/* ── RESTORED base styles: stripped during the Tailwind migration but the
+   elements still use these as bare (non-Tailwind) classes in TradingTerminal
+   (JSX + innerHTML). Without them the order panel / draw tools / X-tracker
+   header render unstyled. ── */
+.mkt-item-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.mkt-item-lev {
+  font-size: 10px;
+  color: var(--hl-text-muted);
+  background: rgba(255, 255, 255, 0.07);
+  border-radius: 3px;
+  padding: 1px 4px;
+}
+.mkt-item-price {
+  color: var(--hl-text-muted);
+}
+.ob-float-close {
+  background: none;
+  border: none;
+  color: var(--hl-text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+}
+.xt-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--hl-text-primary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.xt-connect-btn {
+  font-family: var(--hl-font);
+  font-size: 10px;
+  font-weight: 500;
+  padding: 3px 8px;
+  background: var(--hl-bg-elevated);
+  border: 1px solid var(--hl-border);
+  border-radius: var(--hl-radius);
+  color: var(--hl-text-secondary);
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.chart-ohlc {
+  font-size: 10px;
+  color: var(--hl-text-muted);
+  white-space: nowrap;
+}
+.dt {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--hl-text-secondary);
+  cursor: pointer;
+  font-size: 11px;
+  border-radius: var(--hl-radius);
+  transition: all 0.12s;
+}
+.ob-toggle-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  margin-right: 6px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s ease;
+}
+.tp-select {
+  flex: 1;
+  font-family: var(--hl-font);
+  font-size: 11px;
+  color: var(--hl-text-secondary);
+  background: var(--hl-bg-elevated);
+  border: 1px solid var(--hl-border);
+  border-radius: var(--hl-radius);
+  padding: 4px 6px;
+  outline: none;
+  cursor: pointer;
+  appearance: none;
+}
+.tp-otab {
+  flex: 1;
+  font-family: var(--hl-font);
+  font-size: 12px;
+  padding: 0 4px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--hl-text-secondary);
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.tp-side {
+  font-family: var(--hl-font);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  padding: 9px 4px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.tp-buy {
+  background: transparent;
+  color: var(--hl-buy);
+  border-color: rgba(124, 255, 192, 0.15);
+}
+.tp-sell {
+  background: transparent;
+  color: var(--hl-sell);
+  border-color: rgba(255, 124, 170, 0.15);
+}
+.tp-size-wrap {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--hl-border);
+  border-radius: var(--hl-radius);
+  background: var(--hl-bg-elevated);
+  transition: border-color 0.12s;
+}
+.tp-slider {
+  width: 100%;
+  appearance: none;
+  height: 2px;
+  background: var(--hl-border);
+  border-radius: 1px;
+  cursor: pointer;
+  margin: 2px 0;
+}
+.tp-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--hl-text-secondary);
+  cursor: pointer;
+}
+.tp-action-btn {
+  width: 100%;
+  font-family: var(--hl-font);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 10px;
+  border: none;
+  border-radius: var(--hl-radius);
+  cursor: pointer;
+  transition: opacity 0.15s;
+  letter-spacing: 0.3px;
+  margin-top: 4px;
+}
+.tp-sell-bg {
+  background: #c0394b;
+  color: #fff;
+}
+.pos-mode-basic {
+  background: var(--hl-accent-dark);
+  color: var(--hl-accent);
+}
+.pos-mode-extra {
+  background: rgba(139, 92, 246, 0.15);
+  color: #a78bfa;
 }

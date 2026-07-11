@@ -2220,44 +2220,44 @@ export default function TradingTerminal() {
       <section className="flex flex-col bg-black overflow-hidden">
         <div className="flex items-center pt-1 px-4 pb-2 border-b border-[#1f1f1f] overflow-x-auto flex-shrink-0 gap-1">
           <button
-            className="font-[Inter,system-ui,sans-serif] text-[11px] py-1 px-2.5 whitespace-nowrap bg-transparent border-none rounded-[7px] text-[#878c8f] cursor-pointer transition-colors duration-150 text-white font-semibold bg-[#1f1f1f]"
+            className="btm-tab active"
             data-bt="positions"
             data-i18n="positions"
           >
             Positions
           </button>
-          <button className="font-[Inter,system-ui,sans-serif] text-[11px] py-1 px-2.5 whitespace-nowrap bg-transparent border-none rounded-[7px] text-[#878c8f] cursor-pointer transition-colors duration-150 hover:text-white hover:bg-[#1a1a1a]" data-bt="balances" data-i18n="balances">
+          <button className="btm-tab" data-bt="balances" data-i18n="balances">
             Balances
           </button>
           <button
-            className="font-[Inter,system-ui,sans-serif] text-[11px] py-1 px-2.5 whitespace-nowrap bg-transparent border-none rounded-[7px] text-[#878c8f] cursor-pointer transition-colors duration-150 hover:text-white hover:bg-[#1a1a1a]"
+            className="btm-tab"
             data-bt="open-orders"
             data-i18n="openOrders"
           >
             Open Orders
           </button>
           <button
-            className="font-[Inter,system-ui,sans-serif] text-[11px] py-1 px-2.5 whitespace-nowrap bg-transparent border-none rounded-[7px] text-[#878c8f] cursor-pointer transition-colors duration-150 hover:text-white hover:bg-[#1a1a1a]"
+            className="btm-tab"
             data-bt="trade-history"
             data-i18n="tradeHistory"
           >
             Trade History
           </button>
           <button
-            className="font-[Inter,system-ui,sans-serif] text-[11px] py-1 px-2.5 whitespace-nowrap bg-transparent border-none rounded-[7px] text-[#878c8f] cursor-pointer transition-colors duration-150 hover:text-white hover:bg-[#1a1a1a]"
+            className="btm-tab"
             data-bt="funding"
             data-i18n="fundingHistory"
           >
             Funding History
           </button>
           <button
-            className="font-[Inter,system-ui,sans-serif] text-[11px] py-1 px-2.5 whitespace-nowrap bg-transparent border-none rounded-[7px] text-[#878c8f] cursor-pointer transition-colors duration-150 hover:text-white hover:bg-[#1a1a1a]"
+            className="btm-tab"
             data-bt="order-history"
             data-i18n="orderHistory"
           >
             Order History
           </button>
-          <button className="font-[Inter,system-ui,sans-serif] text-[11px] py-1 px-2.5 whitespace-nowrap bg-transparent border-none rounded-[7px] text-[#878c8f] cursor-pointer transition-colors duration-150 hover:text-white hover:bg-[#1a1a1a]" data-bt="liq-map">
+          <button className="btm-tab" data-bt="liq-map">
             Liq Map
           </button>
         </div>

@@ -21,6 +21,10 @@ html:has(#rdo-nav), body:has(#rdo-nav) {
 
 /* ── SHARED NAV: wallet connect + network switcher ──────────── */
 .nav-wallet-wrap{position:relative;flex-shrink:0}
+.nav-wallet-btn{font-size:12px;font-weight:600;color:#c8d2d6;background:transparent;border:1px solid #1f1f1f;border-radius:6px;padding:7px 14px;cursor:pointer;font-family:inherit;transition:all .15s;flex-shrink:0;white-space:nowrap}
+.nav-wallet-btn:hover{border-color:#50d2c1;color:#50d2c1}
+.nav-wallet-btn.connected{color:#fff;border-color:#2a2a2a;background:#161616}
+.nav-wallet-btn:disabled{opacity:.5;cursor:default}
 .wallet-dd-panel{position:absolute;top:calc(100% + 6px);right:0;z-index:900;background:#0d0d0d;border:1px solid #1f1f1f;border-radius:10px;padding:14px;min-width:220px;box-shadow:0 8px 24px rgba(0,0,0,.5)}
 .wallet-dd-addr-row{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:14px;font-weight:600;color:#fff;font-family:monospace;padding:2px 2px 12px}
 .wallet-dd-copy{display:flex;align-items:center;justify-content:center;background:transparent;border:none;color:#878c8f;cursor:pointer;padding:4px;border-radius:4px;flex-shrink:0}
@@ -106,6 +110,8 @@ html:has(#rdo-nav), body:has(#rdo-nav) {
 .bc-val{font-size:22px;font-weight:700;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
 .bc-lbl{font-size:11px;color:#878c8f;font-weight:500;display:flex;align-items:center;gap:5px;flex-wrap:wrap}
 .bc-ch{font-size:11px;font-weight:600;font-variant-numeric:tabular-nums}
+.bc-spark{flex-shrink:0;width:120px;height:44px;overflow:hidden}
+.bc-spark svg{width:100%;height:100%;display:block}
 .small-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .small-card{background:#0d0d0d;border:1px solid #1f1f1f;border-radius:6px;padding:14px 16px}
 .sc-val{font-size:20px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
@@ -119,7 +125,31 @@ html:has(#rdo-nav), body:has(#rdo-nav) {
 .mst-ch{font-size:11px;font-weight:600}
 .mkt-grid-hdr-row span:not(:first-child){text-align:right}
 .mkt-grid-row span:not(:first-child){text-align:right;font-variant-numeric:tabular-nums}
+/* futures / liquidation-map + AI-signals panels */
+.fut-wrap{display:grid;grid-template-columns:1fr 320px;gap:10px;margin-bottom:16px}
+@media(max-width:900px){.fut-wrap{grid-template-columns:1fr}}
+.fut-left,.fut-right{background:#0d0d0d;border:1px solid #1f1f1f;border-radius:6px;overflow:hidden;display:flex;flex-direction:column}
+.fut-hdr{padding:10px 14px;border-bottom:1px solid #1f1f1f;display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex-shrink:0}
+.fut-title{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:#878c8f}
+.fut-tabs{display:flex;gap:2px;margin-left:auto}
+.fut-tab{padding:4px 10px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;color:#878c8f;background:none;border:none;transition:color .1s,background .1s;font-family:inherit}
+.fut-tab.active{background:#161616;color:#fff}
+.sym-pills{display:flex;gap:4px}
+.sym-pill{padding:3px 8px;border-radius:4px;font-size:10px;font-weight:700;cursor:pointer;background:#161616;color:#878c8f;border:none;transition:color .1s,background .1s;font-family:inherit}
+.sym-pill.active{background:#50d2c1;color:#000}
+/* converter */
+.conv-wrap{background:#0d0d0d;border:1px solid #1f1f1f;border-radius:6px;overflow:hidden;margin-bottom:16px}
+.conv-body{padding:16px;display:grid;grid-template-columns:1fr auto 1fr;gap:12px;align-items:center}
+@media(max-width:600px){.conv-body{grid-template-columns:1fr}.conv-arrow{display:none}}
+.conv-side{display:flex;gap:6px;align-items:center}
+.conv-input{flex:1;background:#161616;border:1px solid #1f1f1f;color:#fff;padding:9px 10px;border-radius:6px;font-size:13px;font-family:inherit;outline:none;font-variant-numeric:tabular-nums;min-width:0}
+.conv-input:focus{border-color:#50d2c1}
+.conv-sel{background:#161616;border:1px solid #1f1f1f;color:#fff;padding:9px 8px;border-radius:6px;font-size:11px;font-family:inherit;outline:none;cursor:pointer;min-width:64px}
+.conv-arrow{font-size:20px;color:#878c8f;text-align:center}
+.conv-result{flex:1;background:#161616;border:1px solid #1f1f1f;color:#fff;padding:9px 10px;border-radius:6px;font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;min-width:0}
 /* ── NEWS ───────────────────────────────────────────────────── */
+.feed-status{font-size:10px;color:#878c8f;margin-bottom:8px}
+.feed-status span{color:#50d2c1}
 .filter-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
 .filter-btn{font-size:12px;font-weight:500;color:#878c8f;background:#0d0d0d;border:1px solid #1f1f1f;border-radius:20px;padding:5px 14px;cursor:pointer;transition:color .12s,background .12s,border-color .12s;font-family:inherit}
 .filter-btn:hover{color:#fff;background:#161616}

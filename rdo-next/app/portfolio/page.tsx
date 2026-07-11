@@ -5,7 +5,7 @@ import { useWallet } from '@/lib/wallet';
 import { SiteNav } from '@/components/SiteNav';
 
 const PAGE_CSS = `
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+@layer base{*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}}
 :root{--bg:#000000;--bg2:#0d0d0d;--bg3:#161616;--border:#1f1f1f;--accent:#50d2c1;--green:#1fa67d;--red:#ed7088;--text:#ffffff;--text2:#c8d2d6;--text3:#878c8f;--r:6px;--nav:40px}
 body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:13px;line-height:1.5;min-height:100vh}
 a{text-decoration:none;color:inherit}
