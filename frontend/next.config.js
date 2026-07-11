@@ -1,6 +1,6 @@
-// This app talks to the SAME Fastify backend the root Next.js app uses
-// (server/, see ../server/routes/proxy.js + news.js + swap.js) instead of
-// hitting upstream APIs directly — that backend is what adds Redis caching,
+// This app talks to the Fastify backend (../backend/, see
+// backend/routes/proxy.js + news.js + swap.js) instead of hitting upstream
+// APIs directly — that backend is what adds Redis caching,
 // per-IP rate limiting, and Aster's signed-endpoint agent auth, all of which
 // this app's original direct-to-upstream rewrites had none of (e.g. the bare
 // CoinGecko rewrite was getting Cloudflare-403'd with no cache to fall back
