@@ -42,6 +42,66 @@ export async function loadBalance(evmAddress: string) {
   } catch { return 0; }
 }
 
+const HL_SPOT_STABLES = new Set(['USDC', 'USDT', 'USDT0', 'USDE', 'USDH', 'USD']);
+
+export interface HLAccountState {
+  perpEquity: number;        // marginSummary.accountValue (perp portion)
+  spotTotal: number;         // total stable spot balances
+  availableToTrade: number;  // spot (total-hold) + free cross margin — matches the exchange
+  ntl: number;               // total notional of open positions
+  marginUsed: number;
+  upnl: number;              // summed from each position's unrealizedPnl
+  positions: ReturnType<typeof mapPositions>;
+}
+
+function mapPositions(assetPositions: any[]) {
+  return (assetPositions ?? [])
+    .filter((p: any) => parseFloat(p.position.szi) !== 0)
+    .map((p: any) => ({
+      symbol:     p.position.coin,
+      size:       parseFloat(p.position.szi),
+      entryPrice: parseFloat(p.position.entryPx),
+      leverage:   p.position.leverage?.value ?? 1,
+      pnl:        parseFloat(p.position.unrealizedPnl),
+      liqPrice:   parseFloat(p.position.liquidationPx ?? 0),
+      isLong:     parseFloat(p.position.szi) > 0,
+    }));
+}
+
+// Full account snapshot in one shot. "Available to Trade" is NOT perp equity:
+// on unified accounts the spendable balance is spot stablecoins minus what's
+// held as margin (total-hold), plus any free cross-margin — this matches the
+// number the Hyperliquid exchange shows. accountValue alone is just the perp
+// portion (and reads as only the isolated position's margin here).
+export async function loadAccountState(evmAddress: string): Promise<HLAccountState> {
+  const empty: HLAccountState = { perpEquity: 0, spotTotal: 0, availableToTrade: 0, ntl: 0, marginUsed: 0, upnl: 0, positions: [] };
+  try {
+    const post = (body: any) => fetch(`${HL_API}/info`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    }).then(r => r.json());
+    const [ch, spot] = await Promise.all([
+      post({ type: 'clearinghouseState', user: evmAddress }),
+      post({ type: 'spotClearinghouseState', user: evmAddress }),
+    ]);
+    const ms    = ch.marginSummary ?? {};
+    const cross = ch.crossMarginSummary ?? {};
+    const stables  = (spot.balances ?? []).filter((b: any) => HL_SPOT_STABLES.has(b.coin));
+    const spotTotal = stables.reduce((s: number, b: any) => s + parseFloat(b.total ?? 0), 0);
+    const spotAvail = stables.reduce((s: number, b: any) => s + (parseFloat(b.total ?? 0) - parseFloat(b.hold ?? 0)), 0);
+    const crossFree = Math.max(0, parseFloat(cross.accountValue ?? 0) - parseFloat(cross.totalMarginUsed ?? 0));
+    const positions = mapPositions(ch.assetPositions);
+    return {
+      perpEquity:       parseFloat(ms.accountValue ?? 0),
+      spotTotal,
+      availableToTrade: spotAvail + crossFree,
+      ntl:              parseFloat(ms.totalNtlPos ?? 0),
+      marginUsed:       parseFloat(ms.totalMarginUsed ?? 0),
+      upnl:             positions.reduce((s, p) => s + p.pnl, 0),
+      positions,
+    };
+  } catch { return empty; }
+}
+
 export async function getPositions(evmAddress: string) {
   try {
     const res  = await fetch(`${HL_API}/info`, {

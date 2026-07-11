@@ -34,7 +34,7 @@ export default function TradingTerminal() {
     async function init() {
       const { showToast } = await import("@/lib/toast");
       const {
-        loadBalance,
+        loadAccountState,
         getPositions,
         getMarketPrice,
         getCandles,
@@ -1031,20 +1031,26 @@ export default function TradingTerminal() {
       }
 
       async function refreshPositions(addr: string) {
-        const [positions, balance] = await Promise.all([
-          getPositions(addr),
-          loadBalance(addr),
-        ]);
+        const acct = await loadAccountState(addr);
+        const positions = acct.positions;
         const el = (id: string, val: string) => {
           const e = document.getElementById(id);
           if (e) e.textContent = val;
         };
-        el("tpAvail", "$" + balance.toFixed(2) + " USDC");
-        el("ovBalance", "$" + balance.toFixed(2));
-        el("eqPerps", "$" + balance.toFixed(2));
-        el("balanceDisplay", "$" + balance.toFixed(2));
-        const totalPnl = positions.reduce((s: number, p: any) => s + p.pnl, 0);
-        el("ovPnl", (totalPnl >= 0 ? "+" : "") + "$" + totalPnl.toFixed(2));
+        // "Available to Trade" is spendable balance (spot minus held margin +
+        // free cross), NOT perp equity — matches the exchange.
+        el("tpAvail", "$" + acct.availableToTrade.toFixed(2) + " USDC");
+        el("eqSpot", "$" + acct.spotTotal.toFixed(2));
+        el("eqPerps", "$" + acct.perpEquity.toFixed(2));
+        el("ovBalance", "$" + acct.perpEquity.toFixed(2));
+        el("balanceDisplay", "$" + acct.perpEquity.toFixed(2));
+        el("ovPnl", (acct.upnl >= 0 ? "+" : "") + "$" + acct.upnl.toFixed(2));
+        el(
+          "ovLev",
+          acct.marginUsed > 0 && acct.perpEquity > 0
+            ? (acct.ntl / acct.perpEquity).toFixed(2) + "x"
+            : "0.00x",
+        );
         const mine = positions.find((p: any) => p.symbol === currentMarket);
         el(
           "tpCurPos",
