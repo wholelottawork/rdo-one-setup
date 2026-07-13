@@ -1116,6 +1116,13 @@ input[type=number]::-webkit-inner-spin-button {
   font-weight: 600;
 }
 
+.pos-row .pos-lev {
+  margin-left: 5px;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--hl-text-secondary);
+}
+
 .pos-row .pnl-pos {
   color: var(--hl-buy);
   font-weight: 600;
@@ -1132,6 +1139,221 @@ input[type=number]::-webkit-inner-spin-button {
 
 .pos-row .dir-short {
   color: var(--hl-sell);
+}
+
+.tpsl-link {
+  color: #6ea8fe;
+  cursor: pointer;
+  white-space: nowrap;
+  font-size: 10px;
+}
+
+/* TP/SL cell: centered, small gap between the legs so they never crowd
+   the neighbouring Liq. Price / Margin columns. */
+.pos-row .pos-tpsl {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+}
+
+.tpsl-link:hover {
+  text-decoration: underline;
+}
+
+/* ── TP/SL dialog — instrument-panel modal on the shared .modal-* system ── */
+.tpsl-box {
+  width: 360px;
+  gap: 14px;
+  padding: 20px;
+  animation: tpslIn 0.12s ease-out;
+}
+
+@keyframes tpslIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tpsl-box {
+    animation: none;
+  }
+}
+
+.tpsl-mark-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--hl-text-secondary);
+  border-top: 1px solid var(--hl-border);
+  border-bottom: 1px solid var(--hl-border);
+  padding: 8px 0;
+}
+
+.tpsl-mark-row b {
+  color: var(--hl-text-primary);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.tpsl-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.tpsl-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--hl-text-secondary);
+}
+
+.tpsl-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.tpsl-dot.tp {
+  background: var(--hl-buy);
+}
+
+.tpsl-dot.sl {
+  background: var(--hl-sell);
+}
+
+/* Trade-panel TP/SL inputs — two-up labelled grid, same green/pink leg
+   coding as the dialog; replaces the squeezed stacked bare inputs. */
+.tp-tpsl-inputs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.tp-tpsl-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tp-tpsl-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--hl-text-secondary);
+}
+
+.tp-tpsl-input {
+  width: 100%;
+  background: #111;
+  border: 1px solid #1f1f1f;
+  border-radius: 4px;
+  color: #fff;
+  font-size: 12px;
+  padding: 7px 8px;
+  outline: none;
+}
+
+.tp-tpsl-input:focus {
+  border-color: rgba(110, 168, 254, 0.4);
+}
+
+.tpsl-input {
+  width: 100%;
+  background: #0d0d0d;
+  border: 1px solid var(--hl-border);
+  border-radius: var(--hl-radius);
+  color: var(--hl-text-primary);
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  padding: 9px 10px;
+  outline: none;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+
+.tpsl-input:focus {
+  border-color: #2e2e2e;
+  box-shadow: 0 0 0 2px rgba(110, 168, 254, 0.15);
+}
+
+.tpsl-preview {
+  font-size: 10px;
+  min-height: 13px;
+  color: var(--hl-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.tpsl-preview.pos {
+  color: var(--hl-buy);
+}
+
+.tpsl-preview.neg {
+  color: var(--hl-sell);
+}
+
+.tpsl-err {
+  font-size: 11px;
+  color: var(--hl-sell);
+}
+
+.tpsl-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.tpsl-btn {
+  flex: 1;
+  padding: 10px;
+  border-radius: var(--hl-radius);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: opacity 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.tpsl-btn.ghost {
+  background: transparent;
+  border-color: var(--hl-border);
+  color: var(--hl-text-secondary);
+}
+
+.tpsl-btn.ghost:hover {
+  color: var(--hl-text-primary);
+  border-color: #2e2e2e;
+}
+
+.tpsl-btn.solid {
+  background: var(--hl-buy);
+  color: #04130c;
+}
+
+.tpsl-btn.solid:hover {
+  opacity: 0.88;
+}
+
+.tpsl-btn:focus-visible,
+.tpsl-input:focus-visible {
+  outline: 2px solid #6ea8fe;
+  outline-offset: 2px;
 }
 
 .pos-mode-tag {

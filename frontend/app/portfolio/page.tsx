@@ -2,7 +2,7 @@
 import { useEffect, useRef } from 'react';
 import { ensureAsterAgentApproved, ensureBscNetwork, getBscCapableProvider, getAsterIncomeHistory } from '@/lib/aster-agent';
 import { useWallet } from '@/lib/wallet';
-import { SiteNav } from '@/components/SiteNav';
+import { SiteNav } from '@/components/shared/SiteNav';
 
 const PAGE_CSS = `
 @layer base{*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}}

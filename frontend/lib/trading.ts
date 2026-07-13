@@ -1,10 +1,22 @@
 import { cachedFetch } from './query';
 
 const HL_API          = '/api/hl';
-const BUILDER_ADDRESS = '0x0000000000000000000000000000000000000000';
-const BUILDER_FEE     = 1000;
+// Routed through the backend relay (backend/src/ws/relay.ts) rather than
+// wss://api.hyperliquid.xyz/ws directly: browsers always send an Origin
+// header, and Hyperliquid's gateway drops browser-origin connections that
+// fan out ~20 subscriptions (close 1006 within ~3s → endless reconnect
+// flapping). The relay's upstream connection is server-side (no Origin)
+// and stable. Override in prod with NEXT_PUBLIC_HL_WS_URL.
+const HL_WS_URL       = process.env.NEXT_PUBLIC_HL_WS_URL ?? 'ws://localhost:3001/ws';
+// Builder fee attribution is intentionally NOT attached to orders: it needs
+// a separate user-signed `approveBuilderFee` action first, and the perp fee
+// cap is f<=100 (0.1%). Attaching it wrong silently rejects every order
+// with "L1 error", so orders stay builder-less until a real builder
+// address + approval flow exists.
 
 let assetIndexMap: Record<string, number> = {};
+let assetSzDecimals: Record<string, number> = {};
+let assetMaxLeverage: Record<string, number> = {};
 
 export async function getMetaAndAssetCtxs() {
   try {
@@ -19,7 +31,11 @@ export async function getMetaAndAssetCtxs() {
     }, 60_000);
     const universe = data[0]?.universe ?? [];
     const ctxs     = data[1] ?? [];
-    universe.forEach((asset: any, i: number) => { assetIndexMap[asset.name] = i; });
+    universe.forEach((asset: any, i: number) => {
+      assetIndexMap[asset.name] = i;
+      assetSzDecimals[asset.name] = asset.szDecimals ?? 5;
+      assetMaxLeverage[asset.name] = asset.maxLeverage ?? 50;
+    });
     const map = new Map();
     universe.forEach((asset: any, i: number) => {
       const ctx = ctxs[i] ?? {};
@@ -70,6 +86,10 @@ function mapPositions(assetPositions: any[]) {
       leverage:   p.position.leverage?.value ?? 1,
       pnl:        parseFloat(p.position.unrealizedPnl),
       liqPrice:   parseFloat(p.position.liquidationPx ?? 0),
+      margin:     parseFloat(p.position.marginUsed ?? 0),
+      funding:    p.position.cumFunding?.sinceOpen != null
+        ? parseFloat(p.position.cumFunding.sinceOpen)
+        : null,
       isLong:     parseFloat(p.position.szi) > 0,
     }));
 }
@@ -147,31 +167,105 @@ export async function getUserFills(evmAddress: string) {
 
 export async function getOpenOrders(evmAddress: string) {
   try {
+    // frontendOpenOrders, NOT openOrders: the plain endpoint omits
+    // orderType/triggerPx for trigger orders, so resting TP/SL would map
+    // to kind=null and the Positions table would keep showing "+ Add".
     const res  = await fetch(`${HL_API}/info`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: 'openOrders', user: evmAddress }),
+      body: JSON.stringify({ type: 'frontendOpenOrders', user: evmAddress }),
     });
     const data = await res.json();
-    return (Array.isArray(data) ? data : []).map((o: any) => ({
-      coin: o.coin, side: o.side === 'B' ? 'Buy' : 'Sell',
-      price: parseFloat(o.limitPx), size: parseFloat(o.sz),
-      origSize: parseFloat(o.origSz), oid: o.oid, time: o.timestamp,
-    }));
+    return (Array.isArray(data) ? data : []).map((o: any) => {
+      const orderType = String(o.orderType ?? '');
+      // Trigger orders show up as e.g. "Take Profit Market" / "Stop Market";
+      // kind drives the TP/SL edit affordance in the open-orders tab.
+      const kind = orderType.includes('Take Profit') ? 'tp'
+        : orderType.includes('Stop') ? 'sl' : null;
+      return {
+        coin: o.coin, side: o.side === 'B' ? 'Buy' : 'Sell',
+        price: parseFloat(o.limitPx), size: parseFloat(o.sz),
+        origSize: parseFloat(o.origSz), oid: o.oid, time: o.timestamp,
+        orderType, kind,
+        triggerPx: o.triggerPx != null ? parseFloat(o.triggerPx) : null,
+        reduceOnly: !!o.reduceOnly,
+      };
+    });
   } catch { return []; }
 }
 
-export async function getFundingHistory(evmAddress: string) {
+// Standalone reduce-only TP/SL triggers for an EXISTING position (no entry
+// leg) — used by the Positions table's "+ Add" affordance. Grouping stays
+// 'na': normalTpsl is only for triggers riding along with an entry order.
+export async function placeTpslOrders({ symbol, size, isLong, signer, tpPx, slPx }: any) {
+  const dec   = assetSzDecimals[symbol] ?? 5;
+  const idx   = assetIndexMap[symbol] ?? 0;
+  const sWire = szToWire(size, dec);
+  const orders: any[] = [];
+  for (const [tpx, kind] of [[tpPx, 'tp'], [slPx, 'sl']] as const) {
+    if (tpx && tpx > 0) {
+      orders.push({
+        a: idx, b: !isLong, p: pxToWire(tpx, dec), s: sWire, r: true,
+        t: { trigger: { isMarket: true, triggerPx: pxToWire(tpx, dec), tpsl: kind } },
+      });
+    }
+  }
+  if (!orders.length) throw new Error('No TP/SL price given');
+  const wireAction = { type: 'order', orders, grouping: 'na' };
+  const nonce = Date.now();
+  const sig   = await signAction(signer, wireAction, nonce);
+  const res   = await fetch(`${HL_API}/exchange`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: wireAction, nonce, signature: sig }),
+  });
+  return res.json();
+}
+
+// Edit a resting TP/SL trigger in place (HL `modify` action) — keeps the
+// order's grouping/position binding, unlike cancel + re-place.
+export async function modifyTriggerOrder({ oid, symbol, isBuy, size, triggerPx, kind, reduceOnly, signer }: any) {
+  const dec = assetSzDecimals[symbol] ?? 5;
+  const px  = pxToWire(triggerPx, dec);
+  const wireAction = {
+    type: 'modify',
+    oid,
+    order: {
+      a: assetIndexMap[symbol] ?? 0,
+      b: isBuy,
+      p: px,
+      s: szToWire(size, dec),
+      r: reduceOnly,
+      t: { trigger: { isMarket: true, triggerPx: px, tpsl: kind } },
+    },
+  };
+  const nonce = Date.now();
+  const sig   = await signAction(signer, wireAction, nonce);
+  const res   = await fetch(`${HL_API}/exchange`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: wireAction, nonce, signature: sig }),
+  });
+  return res.json();
+}
+
+// Info type is `userFunding` (not userFundingHistory) and startTime is
+// mandatory. Rows are { time, hash, delta: { type:"funding", coin, usdc,
+// fundingRate, szi } } — the numbers live under `delta`.
+export async function getFundingHistory(evmAddress: string, startTime = Date.now() - 14 * 86_400_000) {
   try {
     const res  = await fetch(`${HL_API}/info`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: 'userFundingHistory', user: evmAddress }),
+      body: JSON.stringify({ type: 'userFunding', user: evmAddress, startTime }),
     });
     const data = await res.json();
-    const rows  = Array.isArray(data) ? data : (data.fundingHistory ?? []);
-    return rows.map((f: any) => ({
-      coin: f.coin, usdc: parseFloat(f.usdc),
-      rate: parseFloat(f.fundingRate), size: parseFloat(f.szi), time: f.time,
-    }));
+    const rows  = Array.isArray(data) ? data : [];
+    return rows
+      .map((f: any) => {
+        const d = f.delta ?? f;
+        return {
+          coin: d.coin, usdc: parseFloat(d.usdc),
+          rate: parseFloat(d.fundingRate), size: parseFloat(d.szi), time: f.time,
+        };
+      })
+      .sort((a: any, b: any) => b.time - a.time);
   } catch { return []; }
 }
 
@@ -233,6 +327,21 @@ function floatToWire(x: number) {
   return r.toFixed(8).replace(/\.?0+$/, '');
 }
 
+// HL price rules (exchange docs): ≤5 significant figures AND ≤(8 − szDecimals)
+// decimal places, integers always allowed. A raw mid×(1±slippage) value like
+// 118354.12345678 breaks the sig-fig rule → rejected "Order has invalid price."
+function pxToWire(px: number, szDecimals: number) {
+  const maxDecimals = Math.max(0, 8 - szDecimals);
+  const sig = Number(px.toPrecision(5));
+  return floatToWire(Number(sig.toFixed(maxDecimals)));
+}
+
+// Sizes must be rounded to the asset's szDecimals (same docs) —
+// e.g. 0.001733 BTC (6 decimals, BTC has 5) → "Order has invalid size."
+function szToWire(sz: number, szDecimals: number) {
+  return floatToWire(Number(sz.toFixed(szDecimals)));
+}
+
 function mpEncode(val: any): Uint8Array {
   const out: number[] = [];
   function enc(v: any) {
@@ -243,7 +352,14 @@ function mpEncode(val: any): Uint8Array {
         if      (v <= 0x7f)   out.push(v);
         else if (v <= 0xff)   out.push(0xcc, v);
         else if (v <= 0xffff) out.push(0xcd, (v >> 8) & 0xff, v & 0xff);
-        else out.push(0xce, (v >>> 24) & 0xff, (v >>> 16) & 0xff, (v >>> 8) & 0xff, v & 0xff);
+        else if (v <= 0xffffffff) out.push(0xce, (v >>> 24) & 0xff, (v >>> 16) & 0xff, (v >>> 8) & 0xff, v & 0xff);
+        else {
+          // uint64 (0xcf) — order ids can exceed 32 bits; without this the
+          // uint32 path silently truncates them and the action hash breaks.
+          const ab = new ArrayBuffer(8);
+          new DataView(ab).setBigUint64(0, BigInt(v), false);
+          out.push(0xcf, ...new Uint8Array(ab));
+        }
       } else if (Number.isInteger(v) && v < 0) {
         if (v >= -32) out.push(v & 0xff);
         else          out.push(0xd0, v & 0xff);
@@ -295,7 +411,12 @@ async function signAction(signer: any, wireAction: any, nonce: number) {
   const { ethers } = await import('ethers');
   const hash   = await computeActionHash(wireAction, nonce);
   const domain = {
-    name: 'Exchange', version: '1', chainId: 42161,
+    // L1 actions (order/cancel) sign over the fixed "Exchange" domain with
+    // chainId 1337 — NOT Arbitrum's 42161, which is only used for
+    // user-signed actions (usdSend etc). Wrong chainId recovers the wrong
+    // signer → "L1 error: User or API Wallet does not exist". Matches
+    // hyperliquid-python-sdk signing.l1_payload.
+    name: 'Exchange', version: '1', chainId: 1337,
     verifyingContract: '0x0000000000000000000000000000000000000000',
   };
   const types = { Agent: [{ name: 'source', type: 'string' }, { name: 'connectionId', type: 'bytes32' }] };
@@ -303,25 +424,88 @@ async function signAction(signer: any, wireAction: any, nonce: number) {
   return { r: rawSig.slice(0, 66), s: '0x' + rawSig.slice(66, 130), v: parseInt(rawSig.slice(130, 132), 16) };
 }
 
-export async function openPosition({ symbol, sizeDollars, leverage, isLong, signer }: any) {
+// HL nonces must be strictly increasing per user — Date.now() can repeat
+// within the same millisecond when two actions go out back-to-back
+// (updateLeverage, then the entry order).
+let lastNonce = 0;
+function nextNonce() {
+  lastNonce = Math.max(Date.now(), lastNonce + 1);
+  return lastNonce;
+}
+
+// Leverage on HL is a per-asset ACCOUNT setting, not an order field — an
+// entry opens at whatever leverage the account used last, so the UI's
+// leverage input was cosmetic until now. updateLeverage is its own signed
+// action: skip it only when the open position already matches; when flat
+// the standing setting isn't queryable, so always set it. Clamped to the
+// asset's maxLeverage from meta.
+async function applyLeverage(signer: any, symbol: string, leverage: number, idx: number) {
+  const maxLev = assetMaxLeverage[symbol] ?? 50;
+  const req = Math.min(Math.max(Math.round(leverage) || 1, 1), maxLev);
+  try {
+    const addr = await signer.getAddress();
+    const res = await fetch(`${HL_API}/info`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'clearinghouseState', user: addr }),
+    });
+    const st = await res.json();
+    const pos = st.assetPositions?.find((p: any) => p.position.coin === symbol);
+    if (pos && Number(pos.position.leverage?.value) === req) return req;
+  } catch { /* no position / query failed — set it below */ }
+  const wireAction = { type: 'updateLeverage', asset: idx, isCross: true, leverage: req };
+  const nonce = nextNonce();
+  const sig = await signAction(signer, wireAction, nonce);
+  const res = await fetch(`${HL_API}/exchange`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: wireAction, nonce, signature: sig }),
+  });
+  const d = await res.json();
+  if (d.status !== 'ok')
+    throw new Error(`Leverage update failed: ${d.response ?? d.error ?? 'unknown error'}`);
+  return req;
+}
+
+export async function openPosition({ symbol, sizeDollars, leverage, isLong, signer, reduceOnly = false, tpPx, slPx }: any) {
   const price = await getMarketPrice(symbol);
   if (!price) throw new Error('Cannot fetch price for ' + symbol);
+  const idx     = assetIndexMap[symbol] ?? 0;
+  // Apply (and clamp) leverage BEFORE the entry — throws on rejection so an
+  // order never silently opens at the wrong leverage.
+  const appliedLeverage = leverage ? await applyLeverage(signer, symbol, leverage, idx) : 0;
   const sz      = parseFloat((sizeDollars / price).toFixed(8));
   const slip    = 0.003;
   const limitPx = isLong ? price * (1 + slip) : price * (1 - slip);
+  const dec     = assetSzDecimals[symbol] ?? 5;
+  const sWire   = szToWire(sz, dec);
+  const orders: any[] = [
+    { a: idx, b: isLong, p: pxToWire(limitPx, dec), s: sWire, r: reduceOnly, t: { limit: { tif: 'Ioc' } } },
+  ];
+  // TP/SL ride the SAME action as reduce-only market triggers on the opposite
+  // side, grouped with the entry (grouping normalTpsl) — one wallet signature,
+  // and the triggers are bound to the position this entry opens. p mirrors the
+  // trigger price (python-SDK style; ignored for isMarket triggers).
+  for (const [tpx, kind] of [[tpPx, 'tp'], [slPx, 'sl']] as const) {
+    if (tpx && tpx > 0) {
+      orders.push({
+        a: idx, b: !isLong, p: pxToWire(tpx, dec), s: sWire, r: true,
+        t: { trigger: { isMarket: true, triggerPx: pxToWire(tpx, dec), tpsl: kind } },
+      });
+    }
+  }
   const wireAction = {
     type: 'order',
-    orders: [{ a: assetIndexMap[symbol] ?? 0, b: isLong, p: floatToWire(limitPx), s: floatToWire(sz), r: false, t: { limit: { tif: 'Ioc' } } }],
-    grouping: 'na',
-    builder: { b: BUILDER_ADDRESS, f: BUILDER_FEE },
+    orders,
+    grouping: orders.length > 1 ? 'normalTpsl' : 'na',
   };
-  const nonce = Date.now();
+  const nonce = nextNonce();
   const sig   = await signAction(signer, wireAction, nonce);
   const res   = await fetch(`${HL_API}/exchange`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: wireAction, nonce, signature: sig }),
   });
-  return res.json();
+  const out = await res.json();
+  out.appliedLeverage = appliedLeverage;
+  return out;
 }
 
 export async function closePosition({ symbol, size, isLong, signer }: any) {
@@ -330,9 +514,8 @@ export async function closePosition({ symbol, size, isLong, signer }: any) {
   const slip = 0.003;
   const wireAction = {
     type: 'order',
-    orders: [{ a: assetIndexMap[symbol] ?? 0, b: !isLong, p: floatToWire(!isLong ? price * (1 + slip) : price * (1 - slip)), s: floatToWire(Math.abs(size)), r: true, t: { limit: { tif: 'Ioc' } } }],
+    orders: [{ a: assetIndexMap[symbol] ?? 0, b: !isLong, p: pxToWire(!isLong ? price * (1 + slip) : price * (1 - slip), assetSzDecimals[symbol] ?? 5), s: szToWire(Math.abs(size), assetSzDecimals[symbol] ?? 5), r: true, t: { limit: { tif: 'Ioc' } } }],
     grouping: 'na',
-    builder: { b: BUILDER_ADDRESS, f: BUILDER_FEE },
   };
   const nonce = Date.now();
   const sig   = await signAction(signer, wireAction, nonce);
@@ -361,10 +544,9 @@ export function startPriceStream(
   onTrade: (sym: string, trade: any) => void
 ) {
   let ws: WebSocket, alive = true;
-  const WS_URL = 'wss://api.hyperliquid.xyz/ws';
 
   function connect() {
-    ws = new WebSocket(WS_URL);
+    ws = new WebSocket(HL_WS_URL);
     ws.onopen = () => {
       const dotEl = document.getElementById('wsDot');
       const stEl  = document.getElementById('wsStatus');
@@ -406,10 +588,9 @@ export function startPriceStream(
 
 export function startBookStream(symbol: string, onBook: (sym: string, book: any) => void) {
   let ws: WebSocket, alive = true;
-  const WS_URL = 'wss://api.hyperliquid.xyz/ws';
 
   function connect() {
-    ws = new WebSocket(WS_URL);
+    ws = new WebSocket(HL_WS_URL);
     ws.onopen = () => {
       ws.send(JSON.stringify({ method: 'subscribe', subscription: { type: 'l2Book', coin: symbol } }));
     };

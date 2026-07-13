@@ -1,6 +1,6 @@
 'use client';
 import { useEffect } from 'react';
-import { SiteNav } from '@/components/SiteNav';
+import { SiteNav } from '@/components/shared/SiteNav';
 import { cachedFetch, getQueryClient } from '@/lib/query';
 
 export default function NewsPage() {

@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useRef } from 'react';
-import { SiteNav } from '@/components/SiteNav';
+import { SiteNav } from '@/components/shared/SiteNav';
 import { useWallet, getEVMProvider } from '@/lib/wallet';
 
 const PAGE_CSS = `
