@@ -342,6 +342,19 @@ export function createOrderFlow(deps: {
             deps.getMarket()
         : "0.00000 " + deps.getMarket(),
     );
+    renderBalances([
+      { label: "Perps Equity", value: "$" + acct.perpEquity.toFixed(2) },
+      { label: "Spot Balance", value: "$" + acct.spotTotal.toFixed(2) },
+      {
+        label: "Available to Trade",
+        value: "$" + acct.availableToTrade.toFixed(2) + " USDC",
+      },
+      { label: "Margin Used", value: "$" + acct.marginUsed.toFixed(2) },
+      {
+        label: "Unrealized PnL",
+        value: (acct.upnl >= 0 ? "+" : "") + "$" + acct.upnl.toFixed(2),
+      },
+    ]);
     renderPositions(positions, addr, orders);
   }
 
@@ -400,6 +413,12 @@ export function createOrderFlow(deps: {
       el("ovPnl", "$0.00");
       el("ovLev", "0.00x");
       el("tpCurPos", "0.00000 " + deps.getMarket());
+      renderBalances([
+        { label: "Account Equity", value: "$0.00" },
+        { label: "Available Balance", value: "$0.00 USDT" },
+        { label: "Margin Used", value: "$0.00" },
+        { label: "Unrealized PnL", value: "$0.00" },
+      ]);
       renderPositions([], addr);
       return;
     }
@@ -458,7 +477,32 @@ export function createOrderFlow(deps: {
             deps.getMarket()
         : "0.00000 " + deps.getMarket(),
     );
+    renderBalances([
+      { label: "Account Equity", value: "$" + equity.toFixed(2) },
+      {
+        label: "Available Balance",
+        value: "$" + avail.toFixed(2) + " USDT",
+      },
+      { label: "Margin Used", value: "$" + marginUsed.toFixed(2) },
+      {
+        label: "Unrealized PnL",
+        value: (upnl >= 0 ? "+" : "") + "$" + upnl.toFixed(2),
+      },
+    ]);
     renderPositions(positions, addr, orders);
+  }
+
+  // Balances tab — filled from the same account numbers the side panel
+  // gets, so both stay in sync on every refresh.
+  function renderBalances(rows: { label: string; value: string }[]) {
+    const el = document.getElementById("btBalances");
+    if (!el) return;
+    el.innerHTML = rows
+      .map(
+        (r) =>
+          `<div class="pos-row" style="grid-template-columns:1fr 1fr"><span style="color:var(--hl-text-muted)">${r.label}</span><span>${r.value}</span></div>`,
+      )
+      .join("");
   }
 
   function renderPositions(positions: any[], addr: string, orders: any[] = []) {

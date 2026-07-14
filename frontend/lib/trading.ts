@@ -193,6 +193,39 @@ export async function getOpenOrders(evmAddress: string) {
   } catch { return []; }
 }
 
+// Info type is `historicalOrders` (not orderHistory). HL returns one entry
+// per status transition, newest first — dedupe by oid keeping the first
+// (latest) status so each order appears once.
+export async function getOrderHistory(evmAddress: string) {
+  try {
+    const res  = await fetch(`${HL_API}/info`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'historicalOrders', user: evmAddress }),
+    });
+    const data = await res.json();
+    const rows  = Array.isArray(data) ? data : [];
+    const seen  = new Set<number>();
+    const out: any[] = [];
+    for (const r of rows) {
+      const o = r.order ?? {};
+      if (seen.has(o.oid)) continue;
+      seen.add(o.oid);
+      const orderType = String(o.orderType ?? '');
+      out.push({
+        coin: o.coin, side: o.side === 'B' ? 'Buy' : 'Sell',
+        price: parseFloat(o.limitPx), size: parseFloat(o.sz),
+        origSize: parseFloat(o.origSz ?? o.sz), orderType,
+        kind: orderType.includes('Take Profit') ? 'tp'
+          : orderType.includes('Stop') ? 'sl' : null,
+        triggerPx: o.triggerPx != null ? parseFloat(o.triggerPx) : null,
+        status: String(r.status ?? ''),
+        oid: o.oid, time: Number(r.statusTimestamp ?? o.timestamp ?? 0),
+      });
+    }
+    return out;
+  } catch { return []; }
+}
+
 // Standalone reduce-only TP/SL triggers for an EXISTING position (no entry
 // leg) — used by the Positions table's "+ Add" affordance. Grouping stays
 // 'na': normalTpsl is only for triggers riding along with an entry order.

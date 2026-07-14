@@ -64,6 +64,7 @@ export default function TradingTerminal() {
         getUserFills,
         getOpenOrders,
         getFundingHistory,
+        getOrderHistory,
         getL2Book,
         startBookStream,
       } = await import("@/lib/trading");
@@ -953,6 +954,7 @@ export default function TradingTerminal() {
         getUserFills,
         getOpenOrders,
         getFundingHistory,
+        getOrderHistory,
         refreshPositions: orderFlow.refreshPositions,
       }).bindBtmTabs();
       marketList.bindMarketBtn();

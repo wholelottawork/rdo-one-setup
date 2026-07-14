@@ -15,6 +15,52 @@ const btmPaneMap: Record<string, string> = {
   "liq-map": "btLiqMap",
 };
 
+// Merge individual fills into round-trip trades: reconstruct the net
+// position per coin chronologically — everything between zero-crossings
+// is ONE trade (handles scale-ins and partial closes). Works for both
+// venues off the fill side (Buy adds, Sell reduces). A flip (one fill
+// larger than the open group) over-closes it without opening the
+// remainder as a new trade — acceptable for manual order flow.
+function groupTrades(fills: any[]) {
+  const chrono = [...fills].sort((a, b) => a.time - b.time);
+  const openByCoin: Record<string, any> = {};
+  const trades: any[] = [];
+  for (const f of chrono) {
+    let g = openByCoin[f.coin];
+    if (!g) {
+      g = {
+        coin: f.coin,
+        isLong: f.side === "Buy",
+        entryPx: 0,
+        entrySz: 0,
+        closePx: 0,
+        closeSz: 0,
+        fee: 0,
+        pnl: 0,
+        openTime: f.time,
+        closeTime: 0,
+      };
+      openByCoin[f.coin] = g;
+      trades.push(g);
+    }
+    if ((f.side === "Buy") === g.isLong) {
+      g.entryPx += f.price * f.size;
+      g.entrySz += f.size;
+    } else {
+      g.closePx += f.price * f.size;
+      g.closeSz += f.size;
+      g.pnl += f.pnl;
+      g.closeTime = f.time;
+    }
+    g.fee += f.fee;
+    if (g.entrySz > 0 && g.closeSz >= g.entrySz - 1e-9)
+      delete openByCoin[f.coin];
+  }
+  return trades.sort(
+    (a, b) => (b.closeTime || b.openTime) - (a.closeTime || a.openTime),
+  );
+}
+
 export function renderFills(fills: any[]) {
   const el = document.getElementById("btTradeHistory");
   if (!el) return;
@@ -22,13 +68,16 @@ export function renderFills(fills: any[]) {
     el.innerHTML = '<div class="btm-empty">No trade history</div>';
     return;
   }
+  const cols = "70px 60px 100px 100px 80px 80px 80px 1fr";
   el.innerHTML =
-    `<div class="btm-col-hdr" style="grid-template-columns:70px 60px 100px 80px 80px 80px 80px 1fr"><span>Market</span><span>Side</span><span>Price</span><span>Size</span><span>Fee</span><span>PnL</span><span>Dir</span><span>Time</span></div>` +
-    fills
-      .slice(0, 200)
-      .map((f) => {
-        const pnlCls = f.pnl > 0 ? "pnl-pos" : f.pnl < 0 ? "pnl-neg" : "";
-        return `<div class="pos-row" style="grid-template-columns:70px 60px 100px 80px 80px 80px 80px 1fr"><span class="pos-sym">${f.coin}</span><span class="${f.side === "Buy" ? "dir-long" : "dir-short"}">${f.side}</span><span>${fmt(f.price, f.coin)}</span><span>${fmtSz(f.size)}</span><span>$${f.fee.toFixed(4)}</span><span class="${pnlCls}">${f.pnl !== 0 ? (f.pnl > 0 ? "+" : "") + "$" + f.pnl.toFixed(2) : "—"}</span><span style="color:var(--hl-text-muted);font-size:10px">${f.dir}</span><span style="color:var(--hl-text-muted)">${new Date(f.time).toLocaleString()}</span></div>`;
+    `<div class="btm-col-hdr" style="grid-template-columns:${cols}"><span>Market</span><span>Side</span><span>Entry</span><span>Close</span><span>Size</span><span>Fee</span><span>PnL</span><span>Time</span></div>` +
+    groupTrades(fills)
+      .slice(0, 100)
+      .map((g) => {
+        const entry = g.entrySz ? g.entryPx / g.entrySz : 0;
+        const close = g.closeSz ? g.closePx / g.closeSz : 0;
+        const pnlCls = g.pnl > 0 ? "pnl-pos" : g.pnl < 0 ? "pnl-neg" : "";
+        return `<div class="pos-row" style="grid-template-columns:${cols}"><span class="pos-sym">${g.coin}</span><span class="${g.isLong ? "dir-long" : "dir-short"}">${g.isLong ? "Long" : "Short"}</span><span>${fmt(entry, g.coin)}</span><span>${g.closeSz ? fmt(close, g.coin) : "—"}</span><span>${fmtSz(g.entrySz)}</span><span>$${g.fee.toFixed(4)}</span><span class="${pnlCls}">${(g.pnl > 0 ? "+" : "") + "$" + g.pnl.toFixed(2)}</span><span style="color:var(--hl-text-muted)">${new Date(g.closeTime || g.openTime).toLocaleString()}</span></div>`;
       })
       .join("");
 }
@@ -133,52 +182,103 @@ export async function getAsterFundingLocal(addr: string) {
   }
 }
 
-// Aster has no bulk fills endpoint — pull per-symbol userTrades for the
-// symbols with an open position (same approach as the root's getAsterFills).
-export async function getAsterFillsLocal(addr: string) {
-  let acct: any = null;
+export async function getAsterOrderHistoryLocal(addr: string) {
   try {
     const r = await fetch(
-      `/aster-signed/fapi/v3/accountWithJoinMargin?user=${encodeURIComponent(addr)}`,
+      `/aster-signed/fapi/v3/allOrders?limit=100&user=${encodeURIComponent(addr)}`,
     );
-    if (r.ok) {
-      const d = await r.json();
-      if (Array.isArray(d.positions)) acct = d;
-    }
-  } catch {}
-  const symbols = (acct?.positions ?? [])
-    .filter((p: any) => parseFloat(p.positionAmt ?? 0) !== 0)
-    .map((p: any) => String(p.symbol))
-    .slice(0, 20);
-  if (!symbols.length) return [];
-  const results = await Promise.allSettled(
-    symbols.map(async (sym: string) => {
-      try {
-        const r = await fetch(
-          `/aster-signed/fapi/v3/userTrades?symbol=${sym}&limit=100&user=${encodeURIComponent(addr)}`,
-        );
-        const data = await r.json();
-        if (!Array.isArray(data)) return [];
-        return data.map((t: any) => ({
-          coin: String(t.symbol ?? "").replace(/USDT$/, ""),
-          side: parseFloat(t.realizedPnl ?? 0) >= 0 ? "Buy" : "Sell",
-          price: parseFloat(t.price ?? 0),
-          size: parseFloat(t.qty ?? 0),
-          fee: parseFloat(t.commission ?? 0),
-          pnl: parseFloat(t.realizedPnl ?? 0),
-          dir: String(t.side ?? ""),
-          time: Number(t.time ?? 0),
-        }));
-      } catch {
-        return [];
-      }
-    }),
-  );
-  const out: any[] = [];
-  results.forEach((r) => {
-    if (r.status === "fulfilled") out.push(...r.value);
-  });
-  return out.sort((a: any, b: any) => b.time - a.time);
+    const data = await r.json();
+    if (!Array.isArray(data)) return [];
+    return data
+      .map((o: any) => ({
+        coin: String(o.symbol ?? "").replace(/USDT$/, ""),
+        side: o.side === "BUY" ? "Buy" : "Sell",
+        price: parseFloat(o.price ?? 0),
+        origSize: parseFloat(o.origQty ?? 0),
+        orderType: String(o.type ?? ""),
+        kind:
+          o.type === "TAKE_PROFIT_MARKET"
+            ? "tp"
+            : o.type === "STOP_MARKET"
+              ? "sl"
+              : null,
+        triggerPx:
+          o.stopPrice && parseFloat(o.stopPrice) > 0
+            ? parseFloat(o.stopPrice)
+            : null,
+        status: String(o.status ?? ""),
+        oid: Number(o.orderId ?? 0),
+        time: Number(o.updateTime ?? o.time ?? 0),
+      }))
+      .sort((a: any, b: any) => b.time - a.time);
+  } catch {
+    return [];
+  }
+}
+
+// Aster userTrades works WITHOUT a symbol (unlike Binance) — one call
+// returns recent fills across all symbols, whether or not anything is
+// currently open. Scoping to open positions hid all history for flat
+// accounts.
+export async function getAsterFillsLocal(addr: string) {
+  try {
+    const r = await fetch(
+      `/aster-signed/fapi/v3/userTrades?limit=100&user=${encodeURIComponent(addr)}`,
+    );
+    const data = await r.json();
+    if (!Array.isArray(data)) return [];
+    return data
+      .map((t: any) => ({
+        coin: String(t.symbol ?? "").replace(/USDT$/, ""),
+        side: t.side === "BUY" ? "Buy" : "Sell",
+        price: parseFloat(t.price ?? 0),
+        size: parseFloat(t.qty ?? 0),
+        fee: parseFloat(t.commission ?? 0),
+        pnl: parseFloat(t.realizedPnl ?? 0),
+        dir: String(t.side ?? ""),
+        time: Number(t.time ?? 0),
+      }))
+      .sort((a: any, b: any) => b.time - a.time);
+  } catch {
+    return [];
+  }
+}
+
+export function renderOrderHistory(orders: any[]) {
+  const el = document.getElementById("btOrderHistory");
+  if (!el) return;
+  if (!orders.length) {
+    el.innerHTML = '<div class="btm-empty">No order history</div>';
+    return;
+  }
+  const STATUS: Record<string, string> = {
+    filled: "Filled",
+    canceled: "Canceled",
+    reduceOnlyCanceled: "Canceled",
+    triggered: "Triggered",
+    open: "Open",
+    rejected: "Rejected",
+    FILLED: "Filled",
+    CANCELED: "Canceled",
+    NEW: "Open",
+    PARTIALLY_FILLED: "Partial",
+    REJECTED: "Rejected",
+    EXPIRED: "Expired",
+  };
+  const cols = "70px 60px 140px 110px 80px 90px 1fr";
+  el.innerHTML =
+    `<div class="btm-col-hdr" style="grid-template-columns:${cols}"><span>Market</span><span>Side</span><span>Type</span><span>Price</span><span>Size</span><span>Status</span><span>Time</span></div>` +
+    orders
+      .slice(0, 200)
+      .map((o) => {
+        const pxCell = o.kind
+          ? `${o.kind === "tp" ? "TP" : "SL"} @ ${fmt(o.triggerPx, o.coin)}`
+          : o.orderType === "MARKET"
+            ? "Market"
+            : fmt(o.price, o.coin);
+        return `<div class="pos-row" style="grid-template-columns:${cols}"><span class="pos-sym">${o.coin}</span><span class="${o.side === "Buy" ? "dir-long" : "dir-short"}">${o.side}</span><span style="color:var(--hl-text-muted);font-size:10px">${o.orderType}</span><span>${pxCell}</span><span>${fmtSz(o.origSize)}</span><span>${STATUS[o.status] ?? o.status}</span><span style="color:var(--hl-text-muted)">${new Date(o.time).toLocaleString()}</span></div>`;
+      })
+      .join("");
 }
 
 export function createBottomTabs(deps: {
@@ -187,6 +287,7 @@ export function createBottomTabs(deps: {
   getUserFills: (addr: string) => Promise<any[]>;
   getOpenOrders: (addr: string) => Promise<any[]>;
   getFundingHistory: (addr: string) => Promise<any[]>;
+  getOrderHistory: (addr: string) => Promise<any[]>;
   refreshPositions: (addr: string) => void;
 }) {
   function bindBtmTabs() {
@@ -232,6 +333,12 @@ export function createBottomTabs(deps: {
             await (aster
               ? getAsterFundingLocal(addr)
               : deps.getFundingHistory(addr)),
+          );
+        if (tab === "order-history")
+          renderOrderHistory(
+            await (aster
+              ? getAsterOrderHistoryLocal(addr)
+              : deps.getOrderHistory(addr)),
           );
         if (tab === "balances") await deps.refreshPositions(addr);
       });
