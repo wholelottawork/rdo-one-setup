@@ -110,6 +110,31 @@ function LeveragePicker() {
   );
 }
 
+function SizeUnitToggle() {
+  const [unit, setUnit] = useState<'asset' | 'usd'>('asset');
+  const [asset, setAsset] = useState('BTC');
+
+  useEffect(() => {
+    (window as any).rdo = (window as any).rdo || {};
+    (window as any).rdo.setAssetLabel = (label: string) => setAsset(label);
+  }, []);
+
+  function toggle() {
+    const next = unit === 'asset' ? 'usd' : 'asset';
+    setUnit(next);
+    setTimeout(() => (window as any).rdo?.updateStats?.(), 0);
+  }
+
+  return (
+    <>
+      <button type="button" className="size-unit-toggle" onClick={toggle}>
+        {unit === 'asset' ? asset : 'USD'}
+      </button>
+      <input id="sizeUnitInput" type="hidden" value={unit} readOnly />
+    </>
+  );
+}
+
 const SIZE_STEPS = [0, 25, 50, 75, 100];
 
 function SizeSlider() {
@@ -271,9 +296,7 @@ export function OrderPanel() {
                 min={0}
                 onChange={() => (window as any).rdo?.updateStats()}
               />
-              <div className="py-0 px-2 text-[10px] text-[var(--hl-text-secondary)] border-l border-[var(--hl-border)] cursor-default" id="sizeUnit">
-                BTC
-              </div>
+              <SizeUnitToggle />
             </div>
             <SizeSlider />
             <div className="flex flex-col gap-1.5 mt-0.5">

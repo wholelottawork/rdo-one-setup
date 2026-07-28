@@ -52,6 +52,10 @@ export function createOrderFlow(deps: {
       deps.livePrices[deps.getMarket()] || 0,
     );
 
+  const getSizeUnit = () =>
+    (document.getElementById("sizeUnitInput") as HTMLInputElement)?.value ||
+    "asset";
+
   function setSide(buy: boolean) {
     isBuy = buy;
     document.getElementById("btnBuy")?.classList.toggle("active", buy);
@@ -69,6 +73,7 @@ export function createOrderFlow(deps: {
   }
 
   function updateTradeBtn() {
+    (window as any).rdo?.setAssetLabel?.(deps.getMarket());
     const addr = deps.getAddr();
     const btn = document.getElementById("tradeBtn");
     if (!btn) return;
@@ -86,7 +91,8 @@ export function createOrderFlow(deps: {
     const size = parseFloat(sizeEl?.value) || 0;
     const lev = parseFloat(levEl?.value) || 20;
     const px = entryPx();
-    const notional = size * px;
+    const isUsd = getSizeUnit() === "usd";
+    const notional = isUsd ? size : size * px;
     const margin = notional / lev;
     const liqMove = 0.975 / lev;
     const liqPx = px
@@ -135,11 +141,12 @@ export function createOrderFlow(deps: {
     const lev = parseFloat(levEl?.value) || 20;
     const px = entryPx();
     if (!px) return;
+    const isUsd = getSizeUnit() === "usd";
     const sizeEl = document.getElementById("sizeInput") as HTMLInputElement;
     if (sizeEl)
-      sizeEl.value = ((avail * lev * (parseInt(val) / 100)) / px).toFixed(
-        6,
-      );
+      sizeEl.value = isUsd
+        ? (avail * lev * (parseInt(val) / 100)).toFixed(2)
+        : ((avail * lev * (parseInt(val) / 100)) / px).toFixed(6);
     updateStats();
   }
 
@@ -152,11 +159,13 @@ export function createOrderFlow(deps: {
     const sizeEl = document.getElementById("sizeInput") as HTMLInputElement;
     const levEl = document.getElementById("levInput") as HTMLInputElement;
     const isLimit = isLimitOrder();
-    const size = parseFloat(sizeEl?.value);
+    const sizeRaw = parseFloat(sizeEl?.value);
     const lev = parseFloat(levEl?.value) || 20;
     const px =
       deps.livePrices[deps.getMarket()] || (await deps.getMarketPrice(deps.getMarket()));
-    if (!size || size <= 0) {
+    const isUsdUnit = getSizeUnit() === "usd";
+    const size = isUsdUnit ? sizeRaw / px : sizeRaw;
+    if (!sizeRaw || sizeRaw <= 0) {
       showErr("Enter a size");
       return;
     }
