@@ -3,11 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 3002",
-    "dev:preview": "next dev -p 3007",
-    "build": "next build",
-    "start": "next start -p 3002",
-    "lint": "next lint"
+    "dev": "node init && next dev -p 3002",
+    "dev:preview": "node init && next dev -p 3007",
+    "build": "node init && next build",
+    "start": "node init && next start -p 3002",
+    "lint": "next lint",
+    "test": "node lib/orderMath.test.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.101.2",
