@@ -111,6 +111,7 @@ const SIZE_STEPS = [0, 25, 50, 75, 100];
 
 function SizeSlider() {
   const [pct, setPct] = useState(0);
+  const [dragging, setDragging] = useState(false);
 
   function apply(val: number) {
     setPct(val);
@@ -120,9 +121,13 @@ function SizeSlider() {
   }
 
   return (
-    <div className="size-slider-wrap">
+    <div
+      className="size-slider-wrap"
+      onMouseEnter={() => setDragging(true)}
+      onMouseLeave={() => setDragging(false)}
+    >
       <div className="size-slider-track">
-        <div className="size-slider-fill" style={{ width: `calc(${pct}% - ${pct * 0.1}px)` }} />
+        <div className="size-slider-fill" style={{ width: `${pct}%` }} />
         {SIZE_STEPS.map(s => (
           <button
             key={s}
@@ -131,6 +136,11 @@ function SizeSlider() {
             onClick={() => apply(s)}
           />
         ))}
+        {(dragging || pct > 0) && (
+          <div className="size-slider-tooltip" style={{ left: `${pct}%` }}>
+            {pct}%
+          </div>
+        )}
         <input
           id="sizeSlider"
           type="range"
@@ -138,19 +148,10 @@ function SizeSlider() {
           max={100}
           value={pct}
           className="size-slider-input"
+          onMouseDown={() => setDragging(true)}
+          onMouseUp={() => setDragging(false)}
           onChange={(e) => apply(parseInt(e.target.value))}
         />
-      </div>
-      <div className="size-slider-labels">
-        {SIZE_STEPS.map(s => (
-          <button
-            key={s}
-            className={`size-slider-label${pct === s ? ' active' : ''}`}
-            onClick={() => apply(s)}
-          >
-            {s}%
-          </button>
-        ))}
       </div>
     </div>
   );
