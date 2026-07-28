@@ -3,8 +3,8 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "start": "tsx src/index.ts",
-    "dev": "tsx watch src/index.ts",
+    "start": "node api.js && tsx src/index.ts",
+    "dev": "node api.js && tsx watch src/index.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
