@@ -107,6 +107,55 @@ function LeveragePicker() {
   );
 }
 
+const SIZE_STEPS = [0, 25, 50, 75, 100];
+
+function SizeSlider() {
+  const [pct, setPct] = useState(0);
+
+  function apply(val: number) {
+    setPct(val);
+    const el = document.getElementById('sizeSlider') as HTMLInputElement;
+    if (el) el.value = String(val);
+    (window as any).rdo?.onSlider(val);
+  }
+
+  return (
+    <div className="size-slider-wrap">
+      <div className="size-slider-track">
+        <div className="size-slider-fill" style={{ width: `calc(${pct}% - ${pct * 0.1}px)` }} />
+        {SIZE_STEPS.map(s => (
+          <button
+            key={s}
+            className={`size-slider-dot${pct >= s ? ' active' : ''}`}
+            style={{ left: `${s}%` }}
+            onClick={() => apply(s)}
+          />
+        ))}
+        <input
+          id="sizeSlider"
+          type="range"
+          min={0}
+          max={100}
+          value={pct}
+          className="size-slider-input"
+          onChange={(e) => apply(parseInt(e.target.value))}
+        />
+      </div>
+      <div className="size-slider-labels">
+        {SIZE_STEPS.map(s => (
+          <button
+            key={s}
+            className={`size-slider-label${pct === s ? ' active' : ''}`}
+            onClick={() => apply(s)}
+          >
+            {s}%
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // Trade page (/) — extracted from TradingTerminal. Pure markup: all
 // behaviour is wired imperatively by TradingTerminal's init() via ids.
 export function OrderPanel() {
@@ -124,7 +173,7 @@ export function OrderPanel() {
     <>
         {/* Trade Panel */}
         <aside className="flex flex-col bg-[var(--hl-bg-base)] overflow-y-auto">
-          <div className="flex items-center justify-center gap-2 py-2 px-2 border-b border-[#1f1f1f] shrink-0 h-12 box-border">
+          <div className="flex items-center justify-center gap-2 py-2 px-3 border-b border-[#1f1f1f] shrink-0 h-12 box-border">
             <MarginTypePicker />
             <LeveragePicker />
             <div className="margin-toggle">
@@ -151,7 +200,7 @@ export function OrderPanel() {
           </div>
           {/* Hidden input for orderFlow to read order type */}
           <input id="orderTypeInput" type="hidden" value={orderType} readOnly />
-          <div className="grid grid-cols-2 gap-1 pt-3 pb-1.5 px-2 shrink-0">
+          <div className="grid grid-cols-2 gap-1.5 pt-3 pb-1.5 px-3 shrink-0">
             <button
               id="btnBuy"
               className="tp-side tp-buy active"
@@ -169,7 +218,7 @@ export function OrderPanel() {
               Sell / Short
             </button>
           </div>
-          <div className="px-2 pb-2 flex flex-col gap-1.5 shrink-0">
+          <div className="px-3 pb-2 flex flex-col gap-1.5 shrink-0">
             <div className="flex justify-between items-center text-[11px]">
               <span className="text-[var(--hl-text-secondary)]" data-i18n="availableTrade">
                 Available to Trade
@@ -222,22 +271,7 @@ export function OrderPanel() {
                 BTC
               </div>
             </div>
-            <input
-              id="sizeSlider"
-              className="tp-slider"
-              type="range"
-              min={0}
-              max={100}
-              defaultValue={0}
-              onChange={(e) => (window as any).rdo?.onSlider(e.target.value)}
-            />
-            <div className="flex justify-between text-[8px] text-[var(--hl-text-secondary)]">
-              <span>0%</span>
-              <span>25%</span>
-              <span>50%</span>
-              <span>75%</span>
-              <span>100%</span>
-            </div>
+            <SizeSlider />
             <div className="flex flex-col gap-1.5 mt-0.5">
               <label className="tp-check">
                 <input type="checkbox" id="chkReduce" />
@@ -292,7 +326,7 @@ export function OrderPanel() {
               Connect
             </button>
             <div id="tradeErr" className="tp-err hidden"></div>
-            <div className="flex flex-col gap-[7px] rounded-lg bg-[#0a0a0a] border border-[#1c1c1c] px-2.5 py-2.5 mt-1">
+            <div className="flex flex-col gap-[7px] rounded-lg bg-[#0a0a0a] border border-[#1c1c1c] px-3 py-2.5 mt-1">
               <div className="flex justify-between text-[11px]">
                 <span className="text-[var(--hl-text-secondary)]" data-i18n="liqPrice">Liquidation Price</span>
                 <span className="text-[var(--hl-text-soft)]" id="stLiq">N/A</span>
@@ -317,7 +351,7 @@ export function OrderPanel() {
             <div className="text-[9px] tracking-[0.8px] text-[#50d2c1] uppercase pt-3 pb-1" data-i18n="accountEquity">
               Account Equity
             </div>
-            <div className="flex flex-col gap-[7px] rounded-lg bg-[#0a0a0a] border border-[#1c1c1c] px-2.5 py-2.5">
+            <div className="flex flex-col gap-[7px] rounded-lg bg-[#0a0a0a] border border-[#1c1c1c] px-3 py-2.5">
               <div className="flex justify-between text-[11px]">
                 <span className="text-[var(--hl-text-secondary)]" data-i18n="spot">Spot</span>
                 <span className="text-[var(--hl-text-soft)]" id="eqSpot">$0.00</span>
@@ -330,7 +364,7 @@ export function OrderPanel() {
             <div className="text-[9px] tracking-[0.8px] text-[#50d2c1] uppercase pt-3 pb-1" data-i18n="perpsOverview">
               Perps Overview
             </div>
-            <div className="flex flex-col gap-[7px] rounded-lg bg-[#0a0a0a] border border-[#1c1c1c] px-2.5 py-2.5">
+            <div className="flex flex-col gap-[7px] rounded-lg bg-[#0a0a0a] border border-[#1c1c1c] px-3 py-2.5">
               <div className="flex justify-between text-[11px]">
                 <a href="#" className="tp-link text-[var(--hl-text-secondary)] no-underline font-semibold hover:text-[var(--hl-accent)]" data-i18n="balance">Balance</a>
                 <span className="text-[var(--hl-text-soft)]" id="ovBalance">$0.00</span>

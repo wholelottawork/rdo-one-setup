@@ -32,7 +32,7 @@
   /* layout */
   --hdr: 56px;
   --xt: 240px;
-  --tp: 268px;
+  --tp: 300px;
   --tr: 280px;
   --btm: 175px;
   --sb: 22px;
@@ -1968,6 +1968,102 @@ input[type=number]::-webkit-inner-spin-button {
   border-radius: 1px;
   cursor: pointer;
   margin: 2px 0;
+}
+
+/* ── size percentage slider ── */
+.size-slider-wrap {
+  padding: 8px 0 2px;
+}
+.size-slider-track {
+  position: relative;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  padding: 0 5px;
+}
+.size-slider-track::before {
+  content: '';
+  position: absolute;
+  left: 5px; right: 5px;
+  top: 50%;
+  height: 3px;
+  transform: translateY(-50%);
+  background: #1f1f1f;
+  border-radius: 2px;
+}
+.size-slider-fill {
+  position: absolute;
+  left: 5px;
+  top: 50%;
+  height: 3px;
+  transform: translateY(-50%);
+  background: var(--hl-accent);
+  border-radius: 2px;
+  pointer-events: none;
+  transition: width 0.08s ease-out;
+}
+.size-slider-dot {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #1a1a1a;
+  border: 2px solid #333;
+  transform: translate(-50%, 0);
+  cursor: pointer;
+  z-index: 2;
+  padding: 0;
+  transition: background 0.12s, border-color 0.12s, box-shadow 0.12s;
+}
+.size-slider-dot:hover {
+  border-color: #555;
+}
+.size-slider-dot.active {
+  background: var(--hl-accent);
+  border-color: var(--hl-accent);
+  box-shadow: 0 0 4px rgba(80, 210, 193, 0.3);
+}
+.size-slider-input {
+  position: absolute;
+  left: 0; right: 0;
+  top: 0; bottom: 0;
+  width: 100%;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+  z-index: 3;
+  margin: 0;
+  opacity: 0;
+}
+.size-slider-input::-webkit-slider-thumb {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+}
+.size-slider-labels {
+  display: flex;
+  justify-content: space-between;
+  padding: 3px 2px 0;
+}
+.size-slider-label {
+  font-size: 10px;
+  color: #555;
+  background: none;
+  border: none;
+  padding: 3px 6px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: color 0.1s, background 0.1s;
+  font-family: var(--hl-font);
+  letter-spacing: 0.2px;
+}
+.size-slider-label:hover {
+  color: var(--hl-text-soft);
+  background: #1a1a1a;
+}
+.size-slider-label.active {
+  color: var(--hl-accent);
+  background: rgba(80, 210, 193, 0.08);
 }
 .tp-check {
   display: flex;
