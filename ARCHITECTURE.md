@@ -225,21 +225,24 @@ npm run dev:preview     # Runs on :3007
 
 ## What Needs to Be Added / Fixed
 
+See `TODO.md` for the full breakdown with file paths and implementation details. Summary:
+
 ### Must Build
+1. **Proper wallet connect** — Multi-wallet modal + WalletConnect v2 QR flow. WC deps in `package.json` are unused. All signing paths must work through the chosen provider.
+2. **Deposit flow** — No deposit tab. HL auto-detects USDC on Arbitrum; Aster needs `asterDepositAddr()` (already exists) + ERC-20 send.
+3. **Swap UI** — Backend 1inch proxy complete (`/api/swap/quote`, `/build`, `/tokens`). Frontend has no UI. Needs `ONEINCH_API_KEY`.
 
-- **Proper wallet connect** — Current `lib/wallet.tsx` only detects injected extensions (`window.ethereum`). WalletConnect v2 deps are in `package.json` but never used. Need: multi-wallet connect modal, WC QR code flow, session persistence, and all signing paths (orders, Aster agent approval) must work through WC too.
-
-- **Deposit flow** — No deposit tab on Transfer page. Need: deposit address display, ERC-20 approval tx, deposit tx, balance poll for both HL (USDC on Arbitrum) and Aster (USDT on BNB Chain).
-
-- **Swap UI** — Backend 1inch proxy exists (`/api/swap/*`) but no frontend. Need: token selectors, quote display, approval + swap execution. Requires `ONEINCH_API_KEY`.
+### Must Fix
+- Aster leverage not controllable from UI (uses account default silently)
+- NetworkSwitcher disconnects instead of actually switching chains
+- Disconnect doesn't prevent auto-reconnect on reload
+- Stats panel uses market price even when limit price is entered
+- Aster modify-trigger deletes before replacing (not atomic)
 
 ### Should Fix
-
-- **Redis for production** — Without Redis, all requests hit upstream APIs directly → rate limits under load.
-
-- **Loading state fallbacks** — Liq Map, AI Signals, Markets tables hang on "Loading..." when fetch fails.
-
-- **Error feedback** — Some catch blocks silently swallow errors (Aster account refresh, news RSS failures).
+- Reduce-only flag ignored for Aster orders
+- Aster TP/SL assumes full fill (partial fills → oversized triggers)
+- Slippage / Cross Margin Ratio / Maintenance Margin displays always show placeholder values
 
 ### Production Deployment
 
