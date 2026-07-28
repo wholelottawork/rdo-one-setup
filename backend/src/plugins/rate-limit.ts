@@ -8,7 +8,7 @@ export default fp(async (fastify) => {
     global: true,
     max: config.rateLimit.max,
     timeWindow: config.rateLimit.windowMs,
-    redis: fastify.redis,
+    ...(fastify.redisOk ? { redis: fastify.redis } : {}),
     keyGenerator: (req) => req.ip,
     errorResponseBuilder: () => ({
       error: 'Too many requests',

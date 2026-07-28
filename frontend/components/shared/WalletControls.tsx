@@ -38,8 +38,16 @@ export function WalletControls() {
     <>
       <NetworkSwitcher onChange={setActiveNetwork} />
 
+      {langOpen && (
+        <div
+          className="fixed inset-0 z-[899]"
+          style={{ backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)', background: 'rgba(0,0,0,0.25)' }}
+          onClick={() => setLangOpen(false)}
+        />
+      )}
+
       <div className="relative shrink-0" ref={langRef}>
-        <button className="flex items-center justify-center w-7 h-7 bg-transparent border border-[#1f1f1f] rounded text-[#878c8f] cursor-pointer transition-colors duration-150 hover:border-[#50d2c1] hover:text-[#50d2c1]" onClick={() => setLangOpen(o => !o)} aria-label="Language">
+        <button className="flex items-center justify-center w-7 h-7 bg-[#161616] border-none rounded text-[#878c8f] cursor-pointer transition-colors duration-150 hover:text-[#50d2c1]" onClick={() => setLangOpen(o => !o)} aria-label="Language">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><ellipse cx="12" cy="12" rx="4" ry="10" /><path d="M2 12h20" /></svg>
         </button>
         {langOpen && (

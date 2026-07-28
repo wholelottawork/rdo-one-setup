@@ -11,14 +11,17 @@ export default fp(async (fastify) => {
 
   redis.on('error', (err) => fastify.log.warn({ err }, 'Redis error'));
 
+  let redisOk = false;
   try {
     await redis.connect();
+    redisOk = true;
     fastify.log.info('Redis connected');
   } catch (err) {
     fastify.log.warn({ err }, 'Redis unavailable — running without cache');
   }
 
   fastify.decorate('redis', redis);
+  fastify.decorate('redisOk', redisOk);
   fastify.addHook('onClose', async () => {
     await redis.quit().catch(() => {});
   });
