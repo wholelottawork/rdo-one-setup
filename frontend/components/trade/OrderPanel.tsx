@@ -116,6 +116,10 @@ export function OrderPanel() {
     setOrderType(type);
     const el = document.getElementById('orderTypeInput') as HTMLInputElement;
     if (el) el.value = type;
+    // Order value / margin / liq / slippage are all derived from the entry
+    // price, which just changed basis (limit price vs mark) — without this
+    // the panel keeps showing the previous type's numbers.
+    (window as any).rdo?.updateStats?.();
   }
 
   return (

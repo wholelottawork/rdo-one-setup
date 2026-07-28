@@ -14,6 +14,11 @@ const HL_WS_URL       = process.env.NEXT_PUBLIC_HL_WS_URL ?? 'ws://localhost:300
 // with "L1 error", so orders stay builder-less until a real builder
 // address + approval flow exists.
 
+// HL has no market order type — a "market" order is an IOC limit priced at
+// mark ± this, which fills against the book immediately. Exported so the
+// trade panel can show the real bound instead of a hardcoded copy.
+export const MARKET_SLIPPAGE = 0.003;
+
 let assetIndexMap: Record<string, number> = {};
 let assetSzDecimals: Record<string, number> = {};
 let assetMaxLeverage: Record<string, number> = {};
@@ -506,7 +511,7 @@ export async function openPosition({ symbol, sizeDollars, leverage, isLong, sign
   // order never silently opens at the wrong leverage.
   const appliedLeverage = leverage ? await applyLeverage(signer, symbol, leverage, idx, isCross) : 0;
   const sz      = parseFloat((sizeDollars / price).toFixed(8));
-  const slip    = 0.003;
+  const slip    = MARKET_SLIPPAGE;
   // Resting limit order (GTC) when caller supplies a price; otherwise IOC at
   // mark ± 0.3% slip to guarantee fill (market-equivalent on HL).
   const isRestingLimit = userLimitPx > 0;
@@ -548,7 +553,7 @@ export async function openPosition({ symbol, sizeDollars, leverage, isLong, sign
 export async function closePosition({ symbol, size, isLong, signer }: any) {
   const price = await getMarketPrice(symbol);
   if (!price) throw new Error('Cannot fetch price for ' + symbol);
-  const slip = 0.003;
+  const slip = MARKET_SLIPPAGE;
   const wireAction = {
     type: 'order',
     orders: [{ a: assetIndexMap[symbol] ?? 0, b: !isLong, p: pxToWire(!isLong ? price * (1 + slip) : price * (1 - slip), assetSzDecimals[symbol] ?? 5), s: szToWire(Math.abs(size), assetSzDecimals[symbol] ?? 5), r: true, t: { limit: { tif: 'Ioc' } } }],
