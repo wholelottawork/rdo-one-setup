@@ -83,7 +83,7 @@ The main trade page (`app/page.tsx`) renders `TradingTerminal.tsx`, which is the
 | **Markets** | `app/markets/page.tsx` | CoinGecko trending + HL perps meta |
 | **News** | `app/news/page.tsx` | 8 RSS feeds via backend proxy |
 | **Portfolio** | `app/portfolio/page.tsx` | HL positions + PnL calendar + Aster balances |
-| **Transfer** | `app/transfer/page.tsx` | LI.FI cross-chain bridge + 1inch swaps |
+| **Transfer** | `app/transfer/page.tsx` | LI.FI bridge (partial) + 1inch swaps (not yet wired) |
 
 ### Next.js Proxy Rewrites
 
@@ -225,6 +225,14 @@ npm run dev:preview     # Runs on :3007
 
 ## What Needs to Be Added / Fixed
 
+### In Progress
+
+- **Limit orders** — Only market orders work currently. Limit order UI (Market/Limit tab switch) exists but order placement logic needs `orderType: { limit: { tif: 'Gtc' } }` for HL and `type: 'LIMIT'` for Aster.
+
+- **Withdraw / Deposit** — Transfer page partially done. LI.FI quote/route fetching works, but the full execute flow (token approval → sign → broadcast → poll status) needs completion.
+
+- **Swap** — Backend route exists (`/api/swap/*` proxying 1inch with server-side API key), but frontend swap UI on Transfer page is not yet functional. Needs `ONEINCH_API_KEY` in `.env`.
+
 ### Must Fix
 
 - **Redis required for production** — Without Redis, every request hits upstream APIs directly. Under load, this triggers rate limits from CoinGecko (Cloudflare 403), Binance, and HL. Install Redis or switch to in-memory cache fallback.
@@ -233,7 +241,7 @@ npm run dev:preview     # Runs on :3007
 
 - **Error feedback** — Some catch blocks silently swallow errors (Aster account refresh, news RSS failures). Users see no indication of what failed.
 
-### Should Add
+### Should Add (later)
 
 - **X/Twitter Tracker** — Left sidebar placeholder needs: backend route for Twitter API v2 search, env var for bearer token, frontend streaming into `#xtFeed`.
 

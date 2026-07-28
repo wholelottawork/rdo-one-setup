@@ -11,11 +11,10 @@
 
 The trading terminal is functional end-to-end for both BASIC (Hyperliquid) and EXTRA (Aster) modes:
 
-- Order placement (market + limit), close, cancel, modify
+- Market order placement, close, cancel, modify
 - TP/SL triggers (grouped with entry on HL, agent-signed on Aster)
 - Real-time price/book/trades via WebSocket with auto-reconnect
 - Live positions, balances, open orders, trade/funding/order history
-- Cross-chain transfers via LI.FI API (withdraw, send, account-to-account)
 - Markets overview (CoinGecko + HL perps), news aggregator (8 RSS feeds)
 - Portfolio page (PnL calendar, position tracker, both venues)
 - Wallet connect (MetaMask / Rabby / WalletConnect v2)
@@ -71,8 +70,18 @@ No notification system exists for:
 
 Could use browser `Notification` API + optional Telegram bot webhook.
 
-### Order types
-Currently: Market, Limit. Missing:
+### Limit Orders
+Currently only market orders are supported. Limit orders need to be added for both HL and Aster.
+- HL: use `orderType: { limit: { tif: 'Gtc' } }` in the order action
+- Aster: use `type: 'LIMIT'` + `timeInForce: 'GTC'` in the signed order
+
+### Withdraw / Deposit
+Partially implemented on the Transfer page. LI.FI quote/route fetching works, but the full execute flow (approval → sign → broadcast → poll status) needs completion.
+
+### Swap
+Token swap via 1inch API is wired on the backend (`/api/swap/*` with server-side API key) but the frontend swap UI on the Transfer page is not yet functional. Needs `ONEINCH_API_KEY` in backend `.env`.
+
+### Additional Order Types (future)
 - Stop-Limit
 - Trailing Stop
 - Scaled orders (multiple limits across a price range)
@@ -140,7 +149,6 @@ The bottom status bar (`LIVE · timestamp`) could show:
 - [x] Bottom panel tabs padding increased
 - [x] Live Trades column header height aligned with Market/Limit tabs
 - [x] Liq Map styling matched between Trade and Markets pages
-- [x] Limit order support added (HL + Aster)
 
 ---
 
