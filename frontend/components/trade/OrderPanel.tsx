@@ -1,43 +1,155 @@
+'use client';
+import { useState, useRef, useEffect } from 'react';
+
+const LEV_PRESETS = [1, 2, 5, 10, 20, 50];
+
+function MarginTypePicker() {
+  const [isCross, setIsCross] = useState(true);
+
+  function pick(cross: boolean) {
+    setIsCross(cross);
+    const el = document.getElementById('marginType') as HTMLSelectElement;
+    if (el) el.value = cross ? 'cross' : 'isolated';
+  }
+
+  return (
+    <div className="margin-toggle">
+      <button className={`margin-btn${isCross ? ' active' : ''}`} onClick={() => pick(true)}>Cross</button>
+      <button className={`margin-btn${!isCross ? ' active' : ''}`} onClick={() => pick(false)}>Isolated</button>
+      <select id="marginType" defaultValue="cross" style={{ display: 'none' }}>
+        <option value="cross">Cross</option>
+        <option value="isolated">Isolated</option>
+      </select>
+    </div>
+  );
+}
+
+function LeveragePicker() {
+  const [open, setOpen] = useState(false);
+  const [lev, setLev] = useState(20);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function onOutside(e: MouseEvent) {
+      if (open && ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', onOutside);
+    return () => document.removeEventListener('mousedown', onOutside);
+  }, [open]);
+
+  function apply(val: number) {
+    const el = document.getElementById('levInput') as HTMLInputElement;
+    const max = parseInt(el?.max || '50') || 50;
+    const v = Math.min(Math.max(Math.round(val), 1), max);
+    setLev(v);
+    if (el) {
+      el.value = String(v);
+      (window as any).rdo?.updateStats?.();
+    }
+  }
+
+  function handleOpen() {
+    const el = document.getElementById('levInput') as HTMLInputElement;
+    const cur = parseInt(el?.value) || 20;
+    setLev(cur);
+    setOpen(o => !o);
+  }
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        className="lev-trigger"
+        onClick={handleOpen}
+      >
+        {lev}x
+        <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.5 }}><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      {open && (
+        <div className="lev-popover">
+          <div className="lev-popover-title">Leverage</div>
+          <div className="lev-popover-val">{lev}x</div>
+          <input
+            type="range"
+            min={1}
+            max={50}
+            value={lev}
+            onChange={e => apply(parseInt(e.target.value))}
+            className="tp-slider"
+            style={{ width: '100%', marginBottom: '10px' }}
+          />
+          <div className="lev-presets">
+            {LEV_PRESETS.map(p => (
+              <button
+                key={p}
+                className={`lev-preset${lev === p ? ' active' : ''}`}
+                onClick={() => { apply(p); setOpen(false); }}
+              >
+                {p}x
+              </button>
+            ))}
+          </div>
+          <button className="lev-confirm" onClick={() => setOpen(false)}>
+            Confirm
+          </button>
+        </div>
+      )}
+      {/* Hidden input kept for imperative TradingTerminal compatibility */}
+      <input
+        id="levInput"
+        type="number"
+        min={1}
+        max={50}
+        defaultValue={20}
+        style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: 0, height: 0 }}
+        onChange={() => {}}
+      />
+    </div>
+  );
+}
+
 // Trade page (/) — extracted from TradingTerminal. Pure markup: all
 // behaviour is wired imperatively by TradingTerminal's init() via ids.
 export function OrderPanel() {
+  const [orderType, setOrderType] = useState<'market' | 'limit'>('market');
+
+  function switchOrderType(type: 'market' | 'limit') {
+    setOrderType(type);
+    const el = document.getElementById('orderTypeInput') as HTMLInputElement;
+    if (el) el.value = type;
+  }
+
   return (
     <>
         {/* Trade Panel */}
         <aside className="flex flex-col bg-[var(--hl-bg-base)] overflow-y-auto">
-          <div className="flex items-center gap-1 py-2 px-2 pb-1.5 border-b border-[#1f1f1f] shrink-0 h-12 box-border">
-            <select className="tp-select" id="marginType">
-              <option data-i18n="cross">Cross</option>
-              <option data-i18n="isolated">Isolated</option>
-            </select>
-            <div className="flex items-center gap-px bg-[var(--hl-bg-elevated)] border border-[var(--hl-border)] rounded-[var(--hl-radius)] py-1 px-1.5">
-              <input
-                id="levInput"
-                className="w-[30px] bg-transparent border-none outline-none font-[var(--hl-font)] text-[11px] text-white text-center"
-                type="number"
-                min={1}
-                max={50}
-                defaultValue={20}
-              />
-              <span className="text-[10px] text-[var(--hl-text-secondary)]">x</span>
+          <div className="flex items-center justify-center gap-2 py-2 px-2 border-b border-[#1f1f1f] shrink-0 h-12 box-border">
+            <MarginTypePicker />
+            <LeveragePicker />
+            <div className="margin-toggle">
+              <span className="margin-btn active" data-i18n="unified">Unified</span>
             </div>
-            <select className="tp-select">
-              <option data-i18n="unified">Unified</option>
-            </select>
           </div>
           <div className="flex border-b border-[#1f1f1f] shrink-0 h-8">
             <button
-              className="tp-otab active"
+              className={`tp-otab${orderType === 'market' ? ' active' : ''}`}
               data-ot="market"
               data-i18n="market"
+              onClick={() => switchOrderType('market')}
             >
               Market
             </button>
-            <button className="tp-otab" data-ot="limit" data-i18n="limit">
+            <button
+              className={`tp-otab${orderType === 'limit' ? ' active' : ''}`}
+              data-ot="limit"
+              data-i18n="limit"
+              onClick={() => switchOrderType('limit')}
+            >
               Limit
             </button>
           </div>
-          <div className="grid grid-cols-2 gap-1 py-2 px-2 pb-1.5 shrink-0">
+          {/* Hidden input for orderFlow to read order type */}
+          <input id="orderTypeInput" type="hidden" defaultValue="market" />
+          <div className="grid grid-cols-2 gap-1 pt-3 pb-1.5 px-2 shrink-0">
             <button
               id="btnBuy"
               className="tp-side tp-buy active"
@@ -72,6 +184,26 @@ export function OrderPanel() {
                 0.00000 BTC
               </span>
             </div>
+            {orderType === 'limit' && (
+              <>
+                <div className="text-[9px] text-[var(--hl-text-secondary)] tracking-[0.4px] uppercase mt-0.5">
+                  Limit Price
+                </div>
+                <div className="tp-size-wrap">
+                  <input
+                    id="limitInput"
+                    className="flex-1 bg-transparent border-none outline-none font-[var(--hl-font)] text-[13px] font-medium text-white py-[7px] px-2 placeholder:text-[var(--hl-text-secondary)] placeholder:text-[11px]"
+                    type="number"
+                    placeholder="0.00"
+                    min={0}
+                    onChange={() => (window as any).rdo?.updateStats()}
+                  />
+                  <div className="py-0 px-2 text-[10px] text-[var(--hl-text-secondary)] border-l border-[var(--hl-border)] cursor-default">
+                    USDC
+                  </div>
+                </div>
+              </>
+            )}
             <div className="text-[9px] text-[var(--hl-text-secondary)] tracking-[0.4px] uppercase mt-0.5" data-i18n="size">
               Size
             </div>
@@ -104,9 +236,10 @@ export function OrderPanel() {
               <span>75%</span>
               <span>100%</span>
             </div>
-            <div className="flex flex-col gap-1 mt-0.5">
+            <div className="flex flex-col gap-1.5 mt-0.5">
               <label className="tp-check">
                 <input type="checkbox" id="chkReduce" />
+                <span className="tp-toggle" />
                 <span data-i18n="reduceOnly">Reduce Only</span>
               </label>
               <label className="tp-check">
@@ -119,6 +252,7 @@ export function OrderPanel() {
                       ?.classList.toggle("hidden", !e.target.checked)
                   }
                 />
+                <span className="tp-toggle" />
                 <span data-i18n="tpsl">Take Profit / Stop Loss</span>
               </label>
               <div id="tpslInputs" className="hidden tp-tpsl-inputs">
@@ -150,86 +284,70 @@ export function OrderPanel() {
             </div>
             <button
               id="tradeBtn"
-              className="tp-action-btn tp-buy-bg"
+              className="tp-action-btn tp-connect-bg"
               onClick={() => (window as any).rdo?.submitTrade()}
             >
               Connect
             </button>
             <div id="tradeErr" className="tp-err hidden"></div>
-            <div className="flex flex-col gap-1 border-t border-[#1f1f1f] pt-2 mt-0.5">
-              <div className="flex justify-between text-[11px] text-[var(--hl-text-secondary)]">
-                <span data-i18n="liqPrice">Liquidation Price</span>
-                <span id="stLiq">N/A</span>
+            <div className="flex flex-col gap-[7px] rounded-lg bg-[#0a0a0a] border border-[#1c1c1c] px-2.5 py-2.5 mt-1">
+              <div className="flex justify-between text-[11px]">
+                <span className="text-[var(--hl-text-secondary)]" data-i18n="liqPrice">Liquidation Price</span>
+                <span className="text-[var(--hl-text-soft)]" id="stLiq">N/A</span>
               </div>
-              <div className="flex justify-between text-[11px] text-[var(--hl-text-secondary)]">
-                <span data-i18n="orderValue">Order Value</span>
-                <span id="stVal">N/A</span>
+              <div className="flex justify-between text-[11px]">
+                <span className="text-[var(--hl-text-secondary)]" data-i18n="orderValue">Order Value</span>
+                <span className="text-[var(--hl-text-soft)]" id="stVal">N/A</span>
               </div>
-              <div className="flex justify-between text-[11px] text-[var(--hl-text-secondary)]">
-                <span data-i18n="marginRequired">Margin Required</span>
-                <span id="stMargin">--</span>
+              <div className="flex justify-between text-[11px]">
+                <span className="text-[var(--hl-text-secondary)]" data-i18n="marginRequired">Margin Required</span>
+                <span className="text-[var(--hl-text-soft)]" id="stMargin">--</span>
               </div>
-              <div className="flex justify-between text-[11px] text-[var(--hl-text-secondary)]">
-                <span data-i18n="slippage">Slippage</span>
-                <span id="stSlip">--</span>
+              <div className="flex justify-between text-[11px]">
+                <span className="text-[var(--hl-text-secondary)]" data-i18n="slippage">Slippage</span>
+                <span className="text-[var(--hl-text-soft)]" id="stSlip">--</span>
               </div>
-              <div className="flex justify-between text-[11px] text-[var(--hl-text-secondary)]">
-                <span data-i18n="fee">Fee</span>
-                <span id="stFee">0.0450% / 0.0150%</span>
+              <div className="flex justify-between text-[11px]">
+                <span className="text-[var(--hl-text-secondary)]" data-i18n="fee">Fee</span>
+                <span className="text-[var(--hl-text-soft)]" id="stFee">0.0450% / 0.0150%</span>
               </div>
             </div>
-            <div className="text-[9px] tracking-[0.8px] text-[var(--hl-text-secondary)] uppercase py-1.5 pt-1.5 pb-0.5 border-t border-[#1f1f1f] mt-1" data-i18n="accountEquity">
+            <div className="text-[9px] tracking-[0.8px] text-[#50d2c1] uppercase pt-3 pb-1" data-i18n="accountEquity">
               Account Equity
             </div>
-            <div className="flex flex-col gap-1 border-t border-[#1f1f1f] pt-2 mt-0.5">
-              <div className="flex justify-between text-[11px] text-[var(--hl-text-secondary)]">
-                <span data-i18n="spot">Spot</span>
-                <span id="eqSpot">$0.00</span>
+            <div className="flex flex-col gap-[7px] rounded-lg bg-[#0a0a0a] border border-[#1c1c1c] px-2.5 py-2.5">
+              <div className="flex justify-between text-[11px]">
+                <span className="text-[var(--hl-text-secondary)]" data-i18n="spot">Spot</span>
+                <span className="text-[var(--hl-text-soft)]" id="eqSpot">$0.00</span>
               </div>
-              <div className="flex justify-between text-[11px] text-[var(--hl-text-secondary)]">
-                <span>
-                  <a href="#" className="tp-link text-[var(--hl-text-secondary)] no-underline font-semibold hover:text-[var(--hl-accent)]" data-i18n="perps">
-                    Perps
-                  </a>
-                </span>
-                <span id="eqPerps">$0.00</span>
+              <div className="flex justify-between text-[11px]">
+                <a href="#" className="tp-link text-[var(--hl-text-secondary)] no-underline font-semibold hover:text-[var(--hl-accent)]" data-i18n="perps">Perps</a>
+                <span className="text-[var(--hl-text-soft)]" id="eqPerps">$0.00</span>
               </div>
             </div>
-            <div className="text-[9px] tracking-[0.8px] text-[var(--hl-text-secondary)] uppercase py-1.5 pt-1.5 pb-0.5 border-t border-[#1f1f1f] mt-1" data-i18n="perpsOverview">
+            <div className="text-[9px] tracking-[0.8px] text-[#50d2c1] uppercase pt-3 pb-1" data-i18n="perpsOverview">
               Perps Overview
             </div>
-            <div className="flex flex-col gap-1 border-t border-[#1f1f1f] pt-2 mt-0.5">
-              <div className="flex justify-between text-[11px] text-[var(--hl-text-secondary)]">
-                <span>
-                  <a href="#" className="tp-link text-[var(--hl-text-secondary)] no-underline font-semibold hover:text-[var(--hl-accent)]" data-i18n="balance">
-                    Balance
-                  </a>
-                </span>
-                <span id="ovBalance">$0.00</span>
+            <div className="flex flex-col gap-[7px] rounded-lg bg-[#0a0a0a] border border-[#1c1c1c] px-2.5 py-2.5">
+              <div className="flex justify-between text-[11px]">
+                <a href="#" className="tp-link text-[var(--hl-text-secondary)] no-underline font-semibold hover:text-[var(--hl-accent)]" data-i18n="balance">Balance</a>
+                <span className="text-[var(--hl-text-soft)]" id="ovBalance">$0.00</span>
               </div>
-              <div className="flex justify-between text-[11px] text-[var(--hl-text-secondary)]">
-                <span data-i18n="unrealizedPnl">Unrealized PnL</span>
-                <span id="ovPnl">$0.00</span>
+              <div className="flex justify-between text-[11px]">
+                <span className="text-[var(--hl-text-secondary)]" data-i18n="unrealizedPnl">Unrealized PnL</span>
+                <span className="text-[var(--hl-text-soft)]" id="ovPnl">$0.00</span>
               </div>
-              <div className="flex justify-between text-[11px] text-[var(--hl-text-secondary)]">
-                <span data-i18n="crossMarginRatio">Cross Margin Ratio</span>
-                <span id="ovCmr">0.00%</span>
+              <div className="flex justify-between text-[11px]">
+                <span className="text-[var(--hl-text-secondary)]" data-i18n="crossMarginRatio">Cross Margin Ratio</span>
+                <span className="text-[var(--hl-text-soft)]" id="ovCmr">0.00%</span>
               </div>
-              <div className="flex justify-between text-[11px] text-[var(--hl-text-secondary)]">
-                <span>
-                  <a href="#" className="tp-link text-[var(--hl-text-secondary)] no-underline font-semibold hover:text-[var(--hl-accent)]" data-i18n="maintenanceMargin">
-                    Maintenance Margin
-                  </a>
-                </span>
-                <span id="ovMm">$0.00</span>
+              <div className="flex justify-between text-[11px]">
+                <a href="#" className="tp-link text-[var(--hl-text-secondary)] no-underline font-semibold hover:text-[var(--hl-accent)]" data-i18n="maintenanceMargin">Maintenance Margin</a>
+                <span className="text-[var(--hl-text-soft)]" id="ovMm">$0.00</span>
               </div>
-              <div className="flex justify-between text-[11px] text-[var(--hl-text-secondary)]">
-                <span>
-                  <a href="#" className="tp-link text-[var(--hl-text-secondary)] no-underline font-semibold hover:text-[var(--hl-accent)]" data-i18n="crossAccountLev">
-                    Cross Account Leverage
-                  </a>
-                </span>
-                <span id="ovLev">0.00x</span>
+              <div className="flex justify-between text-[11px]">
+                <a href="#" className="tp-link text-[var(--hl-text-secondary)] no-underline font-semibold hover:text-[var(--hl-accent)]" data-i18n="crossAccountLev">Cross Account Leverage</a>
+                <span className="text-[var(--hl-text-soft)]" id="ovLev">0.00x</span>
               </div>
             </div>
           </div>

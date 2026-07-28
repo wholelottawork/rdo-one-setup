@@ -299,9 +299,9 @@ export default function MarketsPage() {
       let html='';
       reversed.forEach((l,i)=>{
         const pct=(l.weight/maxW*100).toFixed(0),oiEst=(totalOI*l.weight/totalW*mark/1e6).toFixed(1);
-        const color=l.isLong?'var(--green,#1fa67d)':'var(--red,#ed7088)';
-        if(i===markIdx)html+='<div class="border-t border-dashed border-[#50d2c1] my-0.5 shrink-0"></div>';
-        html+=`<div class="flex items-center gap-1.5 h-4 shrink-0"><span class="text-[9px] text-[#878c8f] min-w-[64px] text-right shrink-0 [font-variant-numeric:tabular-nums]">${fmtPx(l.price)}</span><div class="flex-1 h-[7px] bg-[rgba(255,255,255,0.04)] rounded-[2px] overflow-hidden"><div class="h-full rounded-[2px]" style="width:${pct}%;background:${color}"></div></div><span class="text-[9px] text-[#878c8f] min-w-[44px] text-right shrink-0 [font-variant-numeric:tabular-nums]">$${oiEst}M</span></div>`;
+        const color=l.isLong?'var(--hl-buy)':'var(--hl-sell)';
+        if(i===markIdx)html+='<div class="lmp-mark-line"></div>';
+        html+=`<div class="lmp-bar-row"><span class="lmp-price">${fmtPx(l.price)}</span><div class="lmp-bar-wrap"><div class="lmp-bar-fill" style="width:${pct}%;background:${color}"></div></div><span class="lmp-oi-tag">$${oiEst}M</span></div>`;
       });
       body.innerHTML=html;
     }
@@ -460,8 +460,8 @@ export default function MarketsPage() {
                 <button className="fut-tab" data-tab="inflow">OI Flow</button>
               </div>
             </div>
-            <div id="liqmap-body" className="px-3.5 py-3 h-[280px] flex flex-col gap-[3px] overflow-hidden">
-              <div className="flex items-center justify-center h-full text-[#878c8f] text-xs">Loading…</div>
+            <div id="liqmap-body" className="lmp-body" style={{height:280}}>
+              <div className="lmp-loading">Loading…</div>
             </div>
             <div id="inflow-body" className="px-3.5 py-3 h-[280px] overflow-y-auto" style={{display:'none'}}>
               <div className="flex items-center justify-center h-full text-[#878c8f] text-xs">Loading…</div>

@@ -5,7 +5,7 @@ export function BottomPanel() {
     <>
       {/* ══ BOTTOM PANEL ════════════════════════════════════════ */}
       <section className="flex flex-col bg-black overflow-hidden">
-        <div className="flex items-center pt-1 px-4 pb-2 border-b border-[#1f1f1f] overflow-x-auto flex-shrink-0 gap-1">
+        <div className="flex items-center pt-2.5 px-4 pb-2.5 border-b border-[#1f1f1f] overflow-x-auto flex-shrink-0 gap-1">
           <button
             className="btm-tab active"
             data-bt="positions"

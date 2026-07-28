@@ -13,7 +13,7 @@ export function TradesPanel() {
               BTC-USDC
             </span>
           </div>
-          <div className="grid grid-cols-3 px-4 py-[3px] border-b border-[#1f1f1f] shrink-0">
+          <div className="grid grid-cols-3 px-4 h-8 items-center border-b border-[#1f1f1f] shrink-0">
             <span className="text-[9px] text-[var(--hl-text-light)] uppercase tracking-[0.3px]" data-i18n="price">Price</span>
             <span className="text-[9px] text-[var(--hl-text-light)] uppercase tracking-[0.3px] text-right" data-i18n="size">Size</span>
             <span className="text-[9px] text-[var(--hl-text-light)] uppercase tracking-[0.3px] text-right" data-i18n="time">Time</span>

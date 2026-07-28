@@ -472,7 +472,7 @@ function nextNonce() {
 // action: skip it only when the open position already matches; when flat
 // the standing setting isn't queryable, so always set it. Clamped to the
 // asset's maxLeverage from meta.
-async function applyLeverage(signer: any, symbol: string, leverage: number, idx: number) {
+async function applyLeverage(signer: any, symbol: string, leverage: number, idx: number, isCross = true) {
   const maxLev = assetMaxLeverage[symbol] ?? 50;
   const req = Math.min(Math.max(Math.round(leverage) || 1, 1), maxLev);
   try {
@@ -485,7 +485,7 @@ async function applyLeverage(signer: any, symbol: string, leverage: number, idx:
     const pos = st.assetPositions?.find((p: any) => p.position.coin === symbol);
     if (pos && Number(pos.position.leverage?.value) === req) return req;
   } catch { /* no position / query failed — set it below */ }
-  const wireAction = { type: 'updateLeverage', asset: idx, isCross: true, leverage: req };
+  const wireAction = { type: 'updateLeverage', asset: idx, isCross, leverage: req };
   const nonce = nextNonce();
   const sig = await signAction(signer, wireAction, nonce);
   const res = await fetch(`${HL_API}/exchange`, {
@@ -498,20 +498,24 @@ async function applyLeverage(signer: any, symbol: string, leverage: number, idx:
   return req;
 }
 
-export async function openPosition({ symbol, sizeDollars, leverage, isLong, signer, reduceOnly = false, tpPx, slPx }: any) {
+export async function openPosition({ symbol, sizeDollars, leverage, isLong, signer, reduceOnly = false, tpPx, slPx, isCross = true, limitPx: userLimitPx = 0 }: any) {
   const price = await getMarketPrice(symbol);
   if (!price) throw new Error('Cannot fetch price for ' + symbol);
   const idx     = assetIndexMap[symbol] ?? 0;
   // Apply (and clamp) leverage BEFORE the entry — throws on rejection so an
   // order never silently opens at the wrong leverage.
-  const appliedLeverage = leverage ? await applyLeverage(signer, symbol, leverage, idx) : 0;
+  const appliedLeverage = leverage ? await applyLeverage(signer, symbol, leverage, idx, isCross) : 0;
   const sz      = parseFloat((sizeDollars / price).toFixed(8));
   const slip    = 0.003;
-  const limitPx = isLong ? price * (1 + slip) : price * (1 - slip);
+  // Resting limit order (GTC) when caller supplies a price; otherwise IOC at
+  // mark ± 0.3% slip to guarantee fill (market-equivalent on HL).
+  const isRestingLimit = userLimitPx > 0;
+  const limitPx = isRestingLimit ? userLimitPx : (isLong ? price * (1 + slip) : price * (1 - slip));
+  const tif     = isRestingLimit ? 'Gtc' : 'Ioc';
   const dec     = assetSzDecimals[symbol] ?? 5;
   const sWire   = szToWire(sz, dec);
   const orders: any[] = [
-    { a: idx, b: isLong, p: pxToWire(limitPx, dec), s: sWire, r: reduceOnly, t: { limit: { tif: 'Ioc' } } },
+    { a: idx, b: isLong, p: pxToWire(limitPx, dec), s: sWire, r: reduceOnly, t: { limit: { tif } } },
   ];
   // TP/SL ride the SAME action as reduce-only market triggers on the opposite
   // side, grouped with the entry (grouping normalTpsl) — one wallet signature,

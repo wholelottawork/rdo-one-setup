@@ -117,12 +117,21 @@ export function createOrderFlow(deps: {
     }
     const sizeEl = document.getElementById("sizeInput") as HTMLInputElement;
     const levEl = document.getElementById("levInput") as HTMLInputElement;
+    const orderTypeEl = document.getElementById("orderTypeInput") as HTMLInputElement;
+    const isLimit = orderTypeEl?.value === "limit";
     const size = parseFloat(sizeEl?.value);
     const lev = parseFloat(levEl?.value) || 20;
     const px =
       deps.livePrices[deps.getMarket()] || (await deps.getMarketPrice(deps.getMarket()));
     if (!size || size <= 0) {
       showErr("Enter a size");
+      return;
+    }
+    const limitPx = isLimit
+      ? parseFloat((document.getElementById("limitInput") as HTMLInputElement)?.value) || 0
+      : 0;
+    if (isLimit && !limitPx) {
+      showErr("Enter a limit price");
       return;
     }
     const tpslOn =
@@ -181,7 +190,8 @@ export function createOrderFlow(deps: {
           body: JSON.stringify({
             symbol: `${deps.getMarket()}USDT`,
             side: isBuy ? "BUY" : "SELL",
-            type: "MARKET",
+            type: isLimit ? "LIMIT" : "MARKET",
+            ...(isLimit ? { price: String(asterRound(limitPx, deps.asterPrec[deps.getMarket()]?.tick ?? 0)), timeInForce: "GTC" } : {}),
             quantity: String(qty),
             user: addr,
           }),
@@ -247,6 +257,8 @@ export function createOrderFlow(deps: {
       const signer = await new ethers.BrowserProvider(
         getEVMProvider(),
       ).getSigner();
+      const marginEl = document.getElementById('marginType') as HTMLSelectElement;
+      const isCross = !marginEl || marginEl.value !== 'isolated';
       const result = await deps.openPosition({
         symbol: deps.getMarket(),
         sizeDollars: size * px,
@@ -256,6 +268,8 @@ export function createOrderFlow(deps: {
         reduceOnly,
         tpPx,
         slPx,
+        isCross,
+        limitPx: limitPx || 0,
       });
       const orderErr = hlOrderError(result);
       if (result.status === "ok" && !orderErr) {
