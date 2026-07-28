@@ -1,233 +1,128 @@
-# RDO ONE — Roadmap & TODO
+# RDO ONE — TODO
 
 **Last updated:** 2026-07-28
-**Stack:** Next.js 15 + React 19 + TypeScript (frontend) · Fastify + Redis + TypeScript (backend)
-**Exchanges:** Hyperliquid (BASIC) · Aster DEX (EXTRA)
 **Target:** Desktop only
 
 ---
 
-## Current State
+## What Works
 
-The trading terminal is functional end-to-end for both BASIC (Hyperliquid) and EXTRA (Aster) modes:
-
-- Market order placement, close, cancel, modify
-- TP/SL triggers (grouped with entry on HL, agent-signed on Aster)
-- Real-time price/book/trades via WebSocket with auto-reconnect
+- Market + Limit orders (place, close, cancel, modify) — both HL and Aster
+- TP/SL triggers (HL: atomic `normalTpsl` grouping · Aster: separate reduce-only triggers)
+- Real-time charts, order book, live trades via WebSocket (auto-reconnect)
 - Live positions, balances, open orders, trade/funding/order history
-- Markets overview (CoinGecko + HL perps), news aggregator (8 RSS feeds)
-- Portfolio page (PnL calendar, position tracker, both venues)
-- Wallet connect (MetaMask / Rabby / WalletConnect v2)
+- Mode switch: BASIC (Hyperliquid) ↔ EXTRA (Aster DEX)
+- Markets overview, news aggregator, portfolio PnL tracker
+- Wallet connect via injected providers (MetaMask / Rabby / Phantom)
 
 ---
 
-## Priority 1 — Infrastructure
+## What Needs to Be Done
+
+### 1. Proper Wallet Connect
+
+**Current state:** `lib/wallet.tsx` only detects injected browser extensions (`window.ethereum`, `window.phantom`). If the user doesn't have MetaMask or Rabby installed, they can't connect at all. No WalletConnect v2, no mobile QR code, no hardware wallet support.
+
+**What to build:**
+
+- **Multi-wallet modal** — A connect modal listing wallet options (MetaMask, Rabby, Coinbase Wallet, WalletConnect QR) instead of silently calling `eth_requestAccounts` on whatever `window.ethereum` is
+- **WalletConnect v2 integration** — QR code flow for mobile wallets. Dependencies already in `package.json` (`@walletconnect/ethereum-provider`, `@walletconnect/modal`) but never imported or used. Needs a WalletConnect Cloud `projectId` (free at cloud.walletconnect.com)
+- **Network switching** — The `NetworkSwitcher` component exists and calls `wallet_switchEthereumChain`, but needs to work seamlessly with WalletConnect sessions too
+- **Session persistence** — Currently uses `localStorage` keys (`rdo_evm_address`, `rdo_sol_address`) and re-checks on mount via `eth_accounts`. WalletConnect sessions need their own persistence via the WC provider
+- **Disconnect cleanup** — `disconnect()` calls Phantom's `solana.disconnect()` but for WC sessions needs to also call `provider.disconnect()` on the WC provider
+- **Aster agent flow** — `aster-agent.ts` needs the wallet's EIP-712 `signTypedData` to approve the per-user trading agent. Must work through WalletConnect too, not just injected providers
+
+**Files to change:**
+- `lib/wallet.tsx` — Add WalletConnect provider, multi-wallet selection logic
+- `components/shared/WalletControls.tsx` — Render the connect modal with wallet options
+- `components/trade/orderFlow.ts` — Currently gets signer from `getEVMProvider()` → needs to use whichever provider the user connected with
+- `lib/aster-agent.ts` — `ensureAsterAgentApproved` calls `getSigner()` → must work with WC provider
+
+### 2. Withdraw & Deposit (Transfer Page)
+
+**Current state:** Transfer page (`app/transfer/page.tsx`) has three tabs: Withdraw, Send, Between-accounts. HL withdrawal works end-to-end (signs via wallet, polls for arrival). LI.FI cross-chain conversion works (quote → approve → execute → poll receipt). Aster withdrawal is wired but untested.
+
+**What's missing:**
+
+- **Deposit flow** — No deposit tab exists. For HL: user needs to send USDC to the HL bridge contract on Arbitrum. For Aster: standard ERC-20 deposit to the Aster contract on BNB Chain. Both need:
+  - Show deposit address / contract
+  - Token approval tx (if ERC-20)
+  - Deposit tx
+  - Poll for balance update on the exchange side
+- **Aster withdrawal testing** — The `asterWithdrawRaw()` function exists but needs `ASTER_SIGNER_PRIVATE_KEY` configured and hasn't been tested live
+- **Error recovery** — If a multi-step flow fails mid-way (e.g. LI.FI conversion after HL withdrawal lands), there's no way to resume — user has tokens sitting in their wallet with no UI to continue the conversion
+- **Balance display** — Only HL equity shows. Aster balance and wallet token balances (per chain) should display too
+
+**Files to change:**
+- `app/transfer/page.tsx` — Add deposit tab, improve error recovery, show all balances
+
+### 3. Swap
+
+**Current state:** Backend proxy route exists (`/api/swap/*` → 1inch API with server-side `ONEINCH_API_KEY`). Frontend has no swap UI.
+
+**What to build:**
+
+- **Swap tab/page** — Token-in / Token-out selector, amount input, quote display, slippage setting
+- **Quote fetching** — `GET /api/swap/quote?src=...&dst=...&amount=...&from=...`
+- **Execution** — `GET /api/swap/swap?...` returns tx data → send via wallet → poll receipt
+- **Token approval** — Check allowance, prompt approve tx if needed before swap
+- **Env var** — `ONEINCH_API_KEY` must be set in `backend/.env` (free key from portal.1inch.dev)
+
+**Files to change:**
+- `app/transfer/page.tsx` — Add swap tab (or separate page if cleaner)
+- Backend route already exists at `backend/src/routes/swap.ts`
+
+---
+
+## Lower Priority
 
 ### Redis
-The backend runs without Redis (graceful degradation) but every request hits upstream APIs directly. Under load this will trigger rate limits from CoinGecko, Binance, and HL.
-
-**Fix:** Install and run Redis locally:
+Backend runs without it but all requests hit upstream APIs directly. Under load: CoinGecko 403s, Binance rate limits.
 ```bash
 brew install redis && brew services start redis
 ```
-No code changes needed — the backend auto-detects Redis on `localhost:6379`.
 
-### Environment variables
-The following keys need to be set in `backend/.env` for full functionality:
-
-| Key | Required for | How to get |
-|---|---|---|
-| `REDIS_URL` | Caching | `redis://localhost:6379` |
-| `ONEINCH_API_KEY` | Token swaps on Transfer page | [portal.1inch.dev](https://portal.1inch.dev) (free) |
-| `ASTER_SIGNER_ADDRESS` | EXTRA mode trading | Aster Pro API → API Wallet → Pro API tab |
-| `ASTER_SIGNER_PRIVATE_KEY` | EXTRA mode trading | Same as above |
-| `AGENT_KEY_ENCRYPTION_SECRET` | Per-user Aster agent keys | Any random string |
-
----
-
-## Priority 2 — Features to Add
+### Loading state fallbacks
+Liq Map, AI Signals, Markets tables show "Loading..." forever on failure. Need timeout + retry button.
 
 ### X/Twitter Tracker
-The left sidebar "X Tracker" panel is a placeholder. Needs:
-- Backend route: `GET /api/x/mentions?coin=BTC` → Twitter/X API v2 search
-- Env var: `X_BEARER_TOKEN` (Twitter developer account)
-- Frontend: stream mentions into `#xtFeed`, update on market switch
-- Alternative: use a free crypto-mentions aggregator API instead of X directly
+Left sidebar placeholder. Needs backend route for Twitter API v2 search + `X_BEARER_TOKEN` env var.
 
 ### Chart Indicators
-The TradingView Lightweight Charts widget supports overlays. Currently only OHLCV candles are rendered. Could add:
-- Volume bars (already in candle data, just not rendered)
-- Moving averages (SMA/EMA)
-- Bollinger Bands
-- RSI (separate pane)
+Volume bars (data already there), SMA/EMA, Bollinger Bands, RSI pane.
 
 ### Notifications
-No notification system exists for:
-- Order fills
-- TP/SL triggers hit
-- Liquidation warnings
-- Price alerts
+Order fills, TP/SL triggers, liquidation warnings, price alerts — browser Notification API.
 
-Could use browser `Notification` API + optional Telegram bot webhook.
+### Keyboard Shortcuts
+B=Buy, S=Sell, Esc=close modal, 1-9=quick size.
 
-### Limit Orders
-Currently only market orders are supported. Limit orders need to be added for both HL and Aster.
-- HL: use `orderType: { limit: { tif: 'Gtc' } }` in the order action
-- Aster: use `type: 'LIMIT'` + `timeInForce: 'GTC'` in the signed order
-
-### Withdraw / Deposit
-Partially implemented on the Transfer page. LI.FI quote/route fetching works, but the full execute flow (approval → sign → broadcast → poll status) needs completion.
-
-### Swap
-Token swap via 1inch API is wired on the backend (`/api/swap/*` with server-side API key) but the frontend swap UI on the Transfer page is not yet functional. Needs `ONEINCH_API_KEY` in backend `.env`.
-
-### Additional Order Types (future)
-- Stop-Limit
-- Trailing Stop
-- Scaled orders (multiple limits across a price range)
-- TWAP (time-weighted average price)
+### Advanced Order Types
+Stop-Limit, Trailing Stop, Scaled orders, TWAP.
 
 ---
 
-## Priority 3 — Polish
+## Environment Variables
 
-### Loading states
-Several panels show "Loading..." indefinitely when data fetch fails:
-- Liq Map in bottom panel
-- AI Signals section
-- Markets page tables on backend timeout
-
-**Fix:** Add timeout + fallback UI ("Failed to load — retry" button).
-
-### Error handling
-Some `catch` blocks silently swallow errors. Key places:
-- `fetchHLPerps()` in Markets page — now guarded (HTTP check + array check added)
-- Aster account refresh in orderFlow — catches errors but shows no UI feedback
-- News page RSS fetch failures — article just doesn't appear
-
-### Keyboard shortcuts
-The market dropdown has ↑↓/Enter/Esc. Missing global shortcuts:
-- `B` — Buy/Long
-- `S` — Sell/Short
-- `Esc` — Close any open modal/dropdown
-- `1-9` — Quick size presets
-
-### Status bar
-The bottom status bar (`LIVE · timestamp`) could show:
-- Connection status per WebSocket (HL ws, Aster ws)
-- Current mode indicator (BASIC/EXTRA)
-- Backend health (green/red dot)
-
----
-
-## Priority 4 — Production Deployment
-
-### Domain & hosting
-- Frontend: Vercel or Cloudflare Pages (static Next.js export or SSR)
-- Backend: Railway, Render, or VPS with PM2
-- Domain: point `rdoone.com` to frontend, configure `BACKEND_URL` env var
-
-### SSL & security
-- Backend CORS: set `ALLOWED_ORIGINS` to production domain only
-- Rate limiting: already in place (200 req/min per IP, configurable)
-- API keys: already server-side only (1inch, Aster agent)
-
-### Monitoring
-- Backend: add `/health` checks to uptime monitor (already exists at `GET /health`)
-- Frontend: add error boundary React component for crash recovery
-- WebSocket: connection status visible in status bar
+| Key | Required for | Status |
+|---|---|---|
+| `REDIS_URL` | Caching | Optional (graceful fallback) |
+| `ALLOWED_ORIGINS` | CORS | Set to `http://localhost:3002,http://localhost:3007` |
+| `ONEINCH_API_KEY` | Swap | **Needed** — portal.1inch.dev |
+| `ASTER_SIGNER_ADDRESS` | EXTRA mode | **Needed** — Aster Pro API dashboard |
+| `ASTER_SIGNER_PRIVATE_KEY` | EXTRA mode | **Needed** — same |
+| `AGENT_KEY_ENCRYPTION_SECRET` | Per-user agent keys | **Needed** — any random string |
+| `X_BEARER_TOKEN` | X tracker | Optional |
 
 ---
 
 ## Cleanup Done (2026-07-28)
 
-- [x] Removed `@lifi/widget` dead dependency (LI.FI works via raw API, widget was never imported)
-- [x] Fixed Markets page `fetchHLPerps` crash — added HTTP status + array validation before destructuring
-- [x] Updated X Tracker placeholder — now shows API key instructions instead of "coming soon"
-- [x] Fixed nav bar layout — ticker blocks moved before page links
-- [x] Fixed divider heights — all nav separators now 31px
-- [x] Bottom panel tabs padding increased
-- [x] Live Trades column header height aligned with Market/Limit tabs
-- [x] Liq Map styling matched between Trade and Markets pages
-
----
-
-## Files Reference (actual structure)
-
-```
-rdo-one-setup/
-├── frontend/                     ← Next.js 15 + React 19 + TypeScript
-│   ├── app/
-│   │   ├── page.tsx              ← Trade terminal (main page)
-│   │   ├── markets/page.tsx      ← Markets overview
-│   │   ├── news/page.tsx         ← Crypto news aggregator
-│   │   ├── portfolio/page.tsx    ← Wallet PnL tracker
-│   │   ├── transfer/page.tsx     ← LI.FI cross-chain bridge
-│   │   ├── layout.tsx            ← Root layout + providers
-│   │   ├── globals.css           ← Design system (CSS variables + components)
-│   │   └── subpage.css           ← Shared sub-page styles
-│   ├── components/
-│   │   ├── TradingTerminal.tsx   ← Main terminal logic (42K lines, imperative init)
-│   │   ├── trade/
-│   │   │   ├── TradeHeader.tsx   ← Top nav bar
-│   │   │   ├── OrderPanel.tsx    ← Buy/Sell panel (Market/Limit, TP/SL)
-│   │   │   ├── TradesPanel.tsx   ← Live trades feed
-│   │   │   ├── BottomPanel.tsx   ← Positions/Orders/History tabs
-│   │   │   ├── FloatingOrderBook.tsx
-│   │   │   ├── XTrackerPanel.tsx ← X/Twitter sidebar (placeholder)
-│   │   │   ├── orderFlow.ts     ← Order placement logic (HL + Aster)
-│   │   │   ├── marketFeed.ts    ← WS price/book/trades (both venues)
-│   │   │   ├── marketList.ts    ← Market dropdown + switching
-│   │   │   └── bottomTabs.ts    ← Tab switching + Aster data loaders
-│   │   └── shared/
-│   │       ├── SiteNav.tsx       ← Nav for sub-pages (Markets, News, etc.)
-│   │       ├── WalletControls.tsx
-│   │       └── NetworkSwitcher.tsx
-│   ├── lib/
-│   │   ├── trading.ts           ← HL REST API + EIP-712 signing
-│   │   ├── wallet.tsx           ← WalletProvider (MetaMask/WC/Rabby)
-│   │   ├── chart.ts             ← Lightweight Charts v5 wrapper
-│   │   ├── aster-agent.ts       ← Aster agent approval flow
-│   │   ├── aster-user-stream.ts ← Aster user WS (listenKey)
-│   │   ├── i18n.ts              ← EN/RU/ZH translations
-│   │   ├── format.ts            ← Price/size formatting
-│   │   ├── query.ts             ← React Query cache helpers
-│   │   └── toast.ts             ← Toast notifications
-│   ├── next.config.js           ← Rewrites to backend (all /api/* paths)
-│   └── package.json
-│
-├── backend/                      ← Fastify + TypeScript + Redis
-│   ├── src/
-│   │   ├── index.ts             ← App entry, plugin/route registration
-│   │   ├── config.ts            ← Env var loader
-│   │   ├── routes/
-│   │   │   ├── hl.ts            ← Hyperliquid proxy (POST /hl/*)
-│   │   │   ├── aster.ts         ← Aster proxy + signed endpoints
-│   │   │   ├── market-data.ts   ← Binance, CoinGecko, Fear&Greed, LI.FI
-│   │   │   ├── news.ts          ← Aggregated news feed
-│   │   │   ├── rss.ts           ← Per-source RSS proxies
-│   │   │   ├── swap.ts          ← 1inch proxy (server-side API key)
-│   │   │   └── health.ts        ← GET /health
-│   │   ├── plugins/
-│   │   │   ├── redis.ts         ← Redis connection (graceful fallback)
-│   │   │   ├── cors.ts          ← CORS whitelist
-│   │   │   └── rate-limit.ts    ← 200 req/min per IP
-│   │   ├── ws/
-│   │   │   └── relay.ts         ← WS relay (HL + Aster fan-out)
-│   │   └── lib/
-│   │       ├── cache.ts         ← Redis TTL read-through cache
-│   │       ├── cached-proxy.ts  ← Generic cached GET proxy factory
-│   │       ├── fetcher.ts       ← fetch() with retry + timeout
-│   │       ├── rss-parser.ts    ← Zero-dependency RSS/Atom parser
-│   │       ├── aster-auth.ts    ← Aster HMAC-SHA256 request signing
-│   │       └── agent-keystore.ts← Encrypted per-user Aster agent keys
-│   ├── .env.example
-│   └── package.json
-│
-├── TODO.md                       ← This file
-├── BACKEND_SPEC.md               ← OUTDATED (describes old Vite architecture)
-├── RDO_ONE_ARCHITECTURE.md       ← OUTDATED (describes old Vite architecture)
-└── RDO_ONE_BACKEND_GUIDE.md      ← OUTDATED (describes old Vite architecture)
-```
-
-**Note:** The three old MD files (`BACKEND_SPEC.md`, `RDO_ONE_ARCHITECTURE.md`, `RDO_ONE_BACKEND_GUIDE.md`) describe the previous Vite + Vanilla JS architecture and are no longer accurate. This file (`TODO.md`) reflects the current Next.js + TypeScript codebase.
+- [x] Removed `@lifi/widget` dead dependency
+- [x] Fixed Markets page `fetchHLPerps` crash
+- [x] Updated X Tracker placeholder text
+- [x] Fixed nav bar layout (ticker blocks before links, divider heights)
+- [x] Bottom panel tabs padding
+- [x] Live Trades header aligned
+- [x] CORS fix (added localhost:3007 to ALLOWED_ORIGINS)
+- [x] Redis `redisOk` flag for rate-limit plugin

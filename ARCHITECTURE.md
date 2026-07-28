@@ -83,7 +83,7 @@ The main trade page (`app/page.tsx`) renders `TradingTerminal.tsx`, which is the
 | **Markets** | `app/markets/page.tsx` | CoinGecko trending + HL perps meta |
 | **News** | `app/news/page.tsx` | 8 RSS feeds via backend proxy |
 | **Portfolio** | `app/portfolio/page.tsx` | HL positions + PnL calendar + Aster balances |
-| **Transfer** | `app/transfer/page.tsx` | LI.FI bridge (partial) + 1inch swaps (not yet wired) |
+| **Transfer** | `app/transfer/page.tsx` | Withdraw (HL done, Aster wired) · Deposit (not built) · Swap (backend only) |
 
 ### Next.js Proxy Rewrites
 
@@ -225,35 +225,21 @@ npm run dev:preview     # Runs on :3007
 
 ## What Needs to Be Added / Fixed
 
-### In Progress
+### Must Build
 
-- **Limit orders** — Only market orders work currently. Limit order UI (Market/Limit tab switch) exists but order placement logic needs `orderType: { limit: { tif: 'Gtc' } }` for HL and `type: 'LIMIT'` for Aster.
+- **Proper wallet connect** — Current `lib/wallet.tsx` only detects injected extensions (`window.ethereum`). WalletConnect v2 deps are in `package.json` but never used. Need: multi-wallet connect modal, WC QR code flow, session persistence, and all signing paths (orders, Aster agent approval) must work through WC too.
 
-- **Withdraw / Deposit** — Transfer page partially done. LI.FI quote/route fetching works, but the full execute flow (token approval → sign → broadcast → poll status) needs completion.
+- **Deposit flow** — No deposit tab on Transfer page. Need: deposit address display, ERC-20 approval tx, deposit tx, balance poll for both HL (USDC on Arbitrum) and Aster (USDT on BNB Chain).
 
-- **Swap** — Backend route exists (`/api/swap/*` proxying 1inch with server-side API key), but frontend swap UI on Transfer page is not yet functional. Needs `ONEINCH_API_KEY` in `.env`.
+- **Swap UI** — Backend 1inch proxy exists (`/api/swap/*`) but no frontend. Need: token selectors, quote display, approval + swap execution. Requires `ONEINCH_API_KEY`.
 
-### Must Fix
+### Should Fix
 
-- **Redis required for production** — Without Redis, every request hits upstream APIs directly. Under load, this triggers rate limits from CoinGecko (Cloudflare 403), Binance, and HL. Install Redis or switch to in-memory cache fallback.
+- **Redis for production** — Without Redis, all requests hit upstream APIs directly → rate limits under load.
 
-- **Loading state fallbacks** — Several panels show "Loading..." indefinitely on fetch failure: Liq Map, AI Signals, Markets page tables. Need timeout + retry button UI.
+- **Loading state fallbacks** — Liq Map, AI Signals, Markets tables hang on "Loading..." when fetch fails.
 
-- **Error feedback** — Some catch blocks silently swallow errors (Aster account refresh, news RSS failures). Users see no indication of what failed.
-
-### Should Add (later)
-
-- **X/Twitter Tracker** — Left sidebar placeholder needs: backend route for Twitter API v2 search, env var for bearer token, frontend streaming into `#xtFeed`.
-
-- **Chart indicators** — Volume bars (data already in candles, just not rendered), SMA/EMA overlays, Bollinger Bands, RSI pane.
-
-- **Notifications** — No system for order fills, TP/SL triggers, liquidation warnings, price alerts. Browser Notification API + optional Telegram webhook.
-
-- **Additional order types** — Stop-Limit, Trailing Stop, Scaled orders, TWAP.
-
-- **Keyboard shortcuts** — B=Buy, S=Sell, Esc=close modal, 1-9=quick size presets.
-
-- **Status bar enhancements** — Show per-WebSocket connection status, current mode indicator, backend health dot.
+- **Error feedback** — Some catch blocks silently swallow errors (Aster account refresh, news RSS failures).
 
 ### Production Deployment
 
