@@ -1,0 +1,15 @@
+{
+  "name": "rdo-one",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "concurrently \"npm --prefix backend run dev\" \"npm --prefix frontend run dev:preview\" --names backend,frontend --prefix-colors magenta,cyan",
+    "dev:frontend": "npm --prefix frontend run dev:preview",
+    "dev:backend": "npm --prefix backend run dev",
+    "build": "npm --prefix frontend run build",
+    "test": "npm --prefix frontend test"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.3"
+  }
+}

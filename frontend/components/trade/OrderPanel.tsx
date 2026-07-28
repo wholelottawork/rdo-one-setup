@@ -114,12 +114,10 @@ export function OrderPanel() {
 
   function switchOrderType(type: 'market' | 'limit') {
     setOrderType(type);
-    const el = document.getElementById('orderTypeInput') as HTMLInputElement;
-    if (el) el.value = type;
     // Order value / margin / liq / slippage are all derived from the entry
     // price, which just changed basis (limit price vs mark) — without this
     // the panel keeps showing the previous type's numbers.
-    (window as any).rdo?.updateStats?.();
+    setTimeout(() => (window as any).rdo?.updateStats?.(), 0);
   }
 
   return (
@@ -152,7 +150,7 @@ export function OrderPanel() {
             </button>
           </div>
           {/* Hidden input for orderFlow to read order type */}
-          <input id="orderTypeInput" type="hidden" defaultValue="market" />
+          <input id="orderTypeInput" type="hidden" value={orderType} readOnly />
           <div className="grid grid-cols-2 gap-1 pt-3 pb-1.5 px-2 shrink-0">
             <button
               id="btnBuy"

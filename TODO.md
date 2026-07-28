@@ -1,6 +1,6 @@
 # RDO ONE — TODO
 
-**Last updated:** 2026-07-28  
+**Last updated:** 2026-07-29  
 **Audited against:** actual codebase (every file read, every flow traced)
 
 ---
@@ -144,16 +144,14 @@ WalletConnect v2 packages (`@walletconnect/ethereum-provider`, `@walletconnect/m
 3. **Disconnect doesn't prevent auto-reconnect** — After disconnect + reload, `eth_accounts` returns the address and the mount effect silently reconnects. Need a `rdo_disconnected` localStorage flag.
    - File: `lib/wallet.tsx` lines 186-253
 
-4. **updateStats uses market price for limit orders** — Stats panel (liq price, order value, margin, fee) always uses `livePrices[market]`. When user enters a limit price, stats should use that price instead.
-   - File: `orderFlow.ts` line 64
+4. ~~**updateStats uses market price for limit orders**~~ — **FIXED** (`lib/orderMath.ts` + `orderFlow.ts` refactored to use `entryPrice()` which returns limit price when set, mark otherwise. Stats, TP/SL validation, and size-from-percentage all use the correct entry price now.)
 
 5. **Aster modify trigger is not atomic** — `editTrigger()` deletes the old order then places a new one. If the new order fails, the TP/SL is gone with no recovery. Should attempt the new order first, only delete the old one on success (or at minimum, show a clear error that the original was removed).
    - File: `orderFlow.ts` lines 710-733
 
 ### Should fix
 
-6. **Reduce-only flag ignored for Aster** — The `#chkReduce` checkbox value is read but never included in the Aster order body. Only HL gets `reduceOnly`.
-   - File: `orderFlow.ts` — Aster POST body (line ~190) missing `reduceOnly` field
+6. ~~**Reduce-only flag ignored for Aster**~~ — **FIXED** (`orderFlow.ts` Aster order body now includes `reduceOnly: "true"` when checkbox is ticked.)
 
 7. **Aster TP/SL quantity assumes full fill** — TP/SL are placed with the requested `qty`, but partial fills mean the position could be smaller. The triggers would be for more than the position size.
    - File: `orderFlow.ts` lines 208-239
@@ -161,8 +159,7 @@ WalletConnect v2 packages (`@walletconnect/ethereum-provider`, `@walletconnect/m
 8. **closePosition uses Date.now() instead of nextNonce()** — Could cause nonce collisions on rapid-fire closes. `openPosition` uses `nextNonce()` correctly.
    - File: `lib/trading.ts` line 557
 
-9. **Slippage display always shows "--"** — `#stSlip` is never written to. HL hardcodes 0.3% slippage but this isn't shown.
-   - File: `orderFlow.ts` (never writes to `#stSlip`)
+9. ~~**Slippage display always shows "--"**~~ — **FIXED** (`orderFlow.ts` now shows `"0.30% max"` for HL market orders, `"—"` for limits and Aster market orders. Uses exported `MARKET_SLIPPAGE` constant from `trading.ts`.)
 
 10. **Cross Margin Ratio / Maintenance Margin always 0** — `#ovCmr` and `#ovMm` in OrderPanel never get updated values.
     - File: `OrderPanel.tsx` lines 342, 346
