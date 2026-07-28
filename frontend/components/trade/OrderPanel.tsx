@@ -284,7 +284,7 @@ export function OrderPanel() {
                 </div>
               </>
             )}
-            <div className="text-[9px] text-[var(--hl-text-secondary)] tracking-[0.4px] uppercase mt-0.5" data-i18n="size">
+            <div className="text-[9px] text-[var(--hl-text-secondary)] tracking-[0.4px] uppercase mt-3" data-i18n="size">
               Size
             </div>
             <div className="tp-size-wrap">
