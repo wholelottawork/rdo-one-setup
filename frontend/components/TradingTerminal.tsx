@@ -924,17 +924,10 @@ export default function TradingTerminal() {
           document.getElementById("onrampModal")?.classList.add("hidden");
         },
         connectX() {
-          const btn = document.getElementById(
-            "xtConnectBtn",
-          ) as HTMLButtonElement;
-          if (btn) {
-            btn.textContent = "Connected";
-            btn.disabled = true;
-          }
           const feed = document.getElementById("xtFeed");
           if (feed)
             feed.innerHTML =
-              '<div class="xt-empty">X integration coming soon.</div>';
+              '<div class="xt-empty">X/Twitter API key required.<br><span style="font-size:10px;color:var(--hl-text-muted);line-height:1.6;display:block;margin-top:6px">Add X_BEARER_TOKEN to backend .env to enable real-time mentions tracking.</span></div>';
         },
         toggleOrderBook() {
           document.getElementById("obMini")?.classList.toggle("collapsed");

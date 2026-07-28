@@ -10,7 +10,6 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@lifi/widget": "^4.1.0",
     "@tanstack/react-query": "^5.101.2",
     "@walletconnect/ethereum-provider": "^2.23.10",
     "@walletconnect/modal": "^2.7.0",

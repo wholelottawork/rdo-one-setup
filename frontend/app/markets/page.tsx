@@ -211,7 +211,10 @@ export default function MarketsPage() {
     async function fetchHLPerps() {
       try {
         const r=await fetch('/hl/info',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type:'metaAndAssetCtxs'})});
-        const [meta,ctxs]=await r.json();
+        if(!r.ok) throw new Error('HTTP '+r.status);
+        const data=await r.json();
+        if(!Array.isArray(data)) throw new Error('unexpected response');
+        const [meta,ctxs]=data;
         hlData=meta.universe.map((coin:any,i:number)=>{
           const ctx=ctxs[i]||{};
           const px=parseFloat(ctx.markPx)||0,prev=parseFloat(ctx.prevDayPx)||0;
