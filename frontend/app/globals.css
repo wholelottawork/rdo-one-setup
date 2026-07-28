@@ -1972,19 +1972,18 @@ input[type=number]::-webkit-inner-spin-button {
 
 /* ── size percentage slider ── */
 .size-slider-wrap {
-  padding: 4px 0 6px;
+  padding: 4px 6px 6px;
 }
 .size-slider-track {
   position: relative;
   height: 16px;
   display: flex;
   align-items: center;
-  padding: 0 4px;
 }
 .size-slider-track::before {
   content: '';
   position: absolute;
-  left: 4px; right: 4px;
+  left: 0; right: 0;
   top: 50%;
   height: 2px;
   transform: translateY(-50%);
@@ -1993,7 +1992,7 @@ input[type=number]::-webkit-inner-spin-button {
 }
 .size-slider-fill {
   position: absolute;
-  left: 4px;
+  left: 0;
   top: 50%;
   height: 2px;
   transform: translateY(-50%);
@@ -2001,7 +2000,6 @@ input[type=number]::-webkit-inner-spin-button {
   border-radius: 1px;
   pointer-events: none;
   transition: width 0.06s ease-out;
-  max-width: calc(100% - 8px);
 }
 .size-slider-dot {
   position: absolute;
