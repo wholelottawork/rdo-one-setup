@@ -201,7 +201,7 @@ export function OrderPanel() {
           </div>
           {/* Hidden input for orderFlow to read order type */}
           <input id="orderTypeInput" type="hidden" value={orderType} readOnly />
-          <div className="grid grid-cols-2 gap-1.5 pt-3 pb-1.5 px-3 shrink-0">
+          <div className="grid grid-cols-2 gap-1.5 pt-3 pb-3 px-3 shrink-0">
             <button
               id="btnBuy"
               className="tp-side tp-buy active"
