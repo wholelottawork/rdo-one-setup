@@ -6,6 +6,8 @@
 // the shared price/precision maps arrive as deps.
 import { getEVMProvider } from "@/lib/wallet";
 import { showToast } from "@/lib/toast";
+import { MARKET_SLIPPAGE } from "@/lib/trading";
+import { entryPrice, tpslError } from "@/lib/orderMath";
 import { fmt, fmtLarge, asterRound } from "@/lib/format";
 import { createTpslDialog } from "./tpslDialog";
 import { renderOpenOrders, getAsterOpenOrdersLocal } from "./bottomTabs";
@@ -28,6 +30,28 @@ export function createOrderFlow(deps: {
   getOpenOrders: (addr: string) => Promise<any[]>;
 }) {
   let isBuy = true;
+
+  const isLimitOrder = () =>
+    (document.getElementById("orderTypeInput") as HTMLInputElement)?.value ===
+    "limit";
+  const limitInputPx = () =>
+    parseFloat(
+      (document.getElementById("limitInput") as HTMLInputElement)?.value,
+    ) || 0;
+
+  // A resting limit order fills at ITS price, not at mark. Every number
+  // derived from the entry — notional, margin, liq price, and the TP/SL
+  // side checks — has to use this, or a limit far from mark shows stats
+  // for a fill that can't happen and accepts a stop on the wrong side of
+  // the real entry. Market orders (and a blank limit field) fall back to
+  // mark, so their behaviour is unchanged.
+  const entryPx = () =>
+    entryPrice(
+      isLimitOrder(),
+      limitInputPx(),
+      deps.livePrices[deps.getMarket()] || 0,
+    );
+
   function setSide(buy: boolean) {
     isBuy = buy;
     document.getElementById("btnBuy")?.classList.toggle("active", buy);
@@ -61,7 +85,7 @@ export function createOrderFlow(deps: {
     const levEl = document.getElementById("levInput") as HTMLInputElement;
     const size = parseFloat(sizeEl?.value) || 0;
     const lev = parseFloat(levEl?.value) || 20;
-    const px = deps.livePrices[deps.getMarket()] || 0;
+    const px = entryPx();
     const notional = size * px;
     const margin = notional / lev;
     const liqMove = 0.975 / lev;
@@ -83,6 +107,16 @@ export function createOrderFlow(deps: {
     el("stLiq", liqPx ? fmt(liqPx, deps.getMarket()) : "N/A");
     el("stVal", notional ? "$" + fmtLarge(notional) : "N/A");
     el("stMargin", margin ? "$" + margin.toFixed(2) : "--");
+    // Only HL market orders have a knowable slippage bound (openPosition
+    // sends an IOC capped at mark ± MARKET_SLIPPAGE). A resting limit can't
+    // slip at all, and Aster MARKET is a true market order with no cap —
+    // both show "—" rather than a made-up number.
+    el(
+      "stSlip",
+      !isLimitOrder() && deps.getMode() !== "aster"
+        ? (MARKET_SLIPPAGE * 100).toFixed(2) + "% max"
+        : "—",
+    );
     el(
       "stFee",
       notional
@@ -99,7 +133,7 @@ export function createOrderFlow(deps: {
       parseFloat(avEl?.textContent?.replace(/[^0-9.]/g, "") || "0") || 0;
     const levEl = document.getElementById("levInput") as HTMLInputElement;
     const lev = parseFloat(levEl?.value) || 20;
-    const px = deps.livePrices[deps.getMarket()] || 0;
+    const px = entryPx();
     if (!px) return;
     const sizeEl = document.getElementById("sizeInput") as HTMLInputElement;
     if (sizeEl)
@@ -117,8 +151,7 @@ export function createOrderFlow(deps: {
     }
     const sizeEl = document.getElementById("sizeInput") as HTMLInputElement;
     const levEl = document.getElementById("levInput") as HTMLInputElement;
-    const orderTypeEl = document.getElementById("orderTypeInput") as HTMLInputElement;
-    const isLimit = orderTypeEl?.value === "limit";
+    const isLimit = isLimitOrder();
     const size = parseFloat(sizeEl?.value);
     const lev = parseFloat(levEl?.value) || 20;
     const px =
@@ -127,9 +160,7 @@ export function createOrderFlow(deps: {
       showErr("Enter a size");
       return;
     }
-    const limitPx = isLimit
-      ? parseFloat((document.getElementById("limitInput") as HTMLInputElement)?.value) || 0
-      : 0;
+    const limitPx = isLimit ? limitInputPx() : 0;
     if (isLimit && !limitPx) {
       showErr("Enter a limit price");
       return;
@@ -150,14 +181,17 @@ export function createOrderFlow(deps: {
           (document.getElementById("slPrice") as HTMLInputElement)?.value,
         ) || 0
       : 0;
-    // Trigger on the wrong side of mark would fire instantly — catch it
-    // here rather than after the entry has already filled.
-    if (tpPx && (isBuy ? tpPx <= px : tpPx >= px)) {
-      showErr("TP must be " + (isBuy ? "above" : "below") + " mark price");
-      return;
-    }
-    if (slPx && (isBuy ? slPx >= px : slPx <= px)) {
-      showErr("SL must be " + (isBuy ? "below" : "above") + " mark price");
+    // Triggers are checked against the price this order actually ENTERS at,
+    // not mark — see lib/orderMath.ts for why the difference is dangerous.
+    const trigErr = tpslError(
+      isBuy,
+      entryPrice(isLimit, limitPx, px),
+      tpPx,
+      slPx,
+      isLimit,
+    );
+    if (trigErr) {
+      showErr(trigErr);
       return;
     }
     const btn = document.getElementById("tradeBtn");
@@ -192,6 +226,12 @@ export function createOrderFlow(deps: {
             side: isBuy ? "BUY" : "SELL",
             type: isLimit ? "LIMIT" : "MARKET",
             ...(isLimit ? { price: String(asterRound(limitPx, deps.asterPrec[deps.getMarket()]?.tick ?? 0)), timeInForce: "GTC" } : {}),
+            // Without this the checkbox was cosmetic on Aster: an oversized
+            // "reduce only" close would flatten the position AND open the
+            // remainder as a new position on the opposite side. Sent only
+            // when ticked — Aster rejects reduceOnly with no position open
+            // (-2022), which is the correct outcome, not a silent flip.
+            ...(reduceOnly ? { reduceOnly: "true" } : {}),
             quantity: String(qty),
             user: addr,
           }),
