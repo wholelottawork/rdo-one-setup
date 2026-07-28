@@ -65,33 +65,36 @@ function LeveragePicker() {
         <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.5 }}><path d="M6 9l6 6 6-6"/></svg>
       </button>
       {open && (
-        <div className="lev-popover">
-          <div className="lev-popover-title">Leverage</div>
-          <div className="lev-popover-val">{lev}x</div>
-          <input
-            type="range"
-            min={1}
-            max={50}
-            value={lev}
-            onChange={e => apply(parseInt(e.target.value))}
-            className="tp-slider"
-            style={{ width: '100%', marginBottom: '10px' }}
-          />
-          <div className="lev-presets">
-            {LEV_PRESETS.map(p => (
-              <button
-                key={p}
-                className={`lev-preset${lev === p ? ' active' : ''}`}
-                onClick={() => { apply(p); setOpen(false); }}
-              >
-                {p}x
-              </button>
-            ))}
+        <>
+          <div className="lev-backdrop" onClick={() => setOpen(false)} />
+          <div className="lev-popover">
+            <div className="lev-popover-title">Leverage</div>
+            <div className="lev-popover-val">{lev}x</div>
+            <input
+              type="range"
+              min={1}
+              max={50}
+              value={lev}
+              onChange={e => apply(parseInt(e.target.value))}
+              className="tp-slider"
+              style={{ width: '100%', marginBottom: '10px' }}
+            />
+            <div className="lev-presets">
+              {LEV_PRESETS.map(p => (
+                <button
+                  key={p}
+                  className={`lev-preset${lev === p ? ' active' : ''}`}
+                  onClick={() => { apply(p); setOpen(false); }}
+                >
+                  {p}x
+                </button>
+              ))}
+            </div>
+            <button className="lev-confirm" onClick={() => setOpen(false)}>
+              Confirm
+            </button>
           </div>
-          <button className="lev-confirm" onClick={() => setOpen(false)}>
-            Confirm
-          </button>
-        </div>
+        </>
       )}
       {/* Hidden input kept for imperative TradingTerminal compatibility */}
       <input
