@@ -1973,7 +1973,7 @@ input[type=number]::-webkit-inner-spin-button {
 /* ── size percentage slider ── */
 .size-slider-wrap {
   padding: 4px 6px 6px;
-  margin-top: 10px;
+  margin-top: 18px;
 }
 .size-slider-track {
   position: relative;
