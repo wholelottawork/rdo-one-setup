@@ -1995,7 +1995,7 @@ input[type=number]::-webkit-inner-spin-button {
 /* ── size percentage slider ── */
 .size-slider-wrap {
   padding: 4px 6px 6px;
-  margin: 18px 0;
+  margin: 8px 0;
 }
 .size-slider-track {
   position: relative;

@@ -28,14 +28,14 @@ export function TradeHeader() {
               >
                 EXTRA
               </button>
+              <button
+                className="mode-btn font-[var(--hl-font)] text-[11px] font-bold tracking-[0.5px] py-[3px] px-2 rounded border-none cursor-pointer text-[#878c8f] bg-transparent transition-all duration-150 flex items-center justify-center shrink-0 hover:text-[#50d2c1]"
+                id="modeHelpBtn"
+                onClick={() => (window as any).rdo?.toggleModeHelp()}
+              >
+                ?
+              </button>
             </div>
-            <button
-              className="mode-btn font-[var(--hl-font)] text-[11px] font-bold tracking-[0.5px] py-[3px] px-2 rounded border-none cursor-pointer text-[#878c8f] bg-transparent transition-all duration-150 flex items-center justify-center shrink-0 hover:text-[#50d2c1]"
-              id="modeHelpBtn"
-              onClick={() => (window as any).rdo?.toggleModeHelp()}
-            >
-              ?
-            </button>
             <div
               className="hidden fixed inset-0 z-[998] backdrop-blur-[4px] bg-black/25"
               id="modeBackdrop"
