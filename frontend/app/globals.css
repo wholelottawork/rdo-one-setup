@@ -2046,7 +2046,7 @@ input[type=number]::-webkit-inner-spin-button {
 }
 .size-slider-tooltip {
   position: absolute;
-  top: -22px;
+  top: 14px;
   transform: translateX(-50%);
   background: var(--hl-accent);
   color: #000;
@@ -2063,12 +2063,12 @@ input[type=number]::-webkit-inner-spin-button {
 .size-slider-tooltip::after {
   content: '';
   position: absolute;
-  bottom: -3px;
+  top: -3px;
   left: 50%;
   transform: translateX(-50%);
   border-left: 3px solid transparent;
   border-right: 3px solid transparent;
-  border-top: 3px solid var(--hl-accent);
+  border-bottom: 3px solid var(--hl-accent);
 }
 .size-slider-input {
   position: absolute;
