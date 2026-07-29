@@ -77,6 +77,8 @@ export interface HLAccountState {
   availableToTrade: number;  // spot (total-hold) + free cross margin — matches the exchange
   ntl: number;               // total notional of open positions
   marginUsed: number;
+  maintenanceMargin: number; // crossMaintenanceMarginUsed — the liquidation floor
+  crossEquity: number;       // crossMarginSummary.accountValue, the ratio's denominator
   upnl: number;              // summed from each position's unrealizedPnl
   positions: ReturnType<typeof mapPositions>;
 }
@@ -105,7 +107,7 @@ function mapPositions(assetPositions: any[]) {
 // number the Hyperliquid exchange shows. accountValue alone is just the perp
 // portion (and reads as only the isolated position's margin here).
 export async function loadAccountState(evmAddress: string): Promise<HLAccountState> {
-  const empty: HLAccountState = { perpEquity: 0, spotTotal: 0, availableToTrade: 0, ntl: 0, marginUsed: 0, upnl: 0, positions: [] };
+  const empty: HLAccountState = { perpEquity: 0, spotTotal: 0, availableToTrade: 0, ntl: 0, marginUsed: 0, maintenanceMargin: 0, crossEquity: 0, upnl: 0, positions: [] };
   try {
     const post = (body: any) => fetch(`${HL_API}/info`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
@@ -127,6 +129,11 @@ export async function loadAccountState(evmAddress: string): Promise<HLAccountSta
       availableToTrade: spotAvail + crossFree,
       ntl:              parseFloat(ms.totalNtlPos ?? 0),
       marginUsed:       parseFloat(ms.totalMarginUsed ?? 0),
+      // Maintenance margin is a top-level field on clearinghouseState, not
+      // part of either margin summary — the cross ratio it feeds is how close
+      // the account is to liquidation, so it belongs on screen.
+      maintenanceMargin: parseFloat(ch.crossMaintenanceMarginUsed ?? 0),
+      crossEquity:       parseFloat(cross.accountValue ?? 0),
       upnl:             positions.reduce((s, p) => s + p.pnl, 0),
       positions,
     };
@@ -505,14 +512,21 @@ async function applyLeverage(signer: any, symbol: string, leverage: number, idx:
   return req;
 }
 
-export async function openPosition({ symbol, sizeDollars, leverage, isLong, signer, reduceOnly = false, tpPx, slPx, isCross = true, limitPx: userLimitPx = 0 }: any) {
+export async function openPosition({ symbol, size, sizeDollars, leverage, isLong, signer, reduceOnly = false, tpPx, slPx, isCross = true, limitPx: userLimitPx = 0 }: any) {
   const price = await getMarketPrice(symbol);
   if (!price) throw new Error('Cannot fetch price for ' + symbol);
   const idx     = assetIndexMap[symbol] ?? 0;
   // Apply (and clamp) leverage BEFORE the entry — throws on rejection so an
   // order never silently opens at the wrong leverage.
   const appliedLeverage = leverage ? await applyLeverage(signer, symbol, leverage, idx, isCross) : 0;
-  const sz      = parseFloat((sizeDollars / price).toFixed(8));
+  // Prefer base-coin `size` when the caller has it. The dollar round trip
+  // drifts: callers computed sizeDollars from the mark they were showing, and
+  // dividing by a FRESHLY fetched mark here doesn't cancel out — any tick
+  // between the two reads silently resizes the order. sizeDollars stays
+  // supported for callers that genuinely only know a dollar amount.
+  const sz      = size > 0
+    ? parseFloat(Number(size).toFixed(8))
+    : parseFloat((sizeDollars / price).toFixed(8));
   const slip    = MARKET_SLIPPAGE;
   // Resting limit order (GTC) when caller supplies a price; otherwise IOC at
   // mark ± 0.3% slip to guarantee fill (market-equivalent on HL).

@@ -386,7 +386,9 @@ export function createOrderFlow(deps: {
       const isCross = !marginEl || marginEl.value !== 'isolated';
       const result = await deps.openPosition({
         symbol: deps.getMarket(),
-        sizeDollars: size * px,
+        // Base-coin size, not dollars — the round trip through a re-fetched
+        // mark used to resize the order behind the user's back.
+        size,
         leverage: lev,
         isLong: isBuy,
         signer,
@@ -471,6 +473,16 @@ export function createOrderFlow(deps: {
         ? (acct.ntl / acct.perpEquity).toFixed(2) + "x"
         : "0.00x",
     );
+    // Both of these read 0 until now. The ratio is maintenance margin over
+    // cross equity — at 100% the account is being liquidated, so it's the one
+    // number worth watching with a position open.
+    el(
+      "ovCmr",
+      acct.crossEquity > 0
+        ? ((acct.maintenanceMargin / acct.crossEquity) * 100).toFixed(2) + "%"
+        : "0.00%",
+    );
+    el("ovMm", "$" + acct.maintenanceMargin.toFixed(2));
     const mine = positions.find((p: any) => p.symbol === deps.getMarket());
     el(
       "tpCurPos",
@@ -551,6 +563,8 @@ export function createOrderFlow(deps: {
       el("balanceDisplay", "$0.00");
       el("ovPnl", "$0.00");
       el("ovLev", "0.00x");
+      el("ovCmr", "0.00%");
+      el("ovMm", "$0.00");
       el("tpCurPos", "0.00000 " + deps.getMarket());
       renderBalances([
         { label: "Account Equity", value: "$0.00" },
@@ -606,6 +620,13 @@ export function createOrderFlow(deps: {
         ? (ntl / equity).toFixed(2) + "x"
         : "0.00x",
     );
+    // Aster's own equivalents of HL's cross ratio / maintenance margin.
+    const maintMargin = parseFloat(data.totalMaintMargin ?? 0);
+    el(
+      "ovCmr",
+      equity > 0 ? ((maintMargin / equity) * 100).toFixed(2) + "%" : "0.00%",
+    );
+    el("ovMm", "$" + maintMargin.toFixed(2));
     const mine = positions.find((p: any) => p.symbol === deps.getMarket());
     el(
       "tpCurPos",
