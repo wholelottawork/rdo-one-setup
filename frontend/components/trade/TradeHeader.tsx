@@ -11,7 +11,7 @@ export function TradeHeader() {
             <span className="text-[13px] font-bold text-[#50d2c1] tracking-[0.5px]">RDO</span>
             <span className="text-[13px] font-light text-white">ONE</span>
           </div>
-          <div className="w-px h-[31px] bg-[#1f1f1f] shrink-0"></div>
+          <div className="w-px h-[31px] shrink-0"></div>
           <div className="relative flex items-center gap-2.5 shrink-0">
             <div className="flex items-center bg-[#0d0d0d] border border-[#1f1f1f] rounded-md p-0.5 gap-0.5 shrink-0" id="modeSwitch">
               <button
@@ -86,7 +86,7 @@ export function TradeHeader() {
               </div>
             </div>
           </div>
-          <div className="w-px h-[31px] bg-[#1f1f1f] shrink-0"></div>
+          <div className="w-px h-[31px] shrink-0"></div>
 
           {/* Market picker — now before nav */}
           <button className="flex items-center gap-1 font-[var(--hl-font)] text-[13px] font-semibold text-white bg-transparent border-none cursor-pointer py-1 px-2 rounded-md transition-colors duration-150 hover:bg-[#0d0d0d]" id="mktBtn">
