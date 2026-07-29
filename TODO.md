@@ -135,8 +135,7 @@ Same fix applied to the EXTRA → BASIC leg of **Between Accounts**, which previ
 
 4. ~~**updateStats uses market price for limit orders**~~ — **FIXED** (`lib/orderMath.ts` + `orderFlow.ts` refactored to use `entryPrice()` which returns limit price when set, mark otherwise. Stats, TP/SL validation, and size-from-percentage all use the correct entry price now.)
 
-5. **Aster modify trigger is not atomic** — `editTrigger()` deletes the old order then places a new one. If the new order fails, the TP/SL is gone with no recovery. Should attempt the new order first, only delete the old one on success (or at minimum, show a clear error that the original was removed).
-   - File: `orderFlow.ts` lines 710-733
+5. ~~**Aster modify trigger is not atomic**~~ — **FIXED** (`editTrigger()` now places the replacement first and cancels the old trigger only on success, so a rejected placement leaves the original protection intact. A failed cancel is reported as its own outcome — "placed, but the old one is still open" — rather than as a failed edit.)
 
 ### Should fix
 
@@ -145,8 +144,7 @@ Same fix applied to the EXTRA → BASIC leg of **Between Accounts**, which previ
 7. ~~**Aster TP/SL quantity assumes full fill**~~ — **FIXED** (triggers now use `closePosition: true`, which closes whatever is actually open when it fires, so no quantity is guessed. For limit orders they're no longer placed up front either — a trigger on an unfilled limit fires against nothing and is consumed, leaving the later fill naked; `waitForFill()` holds them until the first execution. `fillState()` in `lib/orderMath.ts` is covered by `npm test`.)
    - Ceiling: the fill watcher lives in the browser tab, so a reload drops it. A backend watcher is the upgrade.
 
-8. **closePosition uses Date.now() instead of nextNonce()** — Could cause nonce collisions on rapid-fire closes. `openPosition` uses `nextNonce()` correctly.
-   - File: `lib/trading.ts` line 557
+8. ~~**closePosition uses Date.now() instead of nextNonce()**~~ — **FIXED** (`closePosition`, `cancelOrder`, `modifyTriggerOrder` and the standalone TP/SL path all built nonces from raw `Date.now()`, not just `closePosition` — every signed HL action now routes through `nextNonce()`.)
 
 9. ~~**Slippage display always shows "--"**~~ — **FIXED** (`orderFlow.ts` now shows `"0.30% max"` for HL market orders, `"—"` for limits and Aster market orders. Uses exported `MARKET_SLIPPAGE` constant from `trading.ts`.)
 
