@@ -1,7 +1,6 @@
-import crypto from "node:crypto";
 import { Wallet, type BaseWallet } from "ethers";
 import type { Redis } from "ioredis";
-import { config } from "../config";
+import { decrypt, encrypt } from "./secret-box";
 
 // Per-user Aster Pro API agent keys. Aster's own integration flow
 // ("recommended: one signer per user" — asterdex.github.io/aster-api-website/
@@ -19,34 +18,6 @@ import { config } from "../config";
 // affected users re-approve once; it never risks funds, since these agents
 // can never withdraw.
 const REDIS_KEY_PREFIX = "aster:agent-key:";
-const ALGO = "aes-256-gcm";
-
-function getEncryptionKey(): Buffer {
-  const secret = config.agentKeyEncryptionSecret;
-  if (!secret) {
-    throw new Error(
-      "AGENT_KEY_ENCRYPTION_SECRET not configured — add a random secret to backend/.env (never commit it, never paste it into chat)",
-    );
-  }
-  return crypto.createHash("sha256").update(secret).digest();
-}
-
-function encrypt(plaintext: string): string {
-  const key = getEncryptionKey();
-  const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv(ALGO, key, iv);
-  const ciphertext = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
-  const authTag = cipher.getAuthTag();
-  return [iv, authTag, ciphertext].map((b) => b.toString("hex")).join(":");
-}
-
-function decrypt(payload: string): string {
-  const [ivHex, tagHex, dataHex] = payload.split(":");
-  const key = getEncryptionKey();
-  const decipher = crypto.createDecipheriv(ALGO, key, Buffer.from(ivHex, "hex"));
-  decipher.setAuthTag(Buffer.from(tagHex, "hex"));
-  return Buffer.concat([decipher.update(Buffer.from(dataHex, "hex")), decipher.final()]).toString("utf8");
-}
 
 /**
  * Returns `userAddress`'s dedicated Aster agent wallet, minting and

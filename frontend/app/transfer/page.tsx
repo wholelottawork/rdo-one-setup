@@ -114,6 +114,7 @@ export default function TransferPage() {
 
     let wdSrc    = 'hl';
     let dpDest   = 'hl';
+    let credsSaved = false;
     let btwDir   = 'hl-to-aster';
     let hlEquity = 0;
     let curQuote: any  = null;
@@ -147,6 +148,7 @@ export default function TransferPage() {
       if (wdDest) wdDest.placeholder = addr + ' (connected)';
       set('wd-bal', 'Connected: ' + s);
       loadHLEquity(addr);
+      refreshCreds(addr);
     }
     onConnectedRef.current = onConnected;
 
@@ -168,7 +170,6 @@ export default function TransferPage() {
       const isHL = src === 'hl';
       el('wd-btn-hl')?.classList.toggle('active', isHL);
       el('wd-btn-as')?.classList.toggle('active', !isHL);
-      const apiF = el('wd-api-fields'); if (apiF) apiF.style.display = isHL ? 'none' : '';
       const amtWrap = el('wd-amt-wrap'); if (amtWrap) amtWrap.className = 'amt-wrap' + (isHL ? '' : ' af');
       const execBtn = el('wd-exec-btn'); if (execBtn) execBtn.className = 'exec-btn ' + (isHL ? 'hl' : 'as');
       set('wd-from-cur', isHL ? 'USDC' : 'USDT');
@@ -267,14 +268,11 @@ export default function TransferPage() {
             stepSet(2, 'done', `${toSym} sent to ${destShort}`);
           }
         } else {
-          const wdKey = el('wd-key') as HTMLInputElement | null;
-          const wdSec = el('wd-sec') as HTMLInputElement | null;
-          const key = wdKey?.value.trim() || '', secret = wdSec?.value.trim() || '';
-          if (!key || !secret) { if (btn) btn.disabled = false; return showSt('wd-st', 'err', 'Enter Aster API credentials'); }
+          if (!requireCreds('wd-st')) { if (btn) btn.disabled = false; return; }
           if (isSame) {
             initProg('wd', ['Withdraw USDT from Aster']);
             stepSet(0, 'active', 'Signing and submitting…');
-            await asterWithdrawRaw(key, secret, amt, destAddr);
+            await asterWithdrawRaw(amt, destAddr);
             stepSet(0, 'done', `${fmt(amt)} USDT → ${destShort}`);
           } else {
             initProg('wd', [
@@ -283,7 +281,7 @@ export default function TransferPage() {
               `Convert USDT → ${toSym} via LI.FI`,
             ]);
             stepSet(0, 'active', 'Signing Aster withdrawal…');
-            await asterWithdrawRaw(key, secret, amt, user);
+            await asterWithdrawRaw(amt, user);
             stepSet(0, 'done', `${fmt(amt)} USDT withdrawal submitted`);
             stepSet(1, 'active', 'Polling every 12s…');
             const before = await getERC20Bal(prov, USDT_ARB, user);
@@ -313,7 +311,6 @@ export default function TransferPage() {
       const isHL = d === 'hl';
       el('dp-btn-hl')?.classList.toggle('active', isHL);
       el('dp-btn-as')?.classList.toggle('active', !isHL);
-      const apiF = el('dp-api-fields'); if (apiF) apiF.style.display = isHL ? 'none' : '';
       const amtWrap = el('dp-amt-wrap'); if (amtWrap) amtWrap.className = 'amt-wrap' + (isHL ? '' : ' af');
       const btn = el('dp-btn'); if (btn) btn.className = 'exec-btn ' + (isHL ? 'hl' : 'as');
       const chain = (el('dp-from-chain') as HTMLSelectElement | null)?.value || '42161';
@@ -361,12 +358,7 @@ export default function TransferPage() {
       const toHL   = dpDest === 'hl';
       const tgt    = dpTarget();
       const tgtSym = toHL ? 'USDC' : 'USDT';
-      let key = '', secret = '';
-      if (!toHL) {
-        key    = (el('dp-key') as HTMLInputElement | null)?.value.trim() || '';
-        secret = (el('dp-sec') as HTMLInputElement | null)?.value.trim() || '';
-        if (!key || !secret) return showSt('dp-st', 'err', 'Enter Aster API credentials');
-      }
+      if (!toHL && !requireCreds('dp-st')) return;
       const fromChain = (el('dp-from-chain') as HTMLSelectElement | null)?.value || '42161';
       const fromToken = (el('dp-from-token') as HTMLSelectElement | null)?.value || '';
       const fromSym   = selSym('dp-from-token');
@@ -415,7 +407,7 @@ export default function TransferPage() {
         let dest = HL_BRIDGE;
         if (!toHL) {
           stepSet(last, 'active', 'Getting Aster deposit address…');
-          const dep = await asterDepositAddr(key, secret);
+          const dep = await asterDepositAddr();
           if (!dep) throw new Error('Could not fetch the Aster deposit address — check your API credentials');
           dest = dep;
         }
@@ -590,12 +582,9 @@ export default function TransferPage() {
 
     async function execBtw() {
       const btwAmt = el('btw-amt') as HTMLInputElement | null;
-      const btwKey = el('btw-key') as HTMLInputElement | null;
-      const btwSec = el('btw-sec') as HTMLInputElement | null;
       const amt = parseFloat(btwAmt?.value || '0') || 0;
-      const key = btwKey?.value.trim() || '', secret = btwSec?.value.trim() || '';
-      if (!amt)          return showSt('btw-st', 'err', 'Enter an amount');
-      if (!key || !secret) return showSt('btw-st', 'err', 'Enter Aster API credentials');
+      if (!amt) return showSt('btw-st', 'err', 'Enter an amount');
+      if (!requireCreds('btw-st')) return;
       const btn = el('btw-btn') as HTMLButtonElement | null;
       if (btn) btn.disabled = true;
       const st = el('btw-st'); if (st) st.style.display = 'none';
@@ -624,7 +613,7 @@ export default function TransferPage() {
           await pollReceipt(prov, sh);
           stepSet(2, 'done', 'USDC → USDT swapped');
           stepSet(3, 'active', 'Getting Aster deposit address…');
-          let dep = await asterDepositAddr(key, secret); if (!dep) dep = user;
+          let dep = await asterDepositAddr(); if (!dep) dep = user;
           const usdtBal = await getERC20Bal(prov, USDT_ARB, user);
           stepSet(3, 'active', `Sending ${fmt(Number(usdtBal)/1e6, 2)} USDT — confirm…`);
           const dh = await erc20Send(prov, USDT_ARB, user, dep, usdtBal.toString());
@@ -639,7 +628,7 @@ export default function TransferPage() {
             'Send USDC to the Hyperliquid bridge',
           ]);
           stepSet(0, 'active', 'Signing Aster withdrawal…');
-          await asterWithdrawRaw(key, secret, amt, user);
+          await asterWithdrawRaw(amt, user);
           stepSet(0, 'done', `${fmt(amt)} USDT withdrawal submitted`);
           stepSet(1, 'active', 'Polling every 12s (up to 10 min)…');
           const tb = await getERC20Bal(prov, USDT_ARB, user);
@@ -783,30 +772,103 @@ export default function TransferPage() {
         throw new Error(d?.response?.data?.message || d?.error || JSON.stringify(d).slice(0,100));
     }
 
-    async function asterWithdrawRaw(key: string, secret: string, amt: number, dest: string) {
-      const ts = Date.now();
-      const qs = `asset=USDT&amount=${amt}&address=${encodeURIComponent(dest)}&timestamp=${ts}`;
-      const enc = new TextEncoder();
-      const k = await crypto.subtle.importKey('raw', enc.encode(secret), {name:'HMAC', hash:'SHA-256'}, false, ['sign']);
-      const sb = await crypto.subtle.sign('HMAC', k, enc.encode(qs));
-      const sig = Array.from(new Uint8Array(sb)).map(b => b.toString(16).padStart(2,'0')).join('');
-      const res = await fetch(`/aster-fapi/v1/withdraw?${qs}&signature=${sig}`, {method:'POST', headers:{'X-MBX-APIKEY':key}});
-      const d = await res.json();
-      if (!res.ok || d.code) throw new Error(d?.msg || d?.message || JSON.stringify(d).slice(0,100));
+    // Aster's withdraw + deposit-address endpoints use the V1 API-key/HMAC
+    // scheme. Both the key and the signing used to live in this page, which
+    // meant a withdrawal-capable secret sat in the DOM. The secret is stored
+    // encrypted server-side now (backend/src/lib/aster-creds.ts) and the
+    // signature is produced there — this file only ever sends the user's
+    // address, the amount and the destination.
+    async function asterWithdrawRaw(amt: number, dest: string) {
+      const res = await fetch('/aster-withdraw', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({user: evmAddressRef.current, amount: String(amt), address: dest}),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || d.code) throw new Error(d?.msg || d?.message || 'Aster withdrawal failed');
     }
 
-    async function asterDepositAddr(key: string, secret: string): Promise<string | null> {
+    async function asterDepositAddr(): Promise<string | null> {
       try {
-        const ts = Date.now();
-        const qs = `coin=USDT&network=ARBITRUM&timestamp=${ts}`;
-        const enc = new TextEncoder();
-        const k = await crypto.subtle.importKey('raw', enc.encode(secret), {name:'HMAC', hash:'SHA-256'}, false, ['sign']);
-        const sb = await crypto.subtle.sign('HMAC', k, enc.encode(qs));
-        const sig = Array.from(new Uint8Array(sb)).map(b => b.toString(16).padStart(2,'0')).join('');
-        const r = await fetch(`/aster-fapi/v1/capital/deposit/address?${qs}&signature=${sig}`, {headers:{'X-MBX-APIKEY':key}});
+        const r = await fetch(`/aster-deposit-address?user=${encodeURIComponent(evmAddressRef.current || '')}`);
         if (!r.ok) return null;
-        const d = await r.json(); return d?.address || d?.data?.address || null;
+        const d = await r.json();
+        return d?.address || null;
       } catch { return null; }
+    }
+
+    // Existence check only — the backend never returns the stored secret.
+    async function refreshCreds(addr: string) {
+      const btn = el('creds-btn') as HTMLButtonElement | null;
+      try {
+        const r = await fetch(`/aster-creds?user=${encodeURIComponent(addr)}`);
+        const d = await r.json();
+        credsSaved = !!d.saved;
+      } catch { credsSaved = false; }
+      const st = el('creds-state');
+      if (st) {
+        st.textContent = credsSaved
+          ? 'Saved — stored encrypted on the server, never in this page'
+          : 'Not saved — required for Aster withdrawals and deposits';
+        st.style.color = credsSaved ? '#1fa67d' : 'var(--text3,#878c8f)';
+      }
+      const fields = el('creds-fields');
+      if (fields) fields.style.display = credsSaved ? 'none' : '';
+      if (btn) btn.textContent = credsSaved ? 'Replace credentials' : 'Save credentials';
+    }
+
+    async function saveCreds() {
+      const addr = evmAddressRef.current;
+      if (!addr) return showSt('creds-st', 'err', 'Connect your wallet from the top nav first');
+      const fields = el('creds-fields');
+      // Second click of "Replace credentials" just reopens the inputs.
+      if (credsSaved && fields && fields.style.display === 'none') {
+        fields.style.display = '';
+        return;
+      }
+      const keyEl = el('creds-key') as HTMLInputElement | null;
+      const secEl = el('creds-sec') as HTMLInputElement | null;
+      const apiKey = keyEl?.value.trim() || '', apiSecret = secEl?.value.trim() || '';
+      if (!apiKey || !apiSecret) return showSt('creds-st', 'err', 'Enter both the API key and secret');
+      try {
+        const r = await fetch('/aster-creds', {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({user: addr, apiKey, apiSecret}),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok || !d.saved) throw new Error(d?.msg || 'Could not save credentials');
+        // Clear the inputs the moment they're stored — no reason to leave the
+        // secret in the DOM after it has been handed off.
+        if (keyEl) keyEl.value = '';
+        if (secEl) secEl.value = '';
+        showSt('creds-st', 'ok', 'Credentials saved ✓');
+        await refreshCreds(addr);
+      } catch (e: any) {
+        showSt('creds-st', 'err', e.message);
+      }
+    }
+
+    async function clearCreds() {
+      const addr = evmAddressRef.current;
+      if (!addr) return;
+      try {
+        await fetch('/aster-creds', {
+          method: 'DELETE',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({user: addr}),
+        });
+        showSt('creds-st', 'ok', 'Credentials removed');
+        await refreshCreds(addr);
+      } catch (e: any) {
+        showSt('creds-st', 'err', e.message);
+      }
+    }
+
+    function requireCreds(stId: string): boolean {
+      if (credsSaved) return true;
+      showSt(stId, 'err', 'Save your Aster API credentials first — the card at the top of this page');
+      return false;
     }
 
     function showSt(id: string, type: string, msg: string) {
@@ -832,6 +894,8 @@ export default function TransferPage() {
     (window as any).scheduleQuote     = scheduleQuote;
     (window as any).execSend          = execSend;
     (window as any).sendMax           = sendMax;
+    (window as any).saveCreds         = saveCreds;
+    (window as any).clearCreds        = clearCreds;
     (window as any).setDir            = setDir;
     (window as any).btwMax            = btwMax;
     (window as any).execBtw           = execBtw;
@@ -864,6 +928,29 @@ export default function TransferPage() {
         <div className="page-hdr">
           <div className="page-title" data-i18n="transferTitle">TRANSFER</div>
           <div className="page-sub" data-i18n="transferSub">Withdraw in any currency · Send to any address · Move between accounts</div>
+        </div>
+
+        {/* Aster API credentials — entered once, stored encrypted server-side.
+            Every Aster withdrawal/deposit is signed there, so the secret never
+            lives in this page. */}
+        <div className="card" style={{marginBottom:'16px'}}>
+          <div className="field-lbl" data-i18n="asterApiCreds">Aster API credentials</div>
+          <div className="api-note" id="creds-state">Connect your wallet to check</div>
+          <div id="creds-fields">
+            <div className="api-row" style={{marginTop:'8px'}}>
+              <input className="api-input" type="text" id="creds-key" placeholder="API Key" autoComplete="off" />
+              <input className="api-input" type="password" id="creds-sec" placeholder="API Secret" autoComplete="off" />
+            </div>
+            <div className="api-note">
+              Sent once over HTTPS, encrypted at rest, and never returned to the browser.
+              Only needed for Aster (EXTRA) withdrawals and deposits.
+            </div>
+          </div>
+          <div style={{display:'flex', gap:'8px', marginTop:'8px'}}>
+            <button className="exec-btn as" id="creds-btn" style={{flex:1}} onClick={() => (window as any).saveCreds()}>Save credentials</button>
+            <button className="max-btn" style={{padding:'0 14px'}} onClick={() => (window as any).clearCreds()}>Remove</button>
+          </div>
+          <div className="status" id="creds-st" />
         </div>
 
         <div className="xfr-tabs">
@@ -902,14 +989,6 @@ export default function TransferPage() {
             <div className="conv-hint" id="wd-conv-hint">&nbsp;</div>
             <div className="field-lbl" data-i18n="destAddress">Destination address</div>
             <input className="txt-input" type="text" id="wd-dest" placeholder="0x… (default: connected wallet)" />
-            <div id="wd-api-fields" style={{display:'none'}}>
-              <div className="field-lbl" data-i18n="asterApiCreds">Aster API credentials</div>
-              <div className="api-row">
-                <input className="api-input" type="text" id="wd-key" placeholder="API Key" />
-                <input className="api-input" type="password" id="wd-sec" placeholder="API Secret" />
-              </div>
-              <div className="api-note">Used to sign the Aster withdrawal request — never stored.</div>
-            </div>
             <button className="exec-btn hl" id="wd-exec-btn" onClick={() => (window as any).execWithdraw()}>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 3v13M7 11l5 5 5-5"/><path d="M4 19h16"/>
@@ -949,14 +1028,6 @@ export default function TransferPage() {
               </div>
             </div>
             <div className="conv-hint" id="dp-hint">&nbsp;</div>
-            <div id="dp-api-fields" style={{display:'none'}}>
-              <div className="field-lbl" data-i18n="asterApiCreds">Aster API credentials</div>
-              <div className="api-row">
-                <input className="api-input" type="text" id="dp-key" placeholder="API Key" />
-                <input className="api-input" type="password" id="dp-sec" placeholder="API Secret" />
-              </div>
-              <div className="api-note">Used only to fetch your Aster deposit address — never stored.</div>
-            </div>
             <button className="exec-btn hl" id="dp-btn" onClick={() => (window as any).execDeposit()}>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 21V8M7 13l5-5 5 5"/><path d="M4 4h16"/>
@@ -1052,12 +1123,6 @@ export default function TransferPage() {
               </div>
             </div>
             <div className="bal-hint" id="btw-bal">&nbsp;</div>
-            <div className="field-lbl" data-i18n="asterApiCreds">Aster API credentials</div>
-            <div className="api-row">
-              <input className="api-input" type="text" id="btw-key" placeholder="API Key" />
-              <input className="api-input" type="password" id="btw-sec" placeholder="API Secret" />
-            </div>
-            <div className="api-note">Required to sign the Aster side of the transfer</div>
             <button className="exec-btn hl" id="btw-btn" onClick={() => (window as any).execBtw()}>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                 <path d="M5 12h14M12 5l7 7-7 7"/>

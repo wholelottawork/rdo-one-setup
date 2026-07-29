@@ -45,6 +45,11 @@ const nextConfig = {
       { source: '/aster-agent-address',     destination: `${BACKEND_URL}/api/aster-agent-address` },
       { source: '/aster-leverage-brackets', destination: `${BACKEND_URL}/api/aster-leverage-brackets` },
       { source: '/aster-approve-agent',     destination: `${BACKEND_URL}/api/aster-approve-agent` },
+      // Aster V1 (API key + HMAC) — credentials are stored and signed
+      // server-side; the browser never holds a withdrawal-capable secret.
+      { source: '/aster-creds',             destination: `${BACKEND_URL}/api/aster-creds` },
+      { source: '/aster-withdraw',          destination: `${BACKEND_URL}/api/aster-withdraw` },
+      { source: '/aster-deposit-address',   destination: `${BACKEND_URL}/api/aster-deposit-address` },
       // LI.FI
       { source: '/lifi-api/:path*', destination: `${BACKEND_URL}/api/lifi-api/:path*` },
       // 1inch swap (server-side API key)

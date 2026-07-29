@@ -5,6 +5,7 @@ import { fetchJSON } from '../lib/fetcher';
 import { registerCachedProxy } from '../lib/cached-proxy';
 import { signAsterV3Request, signAsterV3RequestAs } from '../lib/aster-auth';
 import { getOrCreateUserAgent } from '../lib/agent-keystore';
+import { deleteAsterCreds, hmacQuery, loadAsterCreds, saveAsterCreds } from '../lib/aster-creds';
 import type { AsterOIBulkBody } from '../types';
 
 const ASTER_FAPI = 'https://fapi.asterdex.com';
@@ -186,6 +187,84 @@ export default async function asterRoutes(fastify: FastifyInstance) {
       headers: SIGNED_HEADERS,
       body: signedQuery,
     });
+  });
+
+  // ── Aster V1 credentials + the endpoints that need them ───────────────────
+  // Withdraw and deposit-address are V1 (API key + HMAC), not V3 agent-signed.
+  // The browser used to hold that key/secret pair and sign withdrawals itself;
+  // it now posts them here once and never sees them again. See lib/aster-creds.
+  async function requireCreds(reply: FastifyReply, user: unknown) {
+    if (!user || typeof user !== 'string') {
+      reply.code(400).send({ msg: 'user required' });
+      return null;
+    }
+    if (!fastify.redisOk) {
+      reply.code(503).send({ msg: 'Credential store unavailable (Redis down) — cannot sign Aster V1 requests' });
+      return null;
+    }
+    const creds = await loadAsterCreds(fastify.redis, user);
+    if (!creds) {
+      reply.code(412).send({ msg: 'No Aster API credentials saved — add them on the Transfer page first' });
+      return null;
+    }
+    return creds;
+  }
+
+  fastify.post('/aster-creds', async (req: FastifyRequest, reply: FastifyReply) => {
+    const { user, apiKey, apiSecret } = (req.body ?? {}) as Record<string, string>;
+    if (!user || !apiKey || !apiSecret)
+      return reply.code(400).send({ msg: 'user, apiKey and apiSecret required' });
+    if (!fastify.redisOk)
+      return reply.code(503).send({ msg: 'Credential store unavailable (Redis down)' });
+    await saveAsterCreds(fastify.redis, user, { apiKey, apiSecret });
+    return { saved: true };
+  });
+
+  // Existence only — the secret is never readable through the API, by design.
+  fastify.get('/aster-creds', async (req: FastifyRequest, reply: FastifyReply) => {
+    const user = (req.query as Record<string, string>).user;
+    if (!user) return reply.code(400).send({ msg: 'user required' });
+    if (!fastify.redisOk) return { saved: false, unavailable: true };
+    return { saved: !!(await loadAsterCreds(fastify.redis, user)) };
+  });
+
+  fastify.delete('/aster-creds', async (req: FastifyRequest, reply: FastifyReply) => {
+    const user = ((req.body ?? {}) as Record<string, string>).user;
+    if (!user) return reply.code(400).send({ msg: 'user required' });
+    if (!fastify.redisOk)
+      return reply.code(503).send({ msg: 'Credential store unavailable (Redis down)' });
+    await deleteAsterCreds(fastify.redis, user);
+    return { deleted: true };
+  });
+
+  fastify.post('/aster-withdraw', async (req: FastifyRequest, reply: FastifyReply) => {
+    const { user, amount, address, asset = 'USDT' } = (req.body ?? {}) as Record<string, string>;
+    if (!amount || !address) return reply.code(400).send({ msg: 'amount and address required' });
+    const creds = await requireCreds(reply, user);
+    if (!creds) return;
+    const signed = hmacQuery(creds.apiSecret, {
+      asset,
+      amount: String(amount),
+      address,
+      timestamp: String(Date.now()),
+    });
+
+    return signedPassthrough(`${ASTER_FAPI}/fapi/v1/withdraw?${signed}`, {
+      method: 'POST',
+      headers: { 'X-MBX-APIKEY': creds.apiKey, ...ASTER_HEADERS },
+    });
+  });
+
+  fastify.get('/aster-deposit-address', async (req: FastifyRequest, reply: FastifyReply) => {
+    const { user, coin = 'USDT', network = 'ARBITRUM' } = req.query as Record<string, string>;
+    const creds = await requireCreds(reply, user);
+    if (!creds) return;
+    const signed = hmacQuery(creds.apiSecret, { coin, network, timestamp: String(Date.now()) });
+    const d = (await signedPassthrough(`${ASTER_FAPI}/fapi/v1/capital/deposit/address?${signed}`, {
+      headers: { 'X-MBX-APIKEY': creds.apiKey, ...ASTER_HEADERS },
+    })) as Record<string, any>;
+
+    return { address: d?.address ?? d?.data?.address ?? null, msg: d?.msg };
   });
 
   // approveAgent (Aster Code builder-program endpoint) is PUBLIC
