@@ -26,9 +26,99 @@ declare global {
   }
 }
 
+// The provider the user actually PICKED. Every signing path in the app —
+// orderFlow's HL signer, aster-agent's approveAgent, the transfer page's
+// withdrawals, NetworkSwitcher's chain switch — resolves its provider through
+// getEVMProvider(), so setting this one variable on connect routes all of them
+// at the chosen wallet. That includes WalletConnect, which isn't injected at
+// all and can't be found by sniffing `window`.
+let activeProvider: EIP1193Provider | null = null;
+
 export function getEVMProvider(): EIP1193Provider | null {
+  if (activeProvider) return activeProvider;
   if (typeof window === 'undefined') return null;
   return window.phantom?.ethereum ?? window.ethereum ?? null;
+}
+
+export type WalletId = 'metamask' | 'rabby' | 'phantom' | 'coinbase' | 'injected' | 'walletconnect';
+
+export interface WalletOption {
+  id: WalletId;
+  name: string;
+  provider: EIP1193Provider | null;
+  /** WalletConnect is always offerable (it's a QR, not an extension). */
+  available: boolean;
+}
+
+type InjectedProvider = EIP1193Provider & {
+  isMetaMask?: boolean;
+  isRabby?: boolean;
+  isPhantom?: boolean;
+  isCoinbaseWallet?: boolean;
+};
+
+/** Every injected EIP-1193 provider on the page, de-duplicated. Multiple
+ *  extensions coexist under `window.ethereum.providers`; Phantom and Coinbase
+ *  also expose their own namespaces. */
+function injectedProviders(): InjectedProvider[] {
+  if (typeof window === 'undefined') return [];
+  const w = window as typeof window & {
+    coinbaseWalletExtension?: InjectedProvider;
+  };
+  const out: InjectedProvider[] = [];
+  const add = (p?: InjectedProvider | null) => { if (p && !out.includes(p)) out.push(p); };
+  if (Array.isArray(w.ethereum?.providers)) (w.ethereum.providers as InjectedProvider[]).forEach(add);
+  else add(w.ethereum as InjectedProvider | undefined);
+  add(w.phantom?.ethereum as InjectedProvider | undefined);
+  add(w.coinbaseWalletExtension);
+  return out;
+}
+
+const WC_PROJECT_ID = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID ?? '';
+
+/** What the connect modal should offer, in display order. */
+export function listWallets(): WalletOption[] {
+  const found = injectedProviders();
+  const pick = (fn: (p: InjectedProvider) => boolean | undefined) => found.find((p) => fn(p)) ?? null;
+  const metamask = pick((p) => p.isMetaMask && !p.isRabby && !p.isPhantom);
+  const rabby = pick((p) => p.isRabby);
+  const phantom = pick((p) => p.isPhantom);
+  const coinbase = pick((p) => p.isCoinbaseWallet);
+  // Anything present but unrecognised still deserves an entry — a working
+  // wallet the app can't name is better than no option at all.
+  const other = found.find((p) => p !== metamask && p !== rabby && p !== phantom && p !== coinbase) ?? null;
+
+  const options: WalletOption[] = [
+    { id: 'metamask', name: 'MetaMask', provider: metamask, available: !!metamask },
+    { id: 'rabby', name: 'Rabby', provider: rabby, available: !!rabby },
+    { id: 'phantom', name: 'Phantom', provider: phantom, available: !!phantom },
+    { id: 'coinbase', name: 'Coinbase Wallet', provider: coinbase, available: !!coinbase },
+    { id: 'injected', name: 'Browser wallet', provider: other, available: !!other },
+    // No projectId configured means no WalletConnect relay to talk to, so the
+    // option is hidden rather than shown broken.
+    { id: 'walletconnect', name: 'WalletConnect (mobile)', provider: null, available: !!WC_PROJECT_ID },
+  ];
+  return options.filter((o) => o.available);
+}
+
+let wcProvider: (EIP1193Provider & { enable?: () => Promise<string[]>; disconnect?: () => Promise<void>; session?: unknown }) | null = null;
+
+/** Lazily builds the WalletConnect v2 provider. It implements the same
+ *  EIP-1193 surface as an injected wallet, so once it's the activeProvider
+ *  every existing eth_signTypedData_v4 / eth_sendTransaction call works
+ *  unchanged. */
+async function getWalletConnectProvider() {
+  if (wcProvider) return wcProvider;
+  if (!WC_PROJECT_ID) throw new Error('WalletConnect is not configured — set NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID');
+  const { EthereumProvider } = await import('@walletconnect/ethereum-provider');
+  wcProvider = (await EthereumProvider.init({
+    projectId: WC_PROJECT_ID,
+    // Arbitrum is where HL settles; the rest are what the transfer page offers.
+    chains: [42161],
+    optionalChains: [1, 56, 8453, 10, 137, 43114],
+    showQrModal: true,
+  })) as unknown as typeof wcProvider;
+  return wcProvider;
 }
 
 export function getSolanaProvider(): PhantomSolanaProvider | null {
@@ -148,6 +238,8 @@ interface WalletContextValue {
   isConnecting: boolean;
   checked: boolean;
   connect: () => Promise<void>;
+  connectWith: (id: WalletId) => Promise<void>;
+  wallets: WalletOption[];
   disconnect: () => void;
 }
 
@@ -155,6 +247,11 @@ const WalletContext = createContext<WalletContextValue | null>(null);
 
 const EVM_LS_KEY = 'rdo_evm_address';
 const SOL_LS_KEY = 'rdo_sol_address';
+const WALLET_LS_KEY = 'rdo_wallet_id';
+// Explicit disconnect has to be remembered. The extension stays authorized
+// after one, so `eth_accounts` keeps returning the address and the mount
+// effect below would silently reconnect a user who deliberately left.
+const DISCONNECTED_LS_KEY = 'rdo_disconnected';
 
 /**
  * One connect action covers both chains (matches Aster's own site — see
@@ -185,11 +282,40 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   // checks out.
   useEffect(() => {
     let cancelled = false;
+    // A user who disconnected stays disconnected across reloads, until they
+    // explicitly connect again.
+    try {
+      if (localStorage.getItem(DISCONNECTED_LS_KEY)) {
+        localStorage.removeItem(EVM_LS_KEY);
+        localStorage.removeItem(SOL_LS_KEY);
+        setChecked(true);
+        return;
+      }
+    } catch { /* silent */ }
+
     try {
       const storedEvm = localStorage.getItem(EVM_LS_KEY);
       if (storedEvm) setEvmAddress(storedEvm);
       const storedSol = localStorage.getItem(SOL_LS_KEY);
       if (storedSol) setSolAddress(storedSol);
+      // Re-point the shared accessor at the wallet that was in use, so signing
+      // after a reload goes to the same place it did before it.
+      const storedId = localStorage.getItem(WALLET_LS_KEY) as WalletId | null;
+      if (storedId && storedId !== 'walletconnect') {
+        const match = listWallets().find((w) => w.id === storedId);
+        if (match?.provider) activeProvider = match.provider;
+      } else if (storedId === 'walletconnect') {
+        // WC sessions live in the provider's own storage; re-init and adopt
+        // the session if it's still alive.
+        getWalletConnectProvider()
+          .then(async (p) => {
+            if (cancelled || !p?.session) return;
+            activeProvider = p;
+            const accs = (await p.request({ method: 'eth_accounts' })) as string[];
+            if (accs?.[0] && !cancelled) setEvmAddress(accs[0]);
+          })
+          .catch(() => { /* no live session */ });
+      }
     } catch { /* silent */ }
 
     const evmProvider = getEVMProvider();
@@ -252,6 +378,49 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  /** Connect one specific wallet from the chooser. */
+  const connectWith = useCallback(async (id: WalletId) => {
+    setIsConnecting(true);
+    try {
+      let provider: EIP1193Provider | null = null;
+      if (id === 'walletconnect') {
+        const p = await getWalletConnectProvider();
+        await p!.enable?.();
+        provider = p!;
+      } else {
+        provider = listWallets().find((w) => w.id === id)?.provider ?? null;
+      }
+      if (!provider) throw new Error('That wallet is no longer available');
+
+      const accounts = (await provider.request({ method: 'eth_requestAccounts' })) as string[];
+      if (!accounts?.[0]) throw new Error('Connection rejected');
+      activeProvider = provider;
+      setEvmAddress(accounts[0]);
+      try {
+        localStorage.setItem(EVM_LS_KEY, accounts[0]);
+        localStorage.setItem(WALLET_LS_KEY, id);
+        localStorage.removeItem(DISCONNECTED_LS_KEY);
+      } catch { /* silent */ }
+
+      // Phantom exposes Solana from the same approval — take it if offered,
+      // but never let a Solana refusal undo a good EVM connection.
+      if (id === 'phantom') {
+        try {
+          const resp = await getSolanaProvider()?.connect();
+          const addr = resp?.publicKey?.toString();
+          if (addr) {
+            setSolAddress(addr);
+            try { localStorage.setItem(SOL_LS_KEY, addr); } catch { /* silent */ }
+          }
+        } catch { /* EVM half already succeeded */ }
+      }
+    } catch (e) {
+      showToast((e as Error)?.message ?? 'Connection failed', 'err');
+    } finally {
+      setIsConnecting(false);
+    }
+  }, []);
+
   const connect = useCallback(async () => {
     const evmProvider = getEVMProvider();
     const solProvider = getSolanaProvider();
@@ -271,8 +440,12 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         try {
           const accounts = (await evmProvider.request({ method: 'eth_requestAccounts' })) as string[];
           if (accounts?.[0]) {
+            activeProvider = evmProvider;
             setEvmAddress(accounts[0]);
-            try { localStorage.setItem(EVM_LS_KEY, accounts[0]); } catch { /* silent */ }
+            try {
+              localStorage.setItem(EVM_LS_KEY, accounts[0]);
+              localStorage.removeItem(DISCONNECTED_LS_KEY);
+            } catch { /* silent */ }
             evmOk = true;
           }
         } catch { /* user rejected the EVM half — Solana may still succeed below */ }
@@ -283,7 +456,10 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
           const addr = resp?.publicKey?.toString();
           if (addr) {
             setSolAddress(addr);
-            try { localStorage.setItem(SOL_LS_KEY, addr); } catch { /* silent */ }
+            try {
+              localStorage.setItem(SOL_LS_KEY, addr);
+              localStorage.removeItem(DISCONNECTED_LS_KEY);
+            } catch { /* silent */ }
             solOk = true;
           }
         } catch { /* user rejected the Solana half */ }
@@ -296,17 +472,31 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
   const disconnect = useCallback(() => {
     getSolanaProvider()?.disconnect?.().catch(() => { /* silent */ });
+    // A WalletConnect session outlives the page unless it's explicitly killed,
+    // so "disconnect" that only cleared local state would leave the pairing up.
+    if (wcProvider && activeProvider === wcProvider) {
+      wcProvider.disconnect?.().catch(() => { /* silent */ });
+      wcProvider = null;
+    }
+    activeProvider = null;
     setEvmAddress(null);
     setSolAddress(null);
     try {
       localStorage.removeItem(EVM_LS_KEY);
       localStorage.removeItem(SOL_LS_KEY);
+      localStorage.removeItem(WALLET_LS_KEY);
+      localStorage.setItem(DISCONNECTED_LS_KEY, '1');
     } catch { /* silent */ }
   }, []);
 
+  // Recomputed per render rather than stored: extensions inject asynchronously,
+  // so a list captured once at mount can miss a wallet that loaded late.
+  const wallets = typeof window === 'undefined' ? [] : listWallets();
+
   const value = useMemo(
-    () => ({ evmAddress, solAddress, isConnecting, checked, connect, disconnect }),
-    [evmAddress, solAddress, isConnecting, checked, connect, disconnect],
+    () => ({ evmAddress, solAddress, isConnecting, checked, connect, connectWith, wallets, disconnect }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [evmAddress, solAddress, isConnecting, checked, connect, connectWith, disconnect, wallets.length],
   );
 
   return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>;

@@ -2,7 +2,8 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { useWallet, EVM_NETWORKS, getEVMProvider, type EvmNetworkOption } from '@/lib/wallet';
+import { useWallet, EVM_NETWORKS, getEVMProvider, getEvmProviderFor, switchEvmNetwork, type EvmNetworkOption } from '@/lib/wallet';
+import { showToast } from '@/lib/toast';
 
 // Bloom Manager-style monochrome SVG icons per chain
 function ChainIcon({ chainId, size = 18 }: { chainId: string; size?: number }) {
@@ -33,11 +34,11 @@ function ChainIcon({ chainId, size = 18 }: { chainId: string; size?: number }) {
 /**
  * The one network picker — same component everywhere a network needs to
  * be shown/picked (SiteNav's pages + the trade page's own header), so
- * switching behaves identically everywhere. Matches Aster's own site:
- * the picker is always visible (connected or not), and picking a
- * different network while connected logs the session out rather than
- * silently force-switching the wallet's chain in place — the caller's
- * own evmAddress/solAddress naturally clear once disconnect() runs.
+ * switching behaves identically everywhere. The picker is always visible
+ * (connected or not); picking a different network while connected asks the
+ * wallet to switch chains, adding the chain first if the wallet doesn't
+ * know it, and surfaces a specific error when the wallet can't (Phantom
+ * has no BNB Chain or Arbitrum support, for one).
  */
 export function NetworkSwitcher({ onChange }: { onChange?: (network: EvmNetworkOption) => void }) {
   const { evmAddress, solAddress, disconnect } = useWallet();
@@ -82,11 +83,24 @@ export function NetworkSwitcher({ onChange }: { onChange?: (network: EvmNetworkO
     return () => document.removeEventListener('click', onOutsideClick);
   }, [netOpen]);
 
-  function pickNetwork(network: EvmNetworkOption) {
+  async function pickNetwork(network: EvmNetworkOption) {
     setNetOpen(false);
     if (network.chainId === activeNetwork.chainId) return;
-    setActiveNetwork(network);
-    if (evmAddress || solAddress) disconnect();
+    // Solana isn't an EVM chain — there's no wallet_switchEthereumChain for it,
+    // picking it just changes which address the nav shows.
+    if (network.chainId === 'solana' || !evmAddress) {
+      setActiveNetwork(network);
+      return;
+    }
+    // Actually switch the wallet's chain. This used to call disconnect(),
+    // which logged the user out for the crime of picking a network — while
+    // switchEvmNetwork() sat right there, working, handling the add-chain
+    // (4902) case and Phantom's chain gaps with a real error message.
+    const provider = await getEvmProviderFor(evmAddress, network.chainId);
+    if (!provider) return;
+    const res = await switchEvmNetwork(provider, network);
+    if (res.ok) setActiveNetwork(network);
+    else showToast(res.reason ?? `Couldn't switch to ${network.name}`, 'err');
   }
 
   if (!mounted) return null;

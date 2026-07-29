@@ -19,9 +19,10 @@ const shorten = (a: string) => a.slice(0, 6) + '…' + a.slice(-4);
  * shared wallet session regardless.
  */
 export function WalletDropdown({ address, connectLabel, triggerClassName = 'nav-wallet-btn' }: { address: string | null; connectLabel?: string; triggerClassName?: string }) {
-  const { isConnecting, checked, connect, disconnect } = useWallet();
+  const { isConnecting, checked, connect, connectWith, wallets, disconnect } = useWallet();
   const [mounted, setMounted] = useState(false);
   const [open, setOpen] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -29,13 +30,22 @@ export function WalletDropdown({ address, connectLabel, triggerClassName = 'nav-
 
   useEffect(() => {
     function onOutsideClick(e: MouseEvent) {
-      if (open && ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (ref.current && ref.current.contains(e.target as Node)) return;
+      if (open) setOpen(false);
+      if (pickerOpen) setPickerOpen(false);
     }
     document.addEventListener('click', onOutsideClick);
     return () => document.removeEventListener('click', onOutsideClick);
-  }, [open]);
+  }, [open, pickerOpen]);
 
   const connected = !!address;
+
+  // One wallet and nothing else on offer? Skip the chooser — a modal with a
+  // single button is just an extra click.
+  function onConnectClick() {
+    if (wallets.length <= 1) { connect(); return; }
+    setPickerOpen(true);
+  }
 
   function copyAddress() {
     if (!address) return;
@@ -48,11 +58,32 @@ export function WalletDropdown({ address, connectLabel, triggerClassName = 'nav-
     <div className="relative shrink-0" ref={ref}>
       <button
         className={`${triggerClassName}${mounted && connected ? ' connected' : ''}`}
-        onClick={() => (connected ? setOpen(o => !o) : connect())}
+        onClick={() => (connected ? setOpen(o => !o) : onConnectClick())}
         disabled={!checked || isConnecting}
       >
         {!checked ? '…' : isConnecting ? 'Connecting…' : mounted && connected && address ? shorten(address) : (connectLabel ?? 'Connect')}
       </button>
+      {pickerOpen && !connected && (
+        <>
+          <div
+            className="fixed inset-0 z-[899]"
+            style={{ backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)', background: 'rgba(0,0,0,0.45)' }}
+            onClick={() => setPickerOpen(false)}
+          />
+          <div className="absolute top-[calc(100%+6px)] right-0 z-[900] bg-[#0d0d0d] border border-[#1f1f1f] rounded-[10px] p-2 min-w-[240px] shadow-[0_8px_24px_rgba(0,0,0,0.5)]">
+            <div className="px-2.5 py-2 text-[11px] uppercase tracking-[0.4px] text-[#878c8f]">Choose a wallet</div>
+            {wallets.map(w => (
+              <button
+                key={w.id}
+                className="flex items-center gap-2.5 w-full px-2.5 py-2.5 border-none bg-transparent text-[13px] font-medium font-[inherit] text-left text-[#c8d2d6] cursor-pointer rounded hover:bg-[#161616] hover:text-white"
+                onClick={() => { setPickerOpen(false); connectWith(w.id); }}
+              >
+                {w.name}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
       {open && connected && address && (
         <div className="absolute top-[calc(100%+6px)] right-0 z-[900] bg-[#0d0d0d] border border-[#1f1f1f] rounded-[10px] p-3.5 min-w-[220px] shadow-[0_8px_24px_rgba(0,0,0,0.5)]">
           <div className="flex items-center justify-between gap-2.5 text-sm font-semibold text-white font-mono pt-0.5 pb-3 px-0.5">
