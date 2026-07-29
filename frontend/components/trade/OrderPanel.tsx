@@ -200,7 +200,7 @@ export function OrderPanel() {
               <span className="margin-btn active" data-i18n="unified">Unified</span>
             </div>
           </div>
-          <div className="flex border-b border-[#1f1f1f] shrink-0 h-8">
+          <div className="flex border-y border-[#1f1f1f] shrink-0 h-8">
             <button
               className={`tp-otab${orderType === 'market' ? ' active' : ''}`}
               data-ot="market"
