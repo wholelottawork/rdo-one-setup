@@ -92,27 +92,17 @@ WalletConnect v2 packages (`@walletconnect/ethereum-provider`, `@walletconnect/m
 - `lib/aster-agent.ts` — `getSigner()` must use the active provider
 - `app/transfer/page.tsx` — `getProv()` must use the active provider
 
-### 2. Deposit Flow
+### 2. ~~Deposit Flow~~ — **BUILT**
 
-**Problem:** No deposit tab exists on the Transfer page. Users can withdraw and send, but cannot deposit funds into HL or Aster from the app.
+Deposit tab added to the Transfer page (`app/transfer/page.tsx`), destination picker for HL or Aster.
 
-**What to build:**
+- **HL** — native USDC on Arbitrum transferred to Bridge2 (`0x2df1c51e09aecf9cacb7bc98cb1742757f163df7`), credited to the sending EOA in ~1 min. **HL does not auto-detect USDC sitting in the wallet** — the earlier note in this file claiming that was wrong. Deposits under 5 USDC are swallowed by the bridge, so `execDeposit()` refuses them.
+- **Aster** — `asterDepositAddr()` (HMAC-signed) → `erc20Send()` USDT to that address.
+- **Any other chain/token** — LI.FI converts to USDC/USDT on Arbitrum first, then only the converted delta is forwarded (never the wallet's whole balance).
 
-**HL Deposit:**
-- HL auto-detects USDC sent to the user's address on Arbitrum — no contract interaction needed
-- The "deposit" is just: if funds are already USDC on Arbitrum → done, HL picks them up automatically
-- If funds are on another chain/token → LI.FI quote to convert to USDC on Arbitrum → approve → execute → HL auto-credits
-- Show: "Send USDC to your address on Arbitrum. HL detects it automatically within ~2 minutes."
+Same fix applied to the EXTRA → BASIC leg of **Between Accounts**, which previously reported "Transfer complete" while the swapped USDC sat in the wallet, never reaching Hyperliquid.
 
-**Aster Deposit:**
-- `asterDepositAddr()` already exists in `transfer/page.tsx` (line 658) — fetches the user's Aster deposit address via HMAC-signed API call
-- Flow: get deposit address → token approval → `erc20Send()` USDT to deposit address → poll Aster balance
-- If funds are on wrong chain/token → LI.FI convert to USDT on Arbitrum first → then send to deposit address
-- The `erc20Send()` helper already exists (line 582)
-
-**UI:** Add a "Deposit" tab button next to Withdraw/Send/Between. Same card layout with source chain/token selectors, amount input, destination picker (HL or Aster).
-
-**File to change:** `app/transfer/page.tsx` — add tab + logic (all helper functions already exist)
+**Still open:** no MAX button / wallet balance readout on the deposit tab (needs per-token balance reads incl. native).
 
 ### 3. Swap UI
 

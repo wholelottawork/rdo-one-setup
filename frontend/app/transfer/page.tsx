@@ -101,6 +101,11 @@ export default function TransferPage() {
     const USDC_ARB = '0xaf88d065e77c8cc2239327c5edb3a432268e5831';
     const USDT_ARB = '0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9';
     const HL       = '/hl';
+    // Hyperliquid Bridge2 on Arbitrum. A deposit is a plain ERC-20 transfer of
+    // NATIVE USDC to this address, credited to the sending EOA in ~1 min.
+    // Anything under 5 USDC is swallowed, not refunded — hence HL_MIN_DEPOSIT.
+    const HL_BRIDGE = '0x2df1c51e09aecf9cacb7bc98cb1742757f163df7';
+    const HL_MIN_DEPOSIT = BigInt(5_000_000); // 5 USDC, 6 decimals
 
     const el    = (id: string): HTMLElement | null => document.getElementById(id);
     const set   = (id: string, v: string) => { const e = el(id); if (e) e.textContent = v; };
@@ -108,6 +113,7 @@ export default function TransferPage() {
     const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
     let wdSrc    = 'hl';
+    let dpDest   = 'hl';
     let btwDir   = 'hl-to-aster';
     let hlEquity = 0;
     let curQuote: any  = null;
@@ -116,7 +122,7 @@ export default function TransferPage() {
     let curStep  = -1;
 
     function setTab(t: string) {
-      ['withdraw','send','between'].forEach((n, i) => {
+      ['withdraw','deposit','send','between'].forEach((n, i) => {
         const tabEl = el('tab-'+n);
         if (tabEl) tabEl.style.display = n === t ? '' : 'none';
         const tabs = document.querySelectorAll('.xfr-tab');
@@ -295,6 +301,130 @@ export default function TransferPage() {
         }
         showSt('wd-st', 'ok', 'Withdrawal complete ✓');
         if (wdAmt) wdAmt.value = '';
+      } catch (e: any) {
+        stepFail(e.code === 4001 ? 'Rejected by wallet' : e.message);
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    function setDpDest(d: string) {
+      dpDest = d;
+      const isHL = d === 'hl';
+      el('dp-btn-hl')?.classList.toggle('active', isHL);
+      el('dp-btn-as')?.classList.toggle('active', !isHL);
+      const apiF = el('dp-api-fields'); if (apiF) apiF.style.display = isHL ? 'none' : '';
+      const amtWrap = el('dp-amt-wrap'); if (amtWrap) amtWrap.className = 'amt-wrap' + (isHL ? '' : ' af');
+      const btn = el('dp-btn'); if (btn) btn.className = 'exec-btn ' + (isHL ? 'hl' : 'as');
+      const chain = (el('dp-from-chain') as HTMLSelectElement | null)?.value || '42161';
+      fillTokenSel('dp-from-token', chain, isHL ? 'USDC' : 'USDT');
+      updateDpHint();
+    }
+
+    function onDpFromChainChange() {
+      const chainEl = el('dp-from-chain') as HTMLSelectElement | null;
+      fillTokenSel('dp-from-token', chainEl?.value || '42161', selSym('dp-from-token'));
+      updateDpHint();
+    }
+
+    function dpTarget() { return dpDest === 'hl' ? USDC_ARB : USDT_ARB; }
+
+    // Deposits always land as the venue's own token on Arbitrum: native USDC
+    // for HL's bridge, USDT for Aster's deposit address. Anything else routes
+    // through LI.FI first — so the wallet holds the right asset before the
+    // final transfer, which is what actually credits the account.
+    function dpIsDirect() {
+      const chain = (el('dp-from-chain') as HTMLSelectElement | null)?.value || '42161';
+      const token = ((el('dp-from-token') as HTMLSelectElement | null)?.value || '').toLowerCase();
+      return chain === '42161' && token === dpTarget().toLowerCase();
+    }
+
+    function updateDpHint() {
+      set('dp-cur', selSym('dp-from-token'));
+      const hint = el('dp-hint'); if (!hint) return;
+      const isHL = dpDest === 'hl';
+      if (dpIsDirect()) {
+        hint.style.color = 'var(--text3,#878c8f)';
+        hint.textContent = isHL
+          ? 'Direct transfer to the Hyperliquid bridge — credited in ~1 min (min 5 USDC)'
+          : 'Direct transfer to your Aster deposit address';
+      } else {
+        hint.style.color = 'var(--accent,#50d2c1)';
+        hint.textContent = `LI.FI converts to ${isHL ? 'USDC' : 'USDT'} on Arbitrum first, then deposits`;
+      }
+    }
+
+    async function execDeposit() {
+      const dpAmt = el('dp-amt') as HTMLInputElement | null;
+      const amt = parseFloat(dpAmt?.value || '0') || 0;
+      if (!amt) return showSt('dp-st', 'err', 'Enter an amount');
+      const toHL   = dpDest === 'hl';
+      const tgt    = dpTarget();
+      const tgtSym = toHL ? 'USDC' : 'USDT';
+      let key = '', secret = '';
+      if (!toHL) {
+        key    = (el('dp-key') as HTMLInputElement | null)?.value.trim() || '';
+        secret = (el('dp-sec') as HTMLInputElement | null)?.value.trim() || '';
+        if (!key || !secret) return showSt('dp-st', 'err', 'Enter Aster API credentials');
+      }
+      const fromChain = (el('dp-from-chain') as HTMLSelectElement | null)?.value || '42161';
+      const fromToken = (el('dp-from-token') as HTMLSelectElement | null)?.value || '';
+      const fromSym   = selSym('dp-from-token');
+      const fromDec   = selDec('dp-from-token');
+      const direct    = dpIsDirect();
+      const btn = el('dp-btn') as HTMLButtonElement | null;
+      if (btn) btn.disabled = true;
+      const st = el('dp-st'); if (st) st.style.display = 'none';
+      const labels = direct ? [] : [
+        `Convert ${fromSym} → ${tgtSym} on Arbitrum via LI.FI`,
+        `Wait for ${tgtSym} in wallet`,
+      ];
+      labels.push(toHL ? 'Send USDC to the Hyperliquid bridge' : 'Send USDT to your Aster deposit address');
+      initProg('dp', labels);
+      try {
+        const user = await requireEVM();
+        const prov = getProv();
+        let sendAmt: bigint;
+        if (direct) {
+          sendAmt = BigInt(Math.round(amt * 10 ** fromDec));
+          const bal = await getERC20Bal(prov, tgt, user);
+          if (bal < sendAmt) throw new Error(`Wallet holds only ${fmt(Number(bal) / 1e6)} ${tgtSym}`);
+        } else {
+          stepSet(0, 'active', 'Getting LI.FI route…');
+          const q = await lifiQuote(fromChain, '42161', fromToken, tgt,
+            BigInt(Math.round(amt * 10 ** fromDec)).toString(), user, user);
+          const before = await getERC20Bal(prov, tgt, user);
+          stepSet(0, 'active', 'Approve + convert — confirm in wallet…');
+          const h = await lifiExec(prov, q, user);
+          stepSet(0, 'active', 'Confirming…');
+          await pollReceipt(prov, h);
+          stepSet(0, 'done', `${fromSym} → ${tgtSym} submitted`);
+          stepSet(1, 'active', 'Polling every 12s…');
+          // 3% under the quote: bridges settle slightly below the estimate,
+          // and waiting for the exact figure would hang forever.
+          const expect = BigInt(q.estimate?.toAmount ?? '0') * BigInt(97) / BigInt(100);
+          const after = await pollBal(prov, tgt, user, expect, before, 600000);
+          // Forward only what this conversion delivered — never the wallet's
+          // whole balance.
+          sendAmt = after - before;
+          stepSet(1, 'done', `${fmt(Number(sendAmt) / 1e6)} ${tgtSym} arrived`);
+        }
+        const last = labels.length - 1;
+        if (toHL && sendAmt < HL_MIN_DEPOSIT)
+          throw new Error('Hyperliquid ignores deposits under 5 USDC — it would be lost. Funds are still in your wallet.');
+        let dest = HL_BRIDGE;
+        if (!toHL) {
+          stepSet(last, 'active', 'Getting Aster deposit address…');
+          const dep = await asterDepositAddr(key, secret);
+          if (!dep) throw new Error('Could not fetch the Aster deposit address — check your API credentials');
+          dest = dep;
+        }
+        stepSet(last, 'active', `Sending ${fmt(Number(sendAmt) / 1e6)} ${tgtSym} — confirm in wallet…`);
+        const dh = await erc20Send(prov, tgt, user, dest, sendAmt.toString());
+        await pollReceipt(prov, dh);
+        stepSet(last, 'done', toHL ? 'Sent — Hyperliquid credits it in ~1 min' : 'Sent to Aster ✓');
+        showSt('dp-st', 'ok', 'Deposit complete ✓');
+        if (dpAmt) dpAmt.value = '';
       } catch (e: any) {
         stepFail(e.code === 4001 ? 'Rejected by wallet' : e.message);
       } finally {
@@ -506,7 +636,7 @@ export default function TransferPage() {
             'Withdraw USDT from Aster',
             'Wait for USDT in wallet',
             'Swap USDT → USDC on Arbitrum',
-            'Hyperliquid auto-credits USDC',
+            'Send USDC to the Hyperliquid bridge',
           ]);
           stepSet(0, 'active', 'Signing Aster withdrawal…');
           await asterWithdrawRaw(key, secret, amt, user);
@@ -518,12 +648,22 @@ export default function TransferPage() {
           stepSet(2, 'active', 'Getting LI.FI swap route…');
           const usdtBal = await getERC20Bal(prov, USDT_ARB, user);
           const q = await lifiQuote('42161', '42161', USDT_ARB, USDC_ARB, usdtBal.toString(), user, user);
+          const usdcBefore = await getERC20Bal(prov, USDC_ARB, user);
           stepSet(2, 'active', 'Approve + swap — confirm in wallet…');
           const sh = await lifiExec(prov, q, user);
           stepSet(2, 'active', 'Confirming swap…');
           await pollReceipt(prov, sh);
           stepSet(2, 'done', 'USDT → USDC swapped on Arbitrum');
-          stepSet(3, 'done', 'Hyperliquid detects USDC on Arbitrum automatically');
+          // HL does NOT pick up USDC sitting in the wallet — this step used to
+          // just declare success and leave the funds stranded there. The
+          // deposit is an explicit transfer to Bridge2.
+          const swapped = (await getERC20Bal(prov, USDC_ARB, user)) - usdcBefore;
+          if (swapped < HL_MIN_DEPOSIT)
+            throw new Error('Swapped USDC is under the 5 USDC Hyperliquid minimum — it stays in your wallet');
+          stepSet(3, 'active', `Sending ${fmt(Number(swapped) / 1e6)} USDC — confirm in wallet…`);
+          const bh = await erc20Send(prov, USDC_ARB, user, HL_BRIDGE, swapped.toString());
+          await pollReceipt(prov, bh);
+          stepSet(3, 'done', 'USDC sent — Hyperliquid credits it in ~1 min');
           showSt('btw-st', 'ok', `Transfer complete — $${fmt(amt)} EXTRA → BASIC`);
         }
       } catch (e: any) {
@@ -682,6 +822,10 @@ export default function TransferPage() {
     (window as any).onWdToChainChange = onWdToChainChange;
     (window as any).updateWdConvHint  = updateWdConvHint;
     (window as any).execWithdraw      = execWithdraw;
+    (window as any).setDpDest         = setDpDest;
+    (window as any).onDpFromChainChange = onDpFromChainChange;
+    (window as any).updateDpHint      = updateDpHint;
+    (window as any).execDeposit       = execDeposit;
     (window as any).onFromChainChange = onFromChainChange;
     (window as any).onFromTokenChange = onFromTokenChange;
     (window as any).onToChainChange   = onToChainChange;
@@ -697,6 +841,8 @@ export default function TransferPage() {
     fillChainSel('wd-to-chain');
     fillTokenSel('wd-to-token', '42161', 'USDC');
     updateWdConvHint();
+    fillChainSel('dp-from-chain');
+    setDpDest('hl');
     fillChainSel('from-chain'); fillChainSel('to-chain');
     fillTokenSel('from-token', '42161');
     fillTokenSel('to-token', '42161', 'ETH');
@@ -722,6 +868,7 @@ export default function TransferPage() {
 
         <div className="xfr-tabs">
           <button className="xfr-tab active" onClick={() => (window as any).setTab('withdraw')} data-i18n="withdraw">Withdraw</button>
+          <button className="xfr-tab" onClick={() => (window as any).setTab('deposit')} data-i18n="deposit">Deposit</button>
           <button className="xfr-tab" onClick={() => (window as any).setTab('send')} data-i18n="send">Send</button>
           <button className="xfr-tab" onClick={() => (window as any).setTab('between')} data-i18n="betweenAccounts">Between Accounts</button>
         </div>
@@ -775,6 +922,53 @@ export default function TransferPage() {
               <div className="prog-list" id="wd-prog-list" />
             </div>
             <div className="status" id="wd-st" />
+          </div>
+        </div>
+
+        {/* DEPOSIT */}
+        <div id="tab-deposit" style={{display:'none'}}>
+          <div className="card">
+            <div className="field-lbl" data-i18n="destAccount">Destination account</div>
+            <div className="src-tabs">
+              <button className="src-tab hl active" id="dp-btn-hl" onClick={() => (window as any).setDpDest('hl')}>BASIC · Hyperliquid</button>
+              <button className="src-tab as" id="dp-btn-as" onClick={() => (window as any).setDpDest('aster')}>EXTRA · Aster</button>
+            </div>
+            <div className="field-lbl">You send</div>
+            <div className="pair-row">
+              <div className="sel-wrap" style={{flex:'1.3'}}>
+                <select id="dp-from-chain" onChange={() => (window as any).onDpFromChainChange()}></select>
+              </div>
+              <div className="sel-wrap">
+                <select id="dp-from-token" onChange={() => (window as any).updateDpHint()}></select>
+              </div>
+            </div>
+            <div className="amt-wrap" id="dp-amt-wrap">
+              <input className="amt-input" type="number" id="dp-amt" placeholder="0.00" min="0" />
+              <div className="amt-right">
+                <span className="cur-badge" id="dp-cur">USDC</span>
+              </div>
+            </div>
+            <div className="conv-hint" id="dp-hint">&nbsp;</div>
+            <div id="dp-api-fields" style={{display:'none'}}>
+              <div className="field-lbl" data-i18n="asterApiCreds">Aster API credentials</div>
+              <div className="api-row">
+                <input className="api-input" type="text" id="dp-key" placeholder="API Key" />
+                <input className="api-input" type="password" id="dp-sec" placeholder="API Secret" />
+              </div>
+              <div className="api-note">Used only to fetch your Aster deposit address — never stored.</div>
+            </div>
+            <button className="exec-btn hl" id="dp-btn" onClick={() => (window as any).execDeposit()}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 21V8M7 13l5-5 5 5"/><path d="M4 4h16"/>
+              </svg>
+              Deposit
+            </button>
+            <div id="dp-prog" style={{display:'none'}}>
+              <div className="divider" />
+              <div className="field-lbl">Live progress</div>
+              <div className="prog-list" id="dp-prog-list" />
+            </div>
+            <div className="status" id="dp-st" />
           </div>
         </div>
 
