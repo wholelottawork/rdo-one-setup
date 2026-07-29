@@ -7,7 +7,7 @@
     "dev:frontend": "npm --prefix frontend run dev:preview",
     "dev:backend": "npm --prefix backend run dev",
     "build": "npm --prefix frontend run build",
-    "test": "npm --prefix frontend test"
+    "test": "npm --prefix frontend test && npm --prefix backend test"
   },
   "devDependencies": {
     "concurrently": "^10.0.3"

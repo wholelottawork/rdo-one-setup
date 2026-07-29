@@ -9,6 +9,9 @@
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "skipLibCheck": true,
+    // The self-checks run through `node src/...test.ts` directly (node strips
+    // the types), so they import with the real .ts extension.
+    "allowImportingTsExtensions": true,
     "forceConsistentCasingInFileNames": true,
     "noEmit": true
   },

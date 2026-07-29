@@ -7,6 +7,7 @@ import { signAsterV3Request, signAsterV3RequestAs } from '../lib/aster-auth';
 import { getOrCreateUserAgent } from '../lib/agent-keystore';
 import { deleteAsterCreds, hmacQuery, loadAsterCreds, saveAsterCreds } from '../lib/aster-creds';
 import { addTpslWatch, startTpslWatcher } from '../lib/aster-tpsl-watcher';
+import { verifyWalletAuth } from '../lib/wallet-auth';
 import type { AsterOIBulkBody } from '../types';
 
 const ASTER_FAPI = 'https://fapi.asterdex.com';
@@ -219,11 +220,25 @@ export default async function asterRoutes(fastify: FastifyInstance) {
   // Withdraw and deposit-address are V1 (API key + HMAC), not V3 agent-signed.
   // The browser used to hold that key/secret pair and sign withdrawals itself;
   // it now posts them here once and never sees them again. See lib/aster-creds.
-  async function requireCreds(reply: FastifyReply, user: unknown) {
-    if (!user || typeof user !== 'string') {
-      reply.code(400).send({ msg: 'user required' });
-      return null;
-    }
+  // `user` is a PUBLIC address, so it can never be taken on trust here — these
+  // credentials move funds. Every state-changing V1 route below requires a
+  // wallet signature over its own parameters (lib/wallet-auth.ts) and keys off
+  // the address recovered from that signature, never off the request body.
+  async function authed(
+    reply: FastifyReply,
+    action: string,
+    user: unknown,
+    params: Record<string, string>,
+    timestamp: unknown,
+    signature: unknown,
+  ) {
+    return verifyWalletAuth({
+      redis: fastify.redis, redisOk: fastify.redisOk, reply,
+      action, user, params, timestamp, signature,
+    });
+  }
+
+  async function requireCreds(reply: FastifyReply, user: string) {
     if (!fastify.redisOk) {
       reply.code(503).send({ msg: 'Credential store unavailable (Redis down) — cannot sign Aster V1 requests' });
       return null;
@@ -237,16 +252,18 @@ export default async function asterRoutes(fastify: FastifyInstance) {
   }
 
   fastify.post('/aster-creds', async (req: FastifyRequest, reply: FastifyReply) => {
-    const { user, apiKey, apiSecret } = (req.body ?? {}) as Record<string, string>;
-    if (!user || !apiKey || !apiSecret)
-      return reply.code(400).send({ msg: 'user, apiKey and apiSecret required' });
-    if (!fastify.redisOk)
-      return reply.code(503).send({ msg: 'Credential store unavailable (Redis down)' });
-    await saveAsterCreds(fastify.redis, user, { apiKey, apiSecret });
+    const { user, apiKey, apiSecret, timestamp, signature } = (req.body ?? {}) as Record<string, string>;
+    if (!apiKey || !apiSecret)
+      return reply.code(400).send({ msg: 'apiKey and apiSecret required' });
+    const owner = await authed(reply, 'aster-creds-save', user, {}, timestamp, signature);
+    if (!owner) return;
+    await saveAsterCreds(fastify.redis, owner, { apiKey, apiSecret });
     return { saved: true };
   });
 
-  // Existence only — the secret is never readable through the API, by design.
+  // Existence only — no secret, no state change, so this one stays open rather
+  // than making every page load prompt for a wallet signature. All it reveals
+  // is whether a public address has credentials on file.
   fastify.get('/aster-creds', async (req: FastifyRequest, reply: FastifyReply) => {
     const user = (req.query as Record<string, string>).user;
     if (!user) return reply.code(400).send({ msg: 'user required' });
@@ -255,18 +272,21 @@ export default async function asterRoutes(fastify: FastifyInstance) {
   });
 
   fastify.delete('/aster-creds', async (req: FastifyRequest, reply: FastifyReply) => {
-    const user = ((req.body ?? {}) as Record<string, string>).user;
-    if (!user) return reply.code(400).send({ msg: 'user required' });
-    if (!fastify.redisOk)
-      return reply.code(503).send({ msg: 'Credential store unavailable (Redis down)' });
-    await deleteAsterCreds(fastify.redis, user);
+    const { user, timestamp, signature } = (req.body ?? {}) as Record<string, string>;
+    const owner = await authed(reply, 'aster-creds-delete', user, {}, timestamp, signature);
+    if (!owner) return;
+    await deleteAsterCreds(fastify.redis, owner);
     return { deleted: true };
   });
 
   fastify.post('/aster-withdraw', async (req: FastifyRequest, reply: FastifyReply) => {
-    const { user, amount, address, asset = 'USDT' } = (req.body ?? {}) as Record<string, string>;
+    const { user, amount, address, asset = 'USDT', timestamp, signature } = (req.body ?? {}) as Record<string, string>;
     if (!amount || !address) return reply.code(400).send({ msg: 'amount and address required' });
-    const creds = await requireCreds(reply, user);
+    // The signature covers asset/amount/address, so an intercepted one can't be
+    // replayed against a different destination or a larger amount.
+    const owner = await authed(reply, 'aster-withdraw', user, { asset, amount: String(amount), address }, timestamp, signature);
+    if (!owner) return;
+    const creds = await requireCreds(reply, owner);
     if (!creds) return;
     const signed = hmacQuery(creds.apiSecret, {
       asset,
@@ -282,8 +302,10 @@ export default async function asterRoutes(fastify: FastifyInstance) {
   });
 
   fastify.get('/aster-deposit-address', async (req: FastifyRequest, reply: FastifyReply) => {
-    const { user, coin = 'USDT', network = 'ARBITRUM' } = req.query as Record<string, string>;
-    const creds = await requireCreds(reply, user);
+    const { user, coin = 'USDT', network = 'ARBITRUM', timestamp, signature } = req.query as Record<string, string>;
+    const owner = await authed(reply, 'aster-deposit-address', user, { coin, network }, timestamp, signature);
+    if (!owner) return;
+    const creds = await requireCreds(reply, owner);
     if (!creds) return;
     const signed = hmacQuery(creds.apiSecret, { coin, network, timestamp: String(Date.now()) });
     const d = (await signedPassthrough(`${ASTER_FAPI}/fapi/v1/capital/deposit/address?${signed}`, {

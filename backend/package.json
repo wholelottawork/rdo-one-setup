@@ -5,7 +5,8 @@
   "scripts": {
     "start": "tsx src/index.ts",
     "dev": "tsx watch src/index.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node src/lib/wallet-auth.test.ts"
   },
   "dependencies": {
     "@fastify/cors": "^9.0.1",

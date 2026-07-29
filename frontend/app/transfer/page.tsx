@@ -909,6 +909,35 @@ export default function TransferPage() {
         throw new Error(d?.response?.data?.message || d?.error || JSON.stringify(d).slice(0,100));
     }
 
+    // Proof to the backend that we control the address we're claiming. `user`
+    // is a public address, so without this anyone could call /aster-withdraw
+    // naming someone else and send the funds wherever they liked. The
+    // signature covers the action's own parameters (destination, amount), so
+    // it can't be replayed against different ones.
+    //
+    // MUST match backend/src/lib/wallet-auth.ts authMessage() byte for byte.
+    function authMessage(action: string, user: string, params: Record<string,string>, timestamp: number) {
+      const body = Object.keys(params).sort().map(k => `${k}=${params[k]}`).join('&');
+      return [
+        'RDO ONE authorization',
+        `action: ${action}`,
+        `user: ${user.toLowerCase()}`,
+        `params: ${body}`,
+        `timestamp: ${timestamp}`,
+      ].join('\n');
+    }
+
+    async function walletAuth(action: string, params: Record<string,string> = {}) {
+      const user = await requireEVM();
+      const prov = getProv();
+      const timestamp = Date.now();
+      const signature = await prov.request({
+        method: 'personal_sign',
+        params: [authMessage(action, user, params, timestamp), user],
+      }) as string;
+      return {user, timestamp, signature};
+    }
+
     // Aster's withdraw + deposit-address endpoints use the V1 API-key/HMAC
     // scheme. Both the key and the signing used to live in this page, which
     // meant a withdrawal-capable secret sat in the DOM. The secret is stored
@@ -916,10 +945,12 @@ export default function TransferPage() {
     // signature is produced there — this file only ever sends the user's
     // address, the amount and the destination.
     async function asterWithdrawRaw(amt: number, dest: string) {
+      const asset = 'USDT';
+      const auth = await walletAuth('aster-withdraw', {asset, amount: String(amt), address: dest});
       const res = await fetch('/aster-withdraw', {
         method: 'POST',
         headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({user: evmAddressRef.current, amount: String(amt), address: dest}),
+        body: JSON.stringify({...auth, asset, amount: String(amt), address: dest}),
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok || d.code) throw new Error(d?.msg || d?.message || 'Aster withdrawal failed');
@@ -927,7 +958,13 @@ export default function TransferPage() {
 
     async function asterDepositAddr(): Promise<string | null> {
       try {
-        const r = await fetch(`/aster-deposit-address?user=${encodeURIComponent(evmAddressRef.current || '')}`);
+        const coin = 'USDT', network = 'ARBITRUM';
+        const auth = await walletAuth('aster-deposit-address', {coin, network});
+        const p = new URLSearchParams({
+          user: auth.user, coin, network,
+          timestamp: String(auth.timestamp), signature: auth.signature,
+        });
+        const r = await fetch(`/aster-deposit-address?${p}`);
         if (!r.ok) return null;
         const d = await r.json();
         return d?.address || null;
@@ -968,10 +1005,12 @@ export default function TransferPage() {
       const apiKey = keyEl?.value.trim() || '', apiSecret = secEl?.value.trim() || '';
       if (!apiKey || !apiSecret) return showSt('creds-st', 'err', 'Enter both the API key and secret');
       try {
+        showSt('creds-st', 'inf', 'Confirm in your wallet…');
+        const auth = await walletAuth('aster-creds-save');
         const r = await fetch('/aster-creds', {
           method: 'POST',
           headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({user: addr, apiKey, apiSecret}),
+          body: JSON.stringify({...auth, apiKey, apiSecret}),
         });
         const d = await r.json().catch(() => ({}));
         if (!r.ok || !d.saved) throw new Error(d?.msg || 'Could not save credentials');
@@ -990,10 +1029,11 @@ export default function TransferPage() {
       const addr = evmAddressRef.current;
       if (!addr) return;
       try {
+        const auth = await walletAuth('aster-creds-delete');
         await fetch('/aster-creds', {
           method: 'DELETE',
           headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({user: addr}),
+          body: JSON.stringify(auth),
         });
         showSt('creds-st', 'ok', 'Credentials removed');
         await refreshCreds(addr);
