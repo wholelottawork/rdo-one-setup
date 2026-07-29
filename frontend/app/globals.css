@@ -2044,20 +2044,6 @@ input[type=number]::-webkit-inner-spin-button {
   background: var(--hl-accent);
   border-color: var(--hl-accent);
 }
-.size-slider-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.size-slider-pct {
-  font-family: var(--hl-font);
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--hl-accent);
-  white-space: nowrap;
-  min-width: 28px;
-  text-align: right;
-}
 .size-slider-input {
   position: absolute;
   left: 0; right: 0;

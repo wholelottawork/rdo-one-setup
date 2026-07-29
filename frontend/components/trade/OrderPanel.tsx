@@ -145,33 +145,32 @@ function SizeSlider() {
     setPct(val);
     const el = document.getElementById('sizeSlider') as HTMLInputElement;
     if (el) el.value = String(val);
+    const pctEl = document.getElementById('sizePct');
+    if (pctEl) pctEl.textContent = val > 0 ? val + '%' : '';
     (window as any).rdo?.onSlider(val);
   }
 
   return (
     <div className="size-slider-wrap">
-      <div className="size-slider-row">
-        <div className="size-slider-track">
-          <div className="size-slider-fill" style={{ width: `${pct}%` }} />
-          {SIZE_STEPS.map(s => (
-            <button
-              key={s}
-              className={`size-slider-dot${pct >= s ? ' active' : ''}`}
-              style={{ left: `${s}%` }}
-              onClick={() => apply(s)}
-            />
-          ))}
-          <input
-            id="sizeSlider"
-            type="range"
-            min={0}
-            max={100}
-            value={pct}
-            className="size-slider-input"
-            onChange={(e) => apply(parseInt(e.target.value))}
+      <div className="size-slider-track">
+        <div className="size-slider-fill" style={{ width: `${pct}%` }} />
+        {SIZE_STEPS.map(s => (
+          <button
+            key={s}
+            className={`size-slider-dot${pct >= s ? ' active' : ''}`}
+            style={{ left: `${s}%` }}
+            onClick={() => apply(s)}
           />
-        </div>
-        <span className="size-slider-pct">{pct}%</span>
+        ))}
+        <input
+          id="sizeSlider"
+          type="range"
+          min={0}
+          max={100}
+          value={pct}
+          className="size-slider-input"
+          onChange={(e) => apply(parseInt(e.target.value))}
+        />
       </div>
     </div>
   );
@@ -201,7 +200,7 @@ export function OrderPanel() {
               <span className="margin-btn active" data-i18n="unified">Unified</span>
             </div>
           </div>
-          <div className="flex shrink-0 h-8">
+          <div className="flex border-b border-[#1f1f1f] shrink-0 h-8">
             <button
               className={`tp-otab${orderType === 'market' ? ' active' : ''}`}
               data-ot="market"
@@ -288,6 +287,7 @@ export function OrderPanel() {
                 min={0}
                 onChange={() => (window as any).rdo?.updateStats()}
               />
+              <span id="sizePct" className="text-[10px] font-semibold text-[var(--hl-accent)] px-1 whitespace-nowrap"></span>
               <SizeUnitToggle />
             </div>
             <SizeSlider />
