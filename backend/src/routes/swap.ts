@@ -25,6 +25,10 @@ interface SwapQuery {
 
 interface OneInchSwapResponse {
   error?: unknown;
+  description?: string;
+  // v6.0 renamed toAmount -> dstAmount; accept both so a future rename back
+  // (or a v5 fallback) doesn't silently return undefined.
+  dstAmount?: string;
   toAmount?: string;
   tx?: { to: string; data: string; value: string; gasPrice: string; gas: string };
 }
@@ -61,15 +65,18 @@ export default async function swapRoutes(fastify: FastifyInstance) {
     const data = (await res.json()) as OneInchSwapResponse;
 
     if (data.error) return reply.code(400).send(data);
+    // No tx means 1inch rejected the request without setting `error` — don't
+    // dereference it and hand the frontend a 500 with no explanation.
+    if (!data.tx) return reply.code(400).send({ error: data.description ?? 'No swap route returned' });
 
     return {
-      toAmount: data.toAmount,
+      toAmount: data.dstAmount ?? data.toAmount,
       tx: {
-        to:       data.tx!.to,
-        data:     data.tx!.data,
-        value:    data.tx!.value,
-        gasPrice: data.tx!.gasPrice,
-        gas:      data.tx!.gas,
+        to:       data.tx.to,
+        data:     data.tx.data,
+        value:    data.tx.value,
+        gasPrice: data.tx.gasPrice,
+        gas:      data.tx.gas,
       },
     };
   });

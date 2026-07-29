@@ -123,7 +123,7 @@ export default function TransferPage() {
     let curStep  = -1;
 
     function setTab(t: string) {
-      ['withdraw','deposit','send','between'].forEach((n, i) => {
+      ['withdraw','deposit','swap','send','between'].forEach((n, i) => {
         const tabEl = el('tab-'+n);
         if (tabEl) tabEl.style.display = n === t ? '' : 'none';
         const tabs = document.querySelectorAll('.xfr-tab');
@@ -421,6 +421,143 @@ export default function TransferPage() {
         stepFail(e.code === 4001 ? 'Rejected by wallet' : e.message);
       } finally {
         if (btn) btn.disabled = false;
+      }
+    }
+
+    // ── Swap (1inch, same-chain) ──────────────────────────────────────────────
+    // Deliberately NOT using /swap/tokens: that returns thousands of tokens per
+    // chain and would need a searchable picker to be usable, while CHAINS above
+    // already lists the ones this app actually deals in. Swap the source if
+    // someone needs a long tail.
+    // 1inch addresses native gas tokens with this sentinel, not the zero address.
+    const NATIVE_1INCH = '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
+    const ZERO_ADDR    = '0x0000000000000000000000000000000000000000';
+    const swapAddr = (a: string) => (a.toLowerCase() === ZERO_ADDR ? NATIVE_1INCH : a);
+
+    let swQuote: any = null;
+    let swTimer: any = null;
+
+    function onSwChainChange() {
+      const c = (el('sw-chain') as HTMLSelectElement | null)?.value || '42161';
+      fillTokenSel('sw-from', c, selSym('sw-from'));
+      fillTokenSel('sw-to', c, selSym('sw-to'));
+      scheduleSwQuote();
+    }
+
+    function swFlip() {
+      const from = el('sw-from') as HTMLSelectElement | null;
+      const to   = el('sw-to') as HTMLSelectElement | null;
+      if (!from || !to) return;
+      const f = from.value; from.value = to.value; to.value = f;
+      scheduleSwQuote();
+    }
+
+    function scheduleSwQuote() {
+      clearTimeout(swTimer);
+      swQuote = null;
+      const btn = el('sw-btn') as HTMLButtonElement | null;
+      if (btn) btn.disabled = true;
+      set('sw-cur', selSym('sw-from'));
+      const amt = parseFloat((el('sw-amt') as HTMLInputElement | null)?.value || '0') || 0;
+      const wrap = el('sw-quote-wrap');
+      if (!amt) { if (wrap) wrap.style.display = 'none'; return; }
+      swTimer = setTimeout(fetchSwQuote, 650);
+    }
+
+    async function fetchSwQuote() {
+      const chain = (el('sw-chain') as HTMLSelectElement | null)?.value || '42161';
+      const src   = (el('sw-from') as HTMLSelectElement | null)?.value || '';
+      const dst   = (el('sw-to') as HTMLSelectElement | null)?.value || '';
+      const amt   = parseFloat((el('sw-amt') as HTMLInputElement | null)?.value || '0') || 0;
+      if (!amt) return;
+      if (src.toLowerCase() === dst.toLowerCase()) return showSt('sw-st', 'err', 'Pick two different tokens');
+      const wrap = el('sw-quote-wrap'); if (wrap) wrap.style.display = '';
+      const card = el('sw-qcard'); if (card) card.className = 'quote-card loading';
+      const skel = el('sw-skel'); if (skel) skel.style.display = '';
+      const body = el('sw-qbody'); if (body) body.style.display = 'none';
+      try {
+        const p = new URLSearchParams({
+          chainId: chain,
+          src: swapAddr(src),
+          dst: swapAddr(dst),
+          amount: BigInt(Math.round(amt * 10 ** selDec('sw-from'))).toString(),
+          ...(evmAddressRef.current ? {from: evmAddressRef.current} : {}),
+        });
+        const r = await fetch('/swap/quote?' + p);
+        const d = await r.json();
+        if (!r.ok || d.error) throw new Error(swapErr(d, r.status));
+        const out = Number(d.dstAmount ?? d.toAmount ?? 0) / 10 ** selDec('sw-to');
+        swQuote = {chain, src, dst, amt};
+        set('sw-recv-amt', fmt(out, out < 1 ? 6 : 4));
+        set('sw-recv-sym', selSym('sw-to'));
+        set('sw-rate', `1 ${selSym('sw-from')} ≈ ${fmt(out / amt, out / amt < 1 ? 6 : 4)} ${selSym('sw-to')}`);
+        if (card) card.className = 'quote-card';
+        if (skel) skel.style.display = 'none';
+        if (body) body.style.display = '';
+        const btn = el('sw-btn') as HTMLButtonElement | null;
+        if (btn) btn.disabled = !evmAddressRef.current;
+      } catch (e: any) {
+        if (card) card.className = 'quote-card error';
+        if (skel) skel.style.display = 'none';
+        if (body) body.style.display = '';
+        set('sw-recv-amt', e.message); set('sw-recv-sym', ''); set('sw-rate', '');
+      }
+    }
+
+    // Without ONEINCH_API_KEY the backend 503s every swap route — say that
+    // plainly instead of surfacing a bare "error".
+    function swapErr(d: any, status: number) {
+      const e = typeof d?.error === 'string' ? d.error : d?.description;
+      if (status === 503 || /ONEINCH_API_KEY/.test(e ?? ''))
+        return 'Swap is not configured — set ONEINCH_API_KEY on the backend';
+      return e || 'No route found';
+    }
+
+    async function execSwap() {
+      if (!swQuote) return;
+      const btn = el('sw-btn') as HTMLButtonElement | null;
+      if (btn) btn.disabled = true;
+      const st = el('sw-st'); if (st) st.style.display = 'none';
+      const fromSym = selSym('sw-from'), toSym = selSym('sw-to');
+      initProg('sw', [`Approve ${fromSym}`, `Swap ${fromSym} → ${toSym}`]);
+      try {
+        const user = await requireEVM();
+        const prov = getProv();
+        const amount = BigInt(Math.round(swQuote.amt * 10 ** selDec('sw-from'))).toString();
+        const p = new URLSearchParams({
+          chainId: swQuote.chain,
+          src: swapAddr(swQuote.src),
+          dst: swapAddr(swQuote.dst),
+          amount,
+          from: user,
+          slippage: '1',
+        });
+        stepSet(0, 'active', 'Building the swap…');
+        const r = await fetch('/swap/build?' + p);
+        const d = await r.json();
+        if (!r.ok || d.error || !d.tx) throw new Error(swapErr(d, r.status));
+        // Native gas tokens need no allowance; ensureApproval no-ops on the
+        // zero address, and 1inch's router is the spender for ERC-20s.
+        stepSet(0, 'active', 'Checking allowance…');
+        await ensureApproval(prov, swQuote.src.toLowerCase() === ZERO_ADDR ? '' : swQuote.src, user, d.tx.to, amount);
+        stepSet(0, 'done', 'Allowance ready');
+        stepSet(1, 'active', 'Confirm the swap in your wallet…');
+        const hash = await prov.request({method:'eth_sendTransaction', params:[{
+          from: user, to: d.tx.to, data: d.tx.data,
+          value: d.tx.value ? '0x'+BigInt(d.tx.value).toString(16) : '0x0',
+          ...(d.tx.gas ? {gas:'0x'+BigInt(d.tx.gas).toString(16)} : {}),
+        }]}) as string;
+        stepSet(1, 'active', 'Confirming…');
+        await pollReceipt(prov, hash);
+        stepSet(1, 'done', `Swapped into ${toSym} ✓`);
+        showSt('sw-st', 'ok', `Swap complete — tx ${hash.slice(0,20)}…`);
+        const amtEl = el('sw-amt') as HTMLInputElement | null; if (amtEl) amtEl.value = '';
+        const wrap = el('sw-quote-wrap'); if (wrap) wrap.style.display = 'none';
+        swQuote = null;
+      } catch (e: any) {
+        stepFail(e.code === 4001 ? 'Rejected by wallet' : e.message);
+      } finally {
+        if (btn) btn.disabled = !swQuote;
       }
     }
 
@@ -896,6 +1033,10 @@ export default function TransferPage() {
     (window as any).sendMax           = sendMax;
     (window as any).saveCreds         = saveCreds;
     (window as any).clearCreds        = clearCreds;
+    (window as any).onSwChainChange   = onSwChainChange;
+    (window as any).scheduleSwQuote   = scheduleSwQuote;
+    (window as any).swFlip            = swFlip;
+    (window as any).execSwap          = execSwap;
     (window as any).setDir            = setDir;
     (window as any).btwMax            = btwMax;
     (window as any).execBtw           = execBtw;
@@ -907,6 +1048,10 @@ export default function TransferPage() {
     updateWdConvHint();
     fillChainSel('dp-from-chain');
     setDpDest('hl');
+    fillChainSel('sw-chain');
+    fillTokenSel('sw-from', '42161', 'USDC');
+    fillTokenSel('sw-to', '42161', 'ETH');
+    set('sw-cur', selSym('sw-from'));
     fillChainSel('from-chain'); fillChainSel('to-chain');
     fillTokenSel('from-token', '42161');
     fillTokenSel('to-token', '42161', 'ETH');
@@ -956,6 +1101,7 @@ export default function TransferPage() {
         <div className="xfr-tabs">
           <button className="xfr-tab active" onClick={() => (window as any).setTab('withdraw')} data-i18n="withdraw">Withdraw</button>
           <button className="xfr-tab" onClick={() => (window as any).setTab('deposit')} data-i18n="deposit">Deposit</button>
+          <button className="xfr-tab" onClick={() => (window as any).setTab('swap')} data-i18n="swap">Swap</button>
           <button className="xfr-tab" onClick={() => (window as any).setTab('send')} data-i18n="send">Send</button>
           <button className="xfr-tab" onClick={() => (window as any).setTab('between')} data-i18n="betweenAccounts">Between Accounts</button>
         </div>
@@ -1040,6 +1186,66 @@ export default function TransferPage() {
               <div className="prog-list" id="dp-prog-list" />
             </div>
             <div className="status" id="dp-st" />
+          </div>
+        </div>
+
+        {/* SWAP */}
+        <div id="tab-swap" style={{display:'none'}}>
+          <div className="card">
+            <div className="field-lbl">Network</div>
+            <div className="sel-wrap">
+              <select id="sw-chain" onChange={() => (window as any).onSwChainChange()}></select>
+            </div>
+            <div className="field-lbl">You pay</div>
+            <div className="pair-row">
+              <div className="sel-wrap" style={{flex:'1.3'}}>
+                <select id="sw-from" onChange={() => (window as any).scheduleSwQuote()}></select>
+              </div>
+              <div className="sel-wrap">
+                <button className="max-btn" style={{width:'100%',padding:'9px 0'}} onClick={() => (window as any).swFlip()} title="Flip tokens">⇅ Flip</button>
+              </div>
+            </div>
+            <div className="amt-wrap">
+              <input className="amt-input" type="number" id="sw-amt" placeholder="0.00" min="0" onInput={() => (window as any).scheduleSwQuote()} />
+              <div className="amt-right">
+                <span className="cur-badge" id="sw-cur">—</span>
+              </div>
+            </div>
+            <div className="field-lbl">You receive</div>
+            <div className="sel-wrap">
+              <select id="sw-to" onChange={() => (window as any).scheduleSwQuote()}></select>
+            </div>
+            <div id="sw-quote-wrap" style={{display:'none'}}>
+              <div className="quote-card loading" id="sw-qcard">
+                <div className="q-title">Estimated output</div>
+                <div className="q-skeleton" id="sw-skel" />
+                <div id="sw-qbody" style={{display:'none'}}>
+                  <div className="q-receive">
+                    <span id="sw-recv-amt">—</span>{' '}
+                    <span id="sw-recv-sym" style={{fontSize:'13px',fontWeight:600,color:'var(--text3,#878c8f)'}}></span>
+                  </div>
+                  <div className="conv-hint" id="sw-rate">&nbsp;</div>
+                </div>
+              </div>
+            </div>
+            <button className="exec-btn lifi" id="sw-btn" onClick={() => (window as any).execSwap()} disabled>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4"/>
+              </svg>
+              Swap
+            </button>
+            <div id="sw-prog" style={{display:'none'}}>
+              <div className="divider" />
+              <div className="field-lbl">Live progress</div>
+              <div className="prog-list" id="sw-prog-list" />
+            </div>
+            <div className="status" id="sw-st" />
+          </div>
+          <div className="card">
+            <div className="info-box neu" style={{marginBottom:0}}>
+              Same-chain swaps via 1inch, routed through the backend so the API key stays server-side.
+              For <strong>cross-chain</strong> moves use the Send tab, which quotes bridges through LI.FI.
+            </div>
           </div>
         </div>
 
