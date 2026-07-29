@@ -117,7 +117,7 @@ export function TradeHeader() {
           </div>
 
           {/* Stat blocks — now before nav */}
-          <div className="flex flex-col items-start py-0 px-3.5 border-r border-[#1f1f1f] gap-px shrink-0">
+          <div className="flex flex-col items-start py-0 px-3.5 gap-px shrink-0">
             <span className="text-[9px] text-[#878c8f] tracking-[0.4px] uppercase" data-i18n="mark">
               Mark
             </span>
@@ -125,7 +125,7 @@ export function TradeHeader() {
               —
             </span>
           </div>
-          <div className="flex flex-col items-start py-0 px-3.5 border-r border-[#1f1f1f] gap-px shrink-0">
+          <div className="flex flex-col items-start py-0 px-3.5 gap-px shrink-0">
             <span className="text-[9px] text-[#878c8f] tracking-[0.4px] uppercase" data-i18n="change24h">
               24h Change
             </span>
@@ -133,7 +133,7 @@ export function TradeHeader() {
               —
             </span>
           </div>
-          <div className="flex flex-col items-start py-0 px-3.5 border-r border-[#1f1f1f] gap-px shrink-0">
+          <div className="flex flex-col items-start py-0 px-3.5 gap-px shrink-0">
             <span className="text-[9px] text-[#878c8f] tracking-[0.4px] uppercase" data-i18n="volume24h">
               24h Volume
             </span>
@@ -141,7 +141,7 @@ export function TradeHeader() {
               —
             </span>
           </div>
-          <div className="flex flex-col items-start py-0 px-3.5 border-r border-[#1f1f1f] gap-px shrink-0">
+          <div className="flex flex-col items-start py-0 px-3.5 gap-px shrink-0">
             <span className="text-[9px] text-[#878c8f] tracking-[0.4px] uppercase" data-i18n="fundingCountdown">
               Funding / Countdown
             </span>
