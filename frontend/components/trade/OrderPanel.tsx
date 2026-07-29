@@ -149,37 +149,29 @@ function SizeSlider() {
   }
 
   return (
-    <div
-      className="size-slider-wrap"
-      onMouseEnter={() => setDragging(true)}
-      onMouseLeave={() => setDragging(false)}
-    >
-      <div className="size-slider-track">
-        <div className="size-slider-fill" style={{ width: `${pct}%` }} />
-        {SIZE_STEPS.map(s => (
-          <button
-            key={s}
-            className={`size-slider-dot${pct >= s ? ' active' : ''}`}
-            style={{ left: `${s}%` }}
-            onClick={() => apply(s)}
+    <div className="size-slider-wrap">
+      <div className="size-slider-row">
+        <div className="size-slider-track">
+          <div className="size-slider-fill" style={{ width: `${pct}%` }} />
+          {SIZE_STEPS.map(s => (
+            <button
+              key={s}
+              className={`size-slider-dot${pct >= s ? ' active' : ''}`}
+              style={{ left: `${s}%` }}
+              onClick={() => apply(s)}
+            />
+          ))}
+          <input
+            id="sizeSlider"
+            type="range"
+            min={0}
+            max={100}
+            value={pct}
+            className="size-slider-input"
+            onChange={(e) => apply(parseInt(e.target.value))}
           />
-        ))}
-        {(dragging || pct > 0) && (
-          <div className="size-slider-tooltip" style={{ left: `${pct}%` }}>
-            {pct}%
-          </div>
-        )}
-        <input
-          id="sizeSlider"
-          type="range"
-          min={0}
-          max={100}
-          value={pct}
-          className="size-slider-input"
-          onMouseDown={() => setDragging(true)}
-          onMouseUp={() => setDragging(false)}
-          onChange={(e) => apply(parseInt(e.target.value))}
-        />
+        </div>
+        <span className="size-slider-pct">{pct}%</span>
       </div>
     </div>
   );
