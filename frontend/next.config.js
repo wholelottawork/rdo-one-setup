@@ -50,6 +50,7 @@ const nextConfig = {
       { source: '/aster-creds',             destination: `${BACKEND_URL}/api/aster-creds` },
       { source: '/aster-withdraw',          destination: `${BACKEND_URL}/api/aster-withdraw` },
       { source: '/aster-deposit-address',   destination: `${BACKEND_URL}/api/aster-deposit-address` },
+      { source: '/aster-tpsl-watch',        destination: `${BACKEND_URL}/api/aster-tpsl-watch` },
       // LI.FI
       { source: '/lifi-api/:path*', destination: `${BACKEND_URL}/api/lifi-api/:path*` },
       // 1inch swap (server-side API key)

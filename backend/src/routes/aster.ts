@@ -6,6 +6,7 @@ import { registerCachedProxy } from '../lib/cached-proxy';
 import { signAsterV3Request, signAsterV3RequestAs } from '../lib/aster-auth';
 import { getOrCreateUserAgent } from '../lib/agent-keystore';
 import { deleteAsterCreds, hmacQuery, loadAsterCreds, saveAsterCreds } from '../lib/aster-creds';
+import { addTpslWatch, startTpslWatcher } from '../lib/aster-tpsl-watcher';
 import type { AsterOIBulkBody } from '../types';
 
 const ASTER_FAPI = 'https://fapi.asterdex.com';
@@ -188,6 +189,31 @@ export default async function asterRoutes(fastify: FastifyInstance) {
       body: signedQuery,
     });
   });
+
+  // ── TP/SL fill watcher ────────────────────────────────────────────────────
+  // The browser can't be trusted to hold this wait: closing the tab used to
+  // drop a resting limit's TP/SL entirely. See lib/aster-tpsl-watcher.
+  fastify.post('/aster-tpsl-watch', async (req: FastifyRequest, reply: FastifyReply) => {
+    const { user, symbol, orderId, side, tpPrice, slPrice } = (req.body ?? {}) as Record<string, string>;
+    if (!user || !symbol || !orderId || !side)
+      return reply.code(400).send({ msg: 'user, symbol, orderId and side required' });
+    if (!tpPrice && !slPrice) return reply.code(400).send({ msg: 'tpPrice or slPrice required' });
+    if (!fastify.redisOk)
+      return reply.code(503).send({ msg: 'Watcher unavailable (Redis down) — the browser must hold this wait' });
+
+    await addTpslWatch(fastify, {
+      user,
+      symbol,
+      orderId: String(orderId),
+      side: side === 'BUY' ? 'BUY' : 'SELL',
+      tpPrice: tpPrice || undefined,
+      slPrice: slPrice || undefined,
+      createdAt: Date.now(),
+    });
+    return { watching: true };
+  });
+
+  startTpslWatcher(fastify);
 
   // ── Aster V1 credentials + the endpoints that need them ───────────────────
   // Withdraw and deposit-address are V1 (API key + HMAC), not V3 agent-signed.

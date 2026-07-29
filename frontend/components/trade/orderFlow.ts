@@ -150,10 +150,11 @@ export function createOrderFlow(deps: {
     updateStats();
   }
 
-  // Polls one Aster order until it has ANY execution. Used to hold TP/SL back
-  // until a resting limit actually starts filling — see the call site.
-  // ponytail: lives in the browser tab, so a reload or a closed tab drops the
-  // watch and the fill lands unprotected. A backend watcher is the upgrade.
+  // Polls one Aster order until it has ANY execution. FALLBACK ONLY: the
+  // backend watcher (backend/src/lib/aster-tpsl-watcher.ts) normally holds
+  // this wait, since it survives the tab closing. This path runs when that
+  // watcher is unreachable — better a wait that dies with the tab than no
+  // protection at all, and the toast says so.
   async function waitForFill(
     orderId: number,
     symbol: string,
@@ -346,8 +347,34 @@ export function createOrderFlow(deps: {
             if (isLimit) {
               // A resting limit has no position behind it yet: triggers placed
               // now fire against nothing and are consumed, so the fill that
-              // arrives later is naked. Wait for the first execution instead.
-              showToast("TP/SL will be placed when the limit fills", "ok");
+              // arrives later is naked. Hand the wait to the backend watcher,
+              // which survives this tab closing; only if that's unreachable do
+              // we fall back to holding it here.
+              const watched = await fetch(`/aster-tpsl-watch`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  user: addr,
+                  symbol: `${deps.getMarket()}USDT`,
+                  orderId: String(d.orderId),
+                  side: tpslSide,
+                  tpPrice: tpPx ? String(roundPx(tpPx)) : "",
+                  slPrice: slPx ? String(roundPx(slPx)) : "",
+                }),
+              })
+                .then((r) => r.ok)
+                .catch(() => false);
+              if (watched) {
+                showToast("TP/SL will be placed when the limit fills", "ok");
+                setTimeout(() => refreshPositions(addr), 2000);
+                btn.textContent = orig;
+                (btn as HTMLButtonElement).disabled = false;
+                return;
+              }
+              showToast(
+                "TP/SL will be placed when the limit fills — keep this tab open",
+                "ok",
+              );
               waitForFill(d.orderId, `${deps.getMarket()}USDT`, addr).then(
                 (r) =>
                   r === "filled"
