@@ -193,14 +193,14 @@ export function OrderPanel() {
     <>
         {/* Trade Panel */}
         <aside className="flex flex-col bg-[var(--hl-bg-base)] overflow-y-auto">
-          <div className="flex items-center justify-center gap-2 py-2 px-3 shrink-0 h-12 box-border">
+          <div className="flex items-center justify-center gap-2 py-2 px-3 border-b border-[#1f1f1f] shrink-0 h-12 box-border">
             <MarginTypePicker />
             <LeveragePicker />
             <div className="margin-toggle">
               <span className="margin-btn active" data-i18n="unified">Unified</span>
             </div>
           </div>
-          <div className="flex border-y border-[#1f1f1f] shrink-0 h-8">
+          <div className="flex border-b border-[#1f1f1f] shrink-0 h-8">
             <button
               className={`tp-otab${orderType === 'market' ? ' active' : ''}`}
               data-ot="market"
