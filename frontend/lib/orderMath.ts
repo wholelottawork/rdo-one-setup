@@ -10,6 +10,24 @@ export function entryPrice(isLimit: boolean, limitPx: number, markPx: number): n
 }
 
 /**
+ * Whether an order has a position behind it yet, from one status response.
+ *
+ * TP/SL for a resting limit can only be placed once something has executed —
+ * triggers sent earlier fire against an empty position and are consumed,
+ * leaving the eventual fill naked. "filled" here means ANY execution, partial
+ * included: that is the moment protection becomes both possible and needed.
+ */
+export function fillState(order: {
+  executedQty?: string | number;
+  status?: string;
+}): "filled" | "ended" | "waiting" {
+  if (parseFloat(String(order?.executedQty ?? "0")) > 0) return "filled";
+  if (["CANCELED", "EXPIRED", "REJECTED"].includes(String(order?.status)))
+    return "ended";
+  return "waiting";
+}
+
+/**
  * Error message when a TP/SL sits on the wrong side of the entry, else null.
  *
  * `entryPx` must be the ENTRY price, not mark. A stop placed between mark and

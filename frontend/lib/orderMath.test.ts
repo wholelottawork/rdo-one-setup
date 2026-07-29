@@ -1,6 +1,6 @@
 // Run: npm test   (node strips the types natively, no test framework)
 import assert from "node:assert/strict";
-import { entryPrice, tpslError } from "./orderMath.ts";
+import { entryPrice, fillState, tpslError } from "./orderMath.ts";
 
 const MARK = 100_000;
 
@@ -48,5 +48,16 @@ assert.equal(
 
 // --- zero means "not set", never a trigger at price 0 ----------------------
 assert.equal(tpslError(true, MARK, 0, 0, false), null, "no triggers set");
+
+// --- fillState: when a limit order's TP/SL may be placed -------------------
+assert.equal(fillState({status:"NEW", executedQty:"0"}), "waiting", "resting limit is not protected yet");
+assert.equal(fillState({status:"PARTIALLY_FILLED", executedQty:"0.5"}), "filled", "a partial fill is a real position");
+assert.equal(fillState({status:"FILLED", executedQty:"1"}), "filled", "full fill");
+assert.equal(fillState({status:"CANCELED", executedQty:"0"}), "ended", "cancelled without filling");
+assert.equal(fillState({status:"EXPIRED", executedQty:"0"}), "ended", "expired without filling");
+assert.equal(fillState({status:"REJECTED", executedQty:"0"}), "ended", "rejected");
+// A cancel AFTER a partial fill still leaves a position open — protect it.
+assert.equal(fillState({status:"CANCELED", executedQty:"0.3"}), "filled", "partial fill then cancel still needs TP/SL");
+assert.equal(fillState({}), "waiting", "missing fields never claim a position exists");
 
 console.log("orderMath: all checks passed");

@@ -125,8 +125,7 @@ Same fix applied to the EXTRA → BASIC leg of **Between Accounts**, which previ
 
 ### Must fix
 
-1. **Aster leverage not controllable** — UI leverage picker has no effect on Aster orders. Users think they're setting 5x while Aster uses the account's own default (could be 20x+). Either: add a `POST /aster-signed/fapi/v3/leverage` call before Aster orders (like HL does), or show a warning that leverage follows Aster account settings.
-   - File: `orderFlow.ts` line ~169
+1. ~~**Aster leverage not controllable**~~ — **FIXED** (`orderFlow.ts` posts `/aster-signed/fapi/v3/leverage` before every Aster entry and aborts the order if Aster refuses, rather than filling at a leverage the user didn't pick. Skipped on reduce-only, where it's irrelevant and Aster can reject the change.)
 
 2. **NetworkSwitcher disconnects instead of switching** — Clicking a different network calls `disconnect()` instead of `wallet_switchEthereumChain`. The `switchEvmNetwork()` function exists in `wallet.tsx` and works, but NetworkSwitcher doesn't use it.
    - File: `components/shared/NetworkSwitcher.tsx` line 86
@@ -143,8 +142,8 @@ Same fix applied to the EXTRA → BASIC leg of **Between Accounts**, which previ
 
 6. ~~**Reduce-only flag ignored for Aster**~~ — **FIXED** (`orderFlow.ts` Aster order body now includes `reduceOnly: "true"` when checkbox is ticked.)
 
-7. **Aster TP/SL quantity assumes full fill** — TP/SL are placed with the requested `qty`, but partial fills mean the position could be smaller. The triggers would be for more than the position size.
-   - File: `orderFlow.ts` lines 208-239
+7. ~~**Aster TP/SL quantity assumes full fill**~~ — **FIXED** (triggers now use `closePosition: true`, which closes whatever is actually open when it fires, so no quantity is guessed. For limit orders they're no longer placed up front either — a trigger on an unfilled limit fires against nothing and is consumed, leaving the later fill naked; `waitForFill()` holds them until the first execution. `fillState()` in `lib/orderMath.ts` is covered by `npm test`.)
+   - Ceiling: the fill watcher lives in the browser tab, so a reload drops it. A backend watcher is the upgrade.
 
 8. **closePosition uses Date.now() instead of nextNonce()** — Could cause nonce collisions on rapid-fire closes. `openPosition` uses `nextNonce()` correctly.
    - File: `lib/trading.ts` line 557

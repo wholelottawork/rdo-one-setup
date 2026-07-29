@@ -7,7 +7,7 @@
 import { getEVMProvider } from "@/lib/wallet";
 import { showToast } from "@/lib/toast";
 import { MARKET_SLIPPAGE } from "@/lib/trading";
-import { entryPrice, tpslError } from "@/lib/orderMath";
+import { entryPrice, fillState, tpslError } from "@/lib/orderMath";
 import { fmt, fmtLarge, asterRound } from "@/lib/format";
 import { createTpslDialog } from "./tpslDialog";
 import { renderOpenOrders, getAsterOpenOrdersLocal } from "./bottomTabs";
@@ -150,6 +150,33 @@ export function createOrderFlow(deps: {
     updateStats();
   }
 
+  // Polls one Aster order until it has ANY execution. Used to hold TP/SL back
+  // until a resting limit actually starts filling — see the call site.
+  // ponytail: lives in the browser tab, so a reload or a closed tab drops the
+  // watch and the fill lands unprotected. A backend watcher is the upgrade.
+  async function waitForFill(
+    orderId: number,
+    symbol: string,
+    addr: string,
+    timeoutMs = 1_800_000,
+  ): Promise<"filled" | "ended" | "timeout"> {
+    const end = Date.now() + timeoutMs;
+    while (Date.now() < end) {
+      await new Promise((r) => setTimeout(r, 5000));
+      try {
+        const r = await fetch(
+          `/aster-signed/fapi/v3/order?symbol=${symbol}&orderId=${orderId}&user=${encodeURIComponent(addr)}`,
+        );
+        const s = fillState(await r.json());
+        if (s !== "waiting") return s;
+      } catch {
+        // Transient network/proxy blip — keep watching rather than abandoning
+        // a position the user expects to be protected.
+      }
+    }
+    return "timeout";
+  }
+
   async function submitTrade() {
     const addr = deps.getAddr();
     if (!addr) {
@@ -208,9 +235,8 @@ export function createOrderFlow(deps: {
     const orig = btn.textContent!;
     btn.textContent = "Confirming...";
     (btn as HTMLButtonElement).disabled = true;
-    // EXTRA/Aster: signed market order server-side (no wallet prompt). size
-    // is base-coin units; Aster uses the account's own leverage (the root
-    // app doesn't set leverage per order either). Ported from asterPlaceOrder.
+    // EXTRA/Aster: signed order placed server-side (no wallet prompt). size
+    // is base-coin units. Ported from asterPlaceOrder.
     if (deps.getMode() === "aster") {
       // Snap size/prices to the symbol's grid — off-grid orders are
       // rejected (-1111), and Aster's real {code,msg} now reaches us.
@@ -227,6 +253,33 @@ export function createOrderFlow(deps: {
       }
       const roundPx = (v: number) => (prec ? asterRound(v, prec.tick) : v);
       try {
+        // The leverage picker was cosmetic on Aster — orders went out at
+        // whatever the ACCOUNT default happened to be (often 20x+) while the
+        // panel read 5x, so the liq price shown was fiction. Apply it first,
+        // and abort if Aster refuses: trading at a leverage the user did not
+        // choose is worse than not trading. Skipped when reducing, where
+        // leverage is irrelevant and Aster can reject the change outright.
+        if (!reduceOnly) {
+          const levRes = await fetch(`/aster-signed/fapi/v3/leverage`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              symbol: `${deps.getMarket()}USDT`,
+              leverage: String(Math.round(lev)),
+              user: addr,
+            }),
+          });
+          const levD = await levRes.json().catch(() => ({}));
+          if (!levD.leverage) {
+            showToast(
+              `Could not set ${Math.round(lev)}x on Aster: ${levD.msg ?? "unknown error"}`,
+              "err",
+            );
+            btn.textContent = orig;
+            (btn as HTMLButtonElement).disabled = false;
+            return;
+          }
+        }
         const res = await fetch(`/aster-signed/fapi/v3/order`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -251,11 +304,14 @@ export function createOrderFlow(deps: {
             `${isBuy ? "Long" : "Short"} ${deps.getMarket()} opened`,
             "ok",
           );
-          // TP/SL = separate reduce-only stop-market orders signed by the
-          // agent (no wallet prompt). Binance-style TAKE_PROFIT_MARKET /
-          // STOP_MARKET with stopPrice.
+          // TP/SL = separate stop-market orders signed by the agent (no wallet
+          // prompt). Binance-style TAKE_PROFIT_MARKET / STOP_MARKET.
           if (tpslOn && (tpPx || slPx)) {
             const tpslSide = isBuy ? "SELL" : "BUY";
+            // closePosition closes whatever is ACTUALLY open when the trigger
+            // fires. The old code sent the requested qty with reduceOnly, so a
+            // partial fill left triggers sized for a position that never
+            // existed. Aster forbids quantity/reduceOnly alongside it.
             const placeTpsl = (type: string, stopPrice: number) =>
               fetch(`/aster-signed/fapi/v3/order`, {
                 method: "POST",
@@ -266,26 +322,46 @@ export function createOrderFlow(deps: {
                   type,
                   stopPrice: String(roundPx(stopPrice)),
                   workingType: "MARK_PRICE",
-                  quantity: String(qty),
-                  reduceOnly: "true",
+                  closePosition: "true",
                   user: addr,
                 }),
               })
                 .then((r) => r.json())
                 .catch((e) => ({ msg: e.message }));
-            const results = await Promise.all([
-              tpPx ? placeTpsl("TAKE_PROFIT_MARKET", tpPx) : null,
-              slPx ? placeTpsl("STOP_MARKET", slPx) : null,
-            ]);
-            const failed = results.filter(
-              (r) => r && !(r.orderId || r.status),
-            );
-            showToast(
-              failed.length
-                ? "TP/SL failed: " + ((failed[0] as any).msg ?? "error")
-                : "TP/SL placed",
-              failed.length ? "err" : "ok",
-            );
+            const submitTpsl = async () => {
+              const results = await Promise.all([
+                tpPx ? placeTpsl("TAKE_PROFIT_MARKET", tpPx) : null,
+                slPx ? placeTpsl("STOP_MARKET", slPx) : null,
+              ]);
+              const failed = results.filter(
+                (r) => r && !(r.orderId || r.status),
+              );
+              showToast(
+                failed.length
+                  ? "TP/SL failed: " + ((failed[0] as any).msg ?? "error")
+                  : "TP/SL placed",
+                failed.length ? "err" : "ok",
+              );
+            };
+            if (isLimit) {
+              // A resting limit has no position behind it yet: triggers placed
+              // now fire against nothing and are consumed, so the fill that
+              // arrives later is naked. Wait for the first execution instead.
+              showToast("TP/SL will be placed when the limit fills", "ok");
+              waitForFill(d.orderId, `${deps.getMarket()}USDT`, addr).then(
+                (r) =>
+                  r === "filled"
+                    ? submitTpsl()
+                    : showToast(
+                        r === "ended"
+                          ? "Limit order closed without filling — no TP/SL placed"
+                          : "Limit order still unfilled after 30 min — TP/SL not placed",
+                        "err",
+                      ),
+              );
+            } else {
+              await submitTpsl();
+            }
           }
           setTimeout(() => refreshPositions(addr), 2000);
         } else {
