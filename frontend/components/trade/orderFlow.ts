@@ -832,15 +832,13 @@ export function createOrderFlow(deps: {
     if (!newPx) return;
     try {
       if (deps.getMode() === "aster") {
-        await fetch(`/aster-signed/fapi/v3/order`, {
-          method: "DELETE",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            symbol: `${coin}USDT`,
-            orderId: String(oid),
-            user: addr,
-          }),
-        });
+        // Aster has no atomic modify, so the order of these two calls is the
+        // whole safety property. Cancel-then-place (what this did) leaves the
+        // position naked in the gap, and a rejected placement — bad tick, rate
+        // limit — destroys the trigger with nothing to fall back to. Placing
+        // first is the survivable order: both triggers existing for a moment
+        // is harmless, since whichever fires closes the position and the other
+        // is reduce-only against nothing.
         const r = await fetch(`/aster-signed/fapi/v3/order`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -856,8 +854,32 @@ export function createOrderFlow(deps: {
           }),
         });
         const d = await r.json();
-        if (d.orderId || d.status) showToast(`${label} updated`, "ok");
-        else showToast(d.msg ?? "Update failed", "err");
+        if (!(d.orderId || d.status)) {
+          showToast(
+            `${d.msg ?? "Update failed"} — your ${label} at ${fmt(curPx, coin)} is untouched`,
+            "err",
+          );
+          return;
+        }
+        const del = await fetch(`/aster-signed/fapi/v3/order`, {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            symbol: `${coin}USDT`,
+            orderId: String(oid),
+            user: addr,
+          }),
+        });
+        const delD = await del.json().catch(() => ({ code: -1 }));
+        const delOk = !delD.code && (delD.orderId || delD.status);
+        // A failed cancel is not a failed edit — say which one it is, because
+        // the fix (cancel the leftover) is the user's to make.
+        showToast(
+          delOk
+            ? `${label} updated`
+            : `${label} placed at ${fmt(newPx, coin)}, but the old one at ${fmt(curPx, coin)} is still open — cancel it manually`,
+          delOk ? "ok" : "err",
+        );
       } else {
         const { ethers } = await import("ethers");
         const signer = await new ethers.BrowserProvider(

@@ -249,7 +249,7 @@ export async function placeTpslOrders({ symbol, size, isLong, signer, tpPx, slPx
   }
   if (!orders.length) throw new Error('No TP/SL price given');
   const wireAction = { type: 'order', orders, grouping: 'na' };
-  const nonce = Date.now();
+  const nonce = nextNonce();
   const sig   = await signAction(signer, wireAction, nonce);
   const res   = await fetch(`${HL_API}/exchange`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -275,7 +275,7 @@ export async function modifyTriggerOrder({ oid, symbol, isBuy, size, triggerPx, 
       t: { trigger: { isMarket: true, triggerPx: px, tpsl: kind } },
     },
   };
-  const nonce = Date.now();
+  const nonce = nextNonce();
   const sig   = await signAction(signer, wireAction, nonce);
   const res   = await fetch(`${HL_API}/exchange`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -464,7 +464,9 @@ async function signAction(signer: any, wireAction: any, nonce: number) {
 
 // HL nonces must be strictly increasing per user — Date.now() can repeat
 // within the same millisecond when two actions go out back-to-back
-// (updateLeverage, then the entry order).
+// (updateLeverage, then the entry order; or two fast closes). EVERY signed
+// action goes through this: a raw Date.now() anywhere else silently drops
+// whichever action loses the tie.
 let lastNonce = 0;
 function nextNonce() {
   lastNonce = Math.max(Date.now(), lastNonce + 1);
@@ -559,7 +561,7 @@ export async function closePosition({ symbol, size, isLong, signer }: any) {
     orders: [{ a: assetIndexMap[symbol] ?? 0, b: !isLong, p: pxToWire(!isLong ? price * (1 + slip) : price * (1 - slip), assetSzDecimals[symbol] ?? 5), s: szToWire(Math.abs(size), assetSzDecimals[symbol] ?? 5), r: true, t: { limit: { tif: 'Ioc' } } }],
     grouping: 'na',
   };
-  const nonce = Date.now();
+  const nonce = nextNonce();
   const sig   = await signAction(signer, wireAction, nonce);
   const res   = await fetch(`${HL_API}/exchange`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -570,7 +572,7 @@ export async function closePosition({ symbol, size, isLong, signer }: any) {
 
 export async function cancelOrder({ oid, symbol, signer }: any) {
   const wireAction = { type: 'cancel', cancels: [{ a: assetIndexMap[symbol] ?? 0, o: oid }] };
-  const nonce = Date.now();
+  const nonce = nextNonce();
   const sig   = await signAction(signer, wireAction, nonce);
   const res   = await fetch(`${HL_API}/exchange`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
