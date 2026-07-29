@@ -30,7 +30,7 @@ export function TradeHeader() {
               </button>
             </div>
             <button
-              className="w-4 h-4 rounded-full border border-[#1f1f1f] bg-[#0d0d0d] text-[#6b7173] text-[10px] font-bold font-[var(--hl-font)] cursor-pointer leading-none flex items-center justify-center transition-all duration-150 shrink-0 hover:border-[#50d2c1] hover:text-[#50d2c1]"
+              className="mode-btn font-[var(--hl-font)] text-[11px] font-bold tracking-[0.5px] py-[3px] px-2 rounded border-none cursor-pointer text-[#878c8f] bg-transparent transition-all duration-150 flex items-center justify-center shrink-0 hover:text-[#50d2c1]"
               id="modeHelpBtn"
               onClick={() => (window as any).rdo?.toggleModeHelp()}
             >
