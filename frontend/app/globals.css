@@ -1974,7 +1974,7 @@ input[type=number]::-webkit-inner-spin-button {
 .size-unit-toggle {
   background: rgba(80, 210, 193, 0.08);
   border: 1px solid rgba(80, 210, 193, 0.2);
-  margin: 3px 3px 3px 0;
+  margin: 3px 6px 3px 0;
   padding: 2px 8px;
   font-family: var(--hl-font);
   font-size: 10px;
