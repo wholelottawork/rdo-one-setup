@@ -113,7 +113,7 @@ Deposit tab added to the Transfer page (`app/transfer/page.tsx`), destination pi
 
 Same fix applied to the EXTRA → BASIC leg of **Between Accounts**, which previously reported "Transfer complete" while the swapped USDC sat in the wallet, never reaching Hyperliquid.
 
-**Still open:** no MAX button / wallet balance readout on the deposit tab (needs per-token balance reads incl. native).
+~~**Still open:** no MAX button / wallet balance readout on the deposit tab.~~ — **FIXED 2026-07-30.** `tokenBal()` dispatches to `eth_getBalance` for native tokens (the pickers list ETH/BNB as the zero address, where `balanceOf` silently returns 0). The balance only renders when the wallet is actually on the selected chain — an `eth_call` goes wherever the wallet is pointed, so showing an Arbitrum balance under a Base selection would be worse than showing none. MAX leaves a gas reserve on native tokens.
 
 ### 3. ~~Swap UI~~ — **BUILT** (`716497d`)
 

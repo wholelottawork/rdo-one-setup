@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { signAsterV3RequestAs } from './aster-auth';
 import { getOrCreateUserAgent } from './agent-keystore';
@@ -8,12 +9,19 @@ import { getOrCreateUserAgent } from './agent-keystore';
 // which meant closing the tab silently dropped the protection. This moves the
 // wait server-side, where a reload can't kill it.
 //
-// ponytail: one in-process interval over a Redis hash. Two backend instances
-// would each place the same TP/SL — move the tick behind a Redis lock (or a
-// real job queue) before running more than one.
+// The tick is guarded by a Redis lock, so running more than one backend
+// instance no longer means both place the same TP/SL.
+// ponytail: still a per-instance interval racing for one lock, not a real job
+// queue. Fine at this scale; if the number of instances ever gets large enough
+// that most ticks are wasted lock attempts, move it to a queue.
 const ASTER_FAPI = 'https://fapi.asterdex.com';
 const WATCH_KEY = 'aster:tpsl-watch';
+const LOCK_KEY = 'aster:tpsl-lock';
 const TICK_MS = 5_000;
+// Comfortably longer than a pass over every pending watch. If a pass somehow
+// overruns this, the lock frees and another instance may start a second pass —
+// the TTL is what bounds the damage, so keep it well above the real worst case.
+const LOCK_MS = 30_000;
 // Matches the browser watcher this replaces. A limit still resting after this
 // long is a stale intention, not a pending fill.
 const MAX_AGE_MS = 30 * 60_000;
@@ -80,6 +88,23 @@ async function placeTriggers(fastify: FastifyInstance, w: TpslWatch) {
  *  and so a test can drive it without waiting on the interval. */
 export async function tickTpslWatches(fastify: FastifyInstance): Promise<void> {
   if (!fastify.redisOk) return;
+  // One pass at a time across the whole deployment. Without this, two
+  // instances both see the same unfilled watch, both place triggers, and the
+  // position ends up with a duplicate TP and SL — the second of each is
+  // `closePosition` against an already-closed position, so it's consumed for
+  // nothing, but it burns rate limit and leaves phantom rows in Open Orders.
+  const token = randomUUID();
+  if (await fastify.redis.set(LOCK_KEY, token, 'PX', LOCK_MS, 'NX') === null) return;
+  try {
+    await runTpslPass(fastify);
+  } finally {
+    // Release only if it's still ours — a pass that overran LOCK_MS must not
+    // free the lock another instance has since taken.
+    if (await fastify.redis.get(LOCK_KEY) === token) await fastify.redis.del(LOCK_KEY);
+  }
+}
+
+async function runTpslPass(fastify: FastifyInstance): Promise<void> {
   const all = await fastify.redis.hgetall(WATCH_KEY);
   for (const [field, raw] of Object.entries(all ?? {})) {
     let w: TpslWatch;

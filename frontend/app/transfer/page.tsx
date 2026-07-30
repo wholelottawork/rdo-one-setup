@@ -150,6 +150,7 @@ export default function TransferPage() {
       set('wd-bal', 'Connected: ' + s);
       loadHLEquity(addr);
       refreshCreds(addr);
+      refreshDpBal();
     }
     onConnectedRef.current = onConnected;
 
@@ -337,8 +338,51 @@ export default function TransferPage() {
       return chain === '42161' && token === dpTarget().toLowerCase();
     }
 
+    // Native tokens pay for their own transfer, so MAX can never mean "all of
+    // it" — the deposit would have nothing left to cover gas.
+    // ponytail: one flat reserve across every chain. Fine while these are all
+    // cheap L2s; read a real gas estimate if a pricier chain is ever added.
+    const NATIVE_GAS_RESERVE = 0.0005;
+    let dpBal = 0;
+
+    /** Balance of the currently-picked deposit token, for the hint and MAX.
+     *  Only meaningful when the wallet is actually ON the picked chain — an
+     *  eth_call goes wherever the wallet is pointed, so showing an Arbitrum
+     *  balance under a Base selection would be worse than showing none. */
+    async function refreshDpBal() {
+      dpBal = 0;
+      const user = evmAddressRef.current;
+      const sym = selSym('dp-from-token');
+      if (!user) return set('dp-bal', 'Connect wallet to see balance');
+      try {
+        const prov = getProv();
+        const want = (el('dp-from-chain') as HTMLSelectElement | null)?.value || '42161';
+        const on = String(parseInt(await prov.request({method:'eth_chainId'}) as string, 16));
+        if (on !== want) {
+          const name = CHAINS[chainIdx(want)]?.name ?? 'that network';
+          return set('dp-bal', `Switch your wallet to ${name} to see your ${sym} balance`);
+        }
+        const token = (el('dp-from-token') as HTMLSelectElement | null)?.value || '';
+        const dec = selDec('dp-from-token');
+        dpBal = Number(await tokenBal(prov, token, user)) / 10 ** dec;
+        set('dp-bal', `Balance: ${fmt(dpBal, dpBal < 1 ? 6 : 2)} ${sym}`);
+      } catch {
+        set('dp-bal', 'Could not read balance');
+      }
+    }
+
+    function dpMax() {
+      const dpAmt = el('dp-amt') as HTMLInputElement | null;
+      if (!dpAmt || dpBal <= 0) return;
+      const isNative = ((el('dp-from-token') as HTMLSelectElement | null)?.value || '').toLowerCase() === ZERO_ADDR;
+      const usable = isNative ? dpBal - NATIVE_GAS_RESERVE : dpBal;
+      if (usable <= 0) return showSt('dp-st', 'err', `Not enough ${selSym('dp-from-token')} left to cover gas`);
+      dpAmt.value = String(usable);
+    }
+
     function updateDpHint() {
       set('dp-cur', selSym('dp-from-token'));
+      refreshDpBal();
       const hint = el('dp-hint'); if (!hint) return;
       const isHL = dpDest === 'hl';
       if (dpIsDirect()) {
@@ -836,6 +880,15 @@ export default function TransferPage() {
       return BigInt(hex || '0x0');
     }
 
+    /** balanceOf for ERC-20s, eth_getBalance for the chain's native token —
+     *  the token pickers list ETH/BNB/etc. as the zero address, and calling
+     *  balanceOf on 0x0 silently returns 0 rather than failing. */
+    async function tokenBal(prov: any, token: string, owner: string): Promise<bigint> {
+      if (!token || token.toLowerCase() === ZERO_ADDR)
+        return BigInt(await prov.request({method:'eth_getBalance', params:[owner, 'latest']}) || '0x0');
+      return getERC20Bal(prov, token, owner);
+    }
+
     async function ensureApproval(prov: any, token: string, owner: string, spender: string, amount: string) {
       const ZERO = '0x0000000000000000000000000000000000000000';
       if (!token || token === ZERO) return;
@@ -1049,6 +1102,7 @@ export default function TransferPage() {
     (window as any).onDpFromChainChange = onDpFromChainChange;
     (window as any).updateDpHint      = updateDpHint;
     (window as any).execDeposit       = execDeposit;
+    (window as any).dpMax             = dpMax;
     (window as any).onFromChainChange = onFromChainChange;
     (window as any).onFromTokenChange = onFromTokenChange;
     (window as any).onToChainChange   = onToChainChange;
@@ -1195,8 +1249,10 @@ export default function TransferPage() {
               <input className="amt-input" type="number" id="dp-amt" placeholder="0.00" min="0" />
               <div className="amt-right">
                 <span className="cur-badge" id="dp-cur">USDC</span>
+                <button className="max-btn" onClick={() => (window as any).dpMax()}>MAX</button>
               </div>
             </div>
+            <div className="bal-hint" id="dp-bal">&nbsp;</div>
             <div className="conv-hint" id="dp-hint">&nbsp;</div>
             <button className="exec-btn hl" id="dp-btn" onClick={() => (window as any).execDeposit()}>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
