@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { showToast } from './toast';
+import { clearAsterSession } from './aster-session';
 
 interface EIP1193Provider {
   request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
@@ -355,6 +356,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     // Keep in sync with wallet-side changes (account switch in the
     // extension, or disconnecting Phantom's Solana session directly).
     const onAccountsChanged = (accounts: unknown) => {
+      // Whatever the new account is, the Aster session belongs to the old one.
+      clearAsterSession();
       const accs = accounts as string[];
       if (accs?.[0]) {
         setEvmAddress(accs[0]);
@@ -479,6 +482,9 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       wcProvider = null;
     }
     activeProvider = null;
+    // The Aster trading session outlives the page too — leaving it live would
+    // mean "disconnected" in the UI while the backend still trades on request.
+    clearAsterSession();
     setEvmAddress(null);
     setSolAddress(null);
     try {

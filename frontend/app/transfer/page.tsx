@@ -2,6 +2,7 @@
 import { useEffect, useRef } from 'react';
 import { SiteNav } from '@/components/shared/SiteNav';
 import { useWallet, getEVMProvider } from '@/lib/wallet';
+import { walletAuth as signAction } from '@/lib/wallet-auth';
 
 const PAGE_CSS = `
 main{max-width:600px;margin:0 auto;padding:0 24px 60px;padding-top:calc(40px + 8px)}
@@ -915,27 +916,10 @@ export default function TransferPage() {
     // signature covers the action's own parameters (destination, amount), so
     // it can't be replayed against different ones.
     //
-    // MUST match backend/src/lib/wallet-auth.ts authMessage() byte for byte.
-    function authMessage(action: string, user: string, params: Record<string,string>, timestamp: number) {
-      const body = Object.keys(params).sort().map(k => `${k}=${params[k]}`).join('&');
-      return [
-        'RDO ONE authorization',
-        `action: ${action}`,
-        `user: ${user.toLowerCase()}`,
-        `params: ${body}`,
-        `timestamp: ${timestamp}`,
-      ].join('\n');
-    }
-
+    // The message format lives in @/lib/wallet-auth (one copy, mirroring
+    // backend/src/lib/wallet-auth.ts) — this page used to carry its own.
     async function walletAuth(action: string, params: Record<string,string> = {}) {
-      const user = await requireEVM();
-      const prov = getProv();
-      const timestamp = Date.now();
-      const signature = await prov.request({
-        method: 'personal_sign',
-        params: [authMessage(action, user, params, timestamp), user],
-      }) as string;
-      return {user, timestamp, signature};
+      return signAction(await requireEVM(), action, params);
     }
 
     // Aster's withdraw + deposit-address endpoints use the V1 API-key/HMAC

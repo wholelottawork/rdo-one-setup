@@ -1,7 +1,12 @@
 # RDO ONE — TODO
 
-**Last updated:** 2026-07-29  
+**Last updated:** 2026-07-30  
 **Audited against:** actual codebase (every file read, every flow traced)
+
+Aster's signed routes (`/aster-signed/*`, `/aster-agent-address`,
+`/aster-tpsl-watch`) are behind a wallet-signed session as of 2026-07-30 — one
+signature per 12h, HttpOnly cookie after that. They used to take the account to
+act on from a client-supplied `user`, which is a public address. See STATUS.md.
 
 ---
 
@@ -57,7 +62,13 @@
 
 ## What Needs to Be Built
 
-### 1. Proper Wallet Connect
+### 1. ~~Proper Wallet Connect~~ — **BUILT** (`e2fe859`)
+
+Chooser lists every detected wallet plus WalletConnect v2 (needs
+`NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID`). Routing turned out to be one variable:
+every signing path already resolved through `getEVMProvider()`, so connect sets
+an `activeProvider` that accessor returns. Disconnect sticks. Original writeup
+below for reference.
 
 **Problem:** `lib/wallet.tsx` only detects injected browser extensions (`window.ethereum`, `window.phantom`). No wallet chooser UI — `connect()` blindly calls `eth_requestAccounts` on whatever provider exists. If the user has multiple wallets installed, they can't pick which one. If they have no extension installed, they see "install Phantom or MetaMask" and are stuck.
 
@@ -104,7 +115,13 @@ Same fix applied to the EXTRA → BASIC leg of **Between Accounts**, which previ
 
 **Still open:** no MAX button / wallet balance readout on the deposit tab (needs per-token balance reads incl. native).
 
-### 3. Swap UI
+### 3. ~~Swap UI~~ — **BUILT** (`716497d`)
+
+Swap tab on the Transfer page: network, pay/receive, debounced quote, build →
+allowance → send → receipt. Still needs `ONEINCH_API_KEY` — the tab now says so
+instead of showing a bare error. Uses the page's curated `CHAINS` token list
+rather than 1inch's full one (thousands per chain, would need a searchable
+picker). Original writeup below.
 
 **Problem:** Backend has a complete 1inch proxy (`/api/swap/quote`, `/api/swap/build`, `/api/swap/tokens`) but the frontend has zero swap interface.
 
@@ -127,11 +144,9 @@ Same fix applied to the EXTRA → BASIC leg of **Between Accounts**, which previ
 
 1. ~~**Aster leverage not controllable**~~ — **FIXED** (`orderFlow.ts` posts `/aster-signed/fapi/v3/leverage` before every Aster entry and aborts the order if Aster refuses, rather than filling at a leverage the user didn't pick. Skipped on reduce-only, where it's irrelevant and Aster can reject the change.)
 
-2. **NetworkSwitcher disconnects instead of switching** — Clicking a different network calls `disconnect()` instead of `wallet_switchEthereumChain`. The `switchEvmNetwork()` function exists in `wallet.tsx` and works, but NetworkSwitcher doesn't use it.
-   - File: `components/shared/NetworkSwitcher.tsx` line 86
+2. ~~**NetworkSwitcher disconnects instead of switching**~~ — **FIXED** (`e2fe859`: NetworkSwitcher calls the `switchEvmNetwork()` that already existed in `wallet.tsx`, instead of logging the user out for picking a chain.)
 
-3. **Disconnect doesn't prevent auto-reconnect** — After disconnect + reload, `eth_accounts` returns the address and the mount effect silently reconnects. Need a `rdo_disconnected` localStorage flag.
-   - File: `lib/wallet.tsx` lines 186-253
+3. ~~**Disconnect doesn't prevent auto-reconnect**~~ — **FIXED** (`e2fe859`: a `rdo_disconnected` localStorage flag blocks the mount effect's auto-restore.)
 
 4. ~~**updateStats uses market price for limit orders**~~ — **FIXED** (`lib/orderMath.ts` + `orderFlow.ts` refactored to use `entryPrice()` which returns limit price when set, mark otherwise. Stats, TP/SL validation, and size-from-percentage all use the correct entry price now.)
 
@@ -148,10 +163,9 @@ Same fix applied to the EXTRA → BASIC leg of **Between Accounts**, which previ
 
 9. ~~**Slippage display always shows "--"**~~ — **FIXED** (`orderFlow.ts` now shows `"0.30% max"` for HL market orders, `"—"` for limits and Aster market orders. Uses exported `MARKET_SLIPPAGE` constant from `trading.ts`.)
 
-10. **Cross Margin Ratio / Maintenance Margin always 0** — `#ovCmr` and `#ovMm` in OrderPanel never get updated values.
-    - File: `OrderPanel.tsx` lines 342, 346
+10. ~~**Cross Margin Ratio / Maintenance Margin always 0**~~ — **FIXED** (`2aae6cc`: both render for both venues. HL keeps `crossMaintenanceMarginUsed` at the *top level* of clearinghouseState, not in either margin summary — which is why it was missed.)
 
-11. **Dead WalletConnect dependencies** — `@walletconnect/ethereum-provider` and `@walletconnect/modal` in `package.json` are never imported. Remove them or integrate them (see section 1 above).
+11. ~~**Dead WalletConnect dependencies**~~ — **FIXED** (`e2fe859`: integrated, not removed. WalletConnect v2 appears in the wallet chooser when `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` is set.)
 
 ---
 

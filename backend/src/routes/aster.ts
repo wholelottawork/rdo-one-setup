@@ -8,6 +8,7 @@ import { getOrCreateUserAgent } from '../lib/agent-keystore';
 import { deleteAsterCreds, hmacQuery, loadAsterCreds, saveAsterCreds } from '../lib/aster-creds';
 import { addTpslWatch, startTpslWatcher } from '../lib/aster-tpsl-watcher';
 import { verifyWalletAuth } from '../lib/wallet-auth';
+import { endSession, peekSession, requireSession, startSession } from '../lib/aster-session';
 import type { AsterOIBulkBody } from '../types';
 
 const ASTER_FAPI = 'https://fapi.asterdex.com';
@@ -86,18 +87,45 @@ export default async function asterRoutes(fastify: FastifyInstance) {
   // account identity from the signer alone on most of these endpoints, so a
   // single shared signer can only ever act as one user at a time (see the
   // frontend's lib/aster.ts ASTER_BUILDER_ADDRESS comment for the full
-  // writeup). `user` is therefore required on every call here, not just
-  // informational.
-  async function requireUserAgent(
+  // writeup).
+  //
+  // WHICH user is therefore the entire access-control decision, and it comes
+  // from the session cookie (src/lib/aster-session.ts) — never from a `user`
+  // param, which is a public address anyone could type. The param is
+  // overwritten with the session's address before signing so a stale or
+  // hostile one can't reach Aster either.
+  async function sessionAgent(
+    req: FastifyRequest,
     reply: FastifyReply,
-    userAddress: unknown,
-  ): Promise<BaseWallet | null> {
-    if (!userAddress || typeof userAddress !== 'string') {
-      reply.code(400).send({ error: 'user required' });
-      return null;
-    }
-    return getOrCreateUserAgent(fastify.redis, userAddress);
+  ): Promise<{ user: string; wallet: BaseWallet } | null> {
+    const user = await requireSession(fastify, req, reply);
+    if (!user) return null;
+    return { user, wallet: await getOrCreateUserAgent(fastify.redis, user) };
   }
+
+  // ── Trading session ───────────────────────────────────────────────────────
+  // One wallet signature opens it; the cookie carries it from there. See
+  // lib/aster-session.ts for why this surface gets a session while the
+  // fund-moving V1 routes below keep per-request signatures.
+  fastify.post('/aster-session', async (req: FastifyRequest, reply: FastifyReply) => {
+    const { user, timestamp, signature } = (req.body ?? {}) as Record<string, string>;
+    const owner = await authed(reply, 'aster-session', user, {}, timestamp, signature);
+    if (!owner) return;
+    const expiresIn = await startSession(fastify.redis, reply, owner);
+    return { user: owner, expiresIn };
+  });
+
+  // "Do I already have one?" — no signature, no prompt, and it can only ever
+  // report the caller's own cookie back to them.
+  fastify.get('/aster-session', async (req: FastifyRequest) => {
+    if (!fastify.redisOk) return { user: null };
+    return { user: await peekSession(fastify.redis, req) };
+  });
+
+  fastify.delete('/aster-session', async (req: FastifyRequest, reply: FastifyReply) => {
+    await endSession(fastify.redis, req, reply, fastify.redisOk);
+    return { ended: true };
+  });
 
   // Signed passthroughs must NOT use fetchJSON: on non-2xx it THROWS
   // (discarding Aster's real {code, msg} body — e.g. -1111 "Precision is
@@ -114,10 +142,10 @@ export default async function asterRoutes(fastify: FastifyInstance) {
 
   fastify.get('/aster-signed/*', async (req: FastifyRequest, reply: FastifyReply) => {
     const path = (req.params as Record<string, string>)['*'];
-    const query = req.query as Record<string, string>;
-    const wallet = await requireUserAgent(reply, query.user);
-    if (!wallet) return;
-    const signedQuery = await signAsterV3RequestAs(wallet, query);
+    const auth = await sessionAgent(req, reply);
+    if (!auth) return;
+    const query = { ...(req.query as Record<string, string>), user: auth.user };
+    const signedQuery = await signAsterV3RequestAs(auth.wallet, query);
     const url = `${ASTER_FAPI}/${path}?${signedQuery}`;
 
     return signedPassthrough(url, { headers: SIGNED_HEADERS });
@@ -128,9 +156,9 @@ export default async function asterRoutes(fastify: FastifyInstance) {
   // approveAgent, since agentAddress must name that specific per-user
   // signer, not a fixed constant. Never returns the private key.
   fastify.get('/aster-agent-address', async (req: FastifyRequest, reply: FastifyReply) => {
-    const wallet = await requireUserAgent(reply, (req.query as Record<string, string>).user);
-    if (!wallet) return;
-    return { agentAddress: wallet.address };
+    const auth = await sessionAgent(req, reply);
+    if (!auth) return;
+    return { agentAddress: auth.wallet.address };
   });
 
   // Leverage brackets are exchange risk config, not account-specific data —
@@ -148,10 +176,10 @@ export default async function asterRoutes(fastify: FastifyInstance) {
 
   fastify.post('/aster-signed/*', async (req: FastifyRequest, reply: FastifyReply) => {
     const path = (req.params as Record<string, string>)['*'];
-    const body = (req.body ?? {}) as Record<string, string>;
-    const wallet = await requireUserAgent(reply, body.user);
-    if (!wallet) return;
-    const signedQuery = await signAsterV3RequestAs(wallet, body);
+    const auth = await sessionAgent(req, reply);
+    if (!auth) return;
+    const body = { ...((req.body ?? {}) as Record<string, string>), user: auth.user };
+    const signedQuery = await signAsterV3RequestAs(auth.wallet, body);
 
     return signedPassthrough(`${ASTER_FAPI}/${path}`, {
       method: 'POST',
@@ -165,10 +193,10 @@ export default async function asterRoutes(fastify: FastifyInstance) {
   // close), which are otherwise identical USER_STREAM-auth signed calls.
   fastify.put('/aster-signed/*', async (req: FastifyRequest, reply: FastifyReply) => {
     const path = (req.params as Record<string, string>)['*'];
-    const body = (req.body ?? {}) as Record<string, string>;
-    const wallet = await requireUserAgent(reply, body.user);
-    if (!wallet) return;
-    const signedQuery = await signAsterV3RequestAs(wallet, body);
+    const auth = await sessionAgent(req, reply);
+    if (!auth) return;
+    const body = { ...((req.body ?? {}) as Record<string, string>), user: auth.user };
+    const signedQuery = await signAsterV3RequestAs(auth.wallet, body);
 
     return signedPassthrough(`${ASTER_FAPI}/${path}`, {
       method: 'PUT',
@@ -179,10 +207,10 @@ export default async function asterRoutes(fastify: FastifyInstance) {
 
   fastify.delete('/aster-signed/*', async (req: FastifyRequest, reply: FastifyReply) => {
     const path = (req.params as Record<string, string>)['*'];
-    const body = (req.body ?? {}) as Record<string, string>;
-    const wallet = await requireUserAgent(reply, body.user);
-    if (!wallet) return;
-    const signedQuery = await signAsterV3RequestAs(wallet, body);
+    const auth = await sessionAgent(req, reply);
+    if (!auth) return;
+    const body = { ...((req.body ?? {}) as Record<string, string>), user: auth.user };
+    const signedQuery = await signAsterV3RequestAs(auth.wallet, body);
 
     return signedPassthrough(`${ASTER_FAPI}/${path}`, {
       method: 'DELETE',
@@ -195,12 +223,17 @@ export default async function asterRoutes(fastify: FastifyInstance) {
   // The browser can't be trusted to hold this wait: closing the tab used to
   // drop a resting limit's TP/SL entirely. See lib/aster-tpsl-watcher.
   fastify.post('/aster-tpsl-watch', async (req: FastifyRequest, reply: FastifyReply) => {
-    const { user, symbol, orderId, side, tpPrice, slPrice } = (req.body ?? {}) as Record<string, string>;
-    if (!user || !symbol || !orderId || !side)
-      return reply.code(400).send({ msg: 'user, symbol, orderId and side required' });
+    const { symbol, orderId, side, tpPrice, slPrice } = (req.body ?? {}) as Record<string, string>;
+    if (!symbol || !orderId || !side)
+      return reply.code(400).send({ msg: 'symbol, orderId and side required' });
     if (!tpPrice && !slPrice) return reply.code(400).send({ msg: 'tpPrice or slPrice required' });
     if (!fastify.redisOk)
       return reply.code(503).send({ msg: 'Watcher unavailable (Redis down) — the browser must hold this wait' });
+    // The watcher places live orders with this user's agent key later, with no
+    // request in flight to re-check — so whose watch it is has to be settled
+    // here, from the session, not from the body.
+    const user = await requireSession(fastify, req, reply);
+    if (!user) return;
 
     await addTpslWatch(fastify, {
       user,

@@ -5,6 +5,7 @@
 // are the real-money paths; library fns, the wallet address getter, and
 // the shared price/precision maps arrive as deps.
 import { getEVMProvider } from "@/lib/wallet";
+import { asterFetch } from "@/lib/aster-session";
 import { showToast } from "@/lib/toast";
 import { MARKET_SLIPPAGE } from "@/lib/trading";
 import { entryPrice, fillState, tpslError } from "@/lib/orderMath";
@@ -165,7 +166,7 @@ export function createOrderFlow(deps: {
     while (Date.now() < end) {
       await new Promise((r) => setTimeout(r, 5000));
       try {
-        const r = await fetch(
+        const r = await asterFetch(
           `/aster-signed/fapi/v3/order?symbol=${symbol}&orderId=${orderId}&user=${encodeURIComponent(addr)}`,
         );
         const s = fillState(await r.json());
@@ -261,7 +262,7 @@ export function createOrderFlow(deps: {
         // choose is worse than not trading. Skipped when reducing, where
         // leverage is irrelevant and Aster can reject the change outright.
         if (!reduceOnly) {
-          const levRes = await fetch(`/aster-signed/fapi/v3/leverage`, {
+          const levRes = await asterFetch(`/aster-signed/fapi/v3/leverage`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -281,7 +282,7 @@ export function createOrderFlow(deps: {
             return;
           }
         }
-        const res = await fetch(`/aster-signed/fapi/v3/order`, {
+        const res = await asterFetch(`/aster-signed/fapi/v3/order`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -314,7 +315,7 @@ export function createOrderFlow(deps: {
             // partial fill left triggers sized for a position that never
             // existed. Aster forbids quantity/reduceOnly alongside it.
             const placeTpsl = (type: string, stopPrice: number) =>
-              fetch(`/aster-signed/fapi/v3/order`, {
+              asterFetch(`/aster-signed/fapi/v3/order`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -350,7 +351,7 @@ export function createOrderFlow(deps: {
               // arrives later is naked. Hand the wait to the backend watcher,
               // which survives this tab closing; only if that's unreachable do
               // we fall back to holding it here.
-              const watched = await fetch(`/aster-tpsl-watch`, {
+              const watched = await asterFetch(`/aster-tpsl-watch`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -549,19 +550,19 @@ export function createOrderFlow(deps: {
     let fundIncome: any[] = [];
     try {
       const [r, ords, risk, income] = await Promise.all([
-        fetch(
+        asterFetch(
           `/aster-signed/fapi/v3/accountWithJoinMargin?user=${encodeURIComponent(addr)}`,
         ),
         getAsterOpenOrdersLocal(addr),
         // accountWithJoinMargin positions carry NO liquidationPrice —
         // that lives only on positionRisk. Funding is a separate income
         // ledger (FUNDING_FEE), never on the position object either.
-        fetch(
+        asterFetch(
           `/aster-signed/fapi/v3/positionRisk?user=${encodeURIComponent(addr)}`,
         )
           .then((x) => (x.ok ? x.json() : []))
           .catch(() => []),
-        fetch(
+        asterFetch(
           `/aster-signed/fapi/v3/income?incomeType=FUNDING_FEE&limit=1000&user=${encodeURIComponent(addr)}`,
         )
           .then((x) => (x.ok ? x.json() : []))
@@ -767,7 +768,7 @@ export function createOrderFlow(deps: {
   async function closeAsterPos(index: number, addr: string) {
     let data: any = null;
     try {
-      const r = await fetch(
+      const r = await asterFetch(
         `/aster-signed/fapi/v3/accountWithJoinMargin?user=${encodeURIComponent(addr)}`,
       );
       if (r.ok) {
@@ -784,7 +785,7 @@ export function createOrderFlow(deps: {
     const symbol = String(p.symbol).replace(/USDT$/, "");
     const amt = parseFloat(p.positionAmt ?? 0);
     try {
-      const res = await fetch(`/aster-signed/fapi/v3/order`, {
+      const res = await asterFetch(`/aster-signed/fapi/v3/order`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -812,7 +813,7 @@ export function createOrderFlow(deps: {
     if (!addr) return;
     if (deps.getMode() === "aster") {
       try {
-        const r = await fetch(`/aster-signed/fapi/v3/order`, {
+        const r = await asterFetch(`/aster-signed/fapi/v3/order`, {
           method: "DELETE",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -887,7 +888,7 @@ export function createOrderFlow(deps: {
         // first is the survivable order: both triggers existing for a moment
         // is harmless, since whichever fires closes the position and the other
         // is reduce-only against nothing.
-        const r = await fetch(`/aster-signed/fapi/v3/order`, {
+        const r = await asterFetch(`/aster-signed/fapi/v3/order`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -909,7 +910,7 @@ export function createOrderFlow(deps: {
           );
           return;
         }
-        const del = await fetch(`/aster-signed/fapi/v3/order`, {
+        const del = await asterFetch(`/aster-signed/fapi/v3/order`, {
           method: "DELETE",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -989,7 +990,7 @@ export function createOrderFlow(deps: {
       if (deps.getMode() === "aster") {
         const side = isLong ? "SELL" : "BUY";
         const place = (type: string, stopPrice: number) =>
-          fetch(`/aster-signed/fapi/v3/order`, {
+          asterFetch(`/aster-signed/fapi/v3/order`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({

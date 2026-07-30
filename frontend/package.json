@@ -8,7 +8,7 @@
     "build": "next build",
     "start": "next start -p 3002",
     "lint": "next lint",
-    "test": "node lib/orderMath.test.ts"
+    "test": "node lib/orderMath.test.ts && node lib/authMessage.test.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.101.2",

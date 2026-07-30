@@ -33,6 +33,8 @@
 // us collect a per-trade fee. `builder` is a FIXED business-identity
 // address (used purely for fee attribution), unrelated to whichever
 // per-user agent actually signs a given trade.
+import { asterFetch } from './aster-session';
+
 export const ASTER_BUILDER_ADDRESS = '0xdA480541aDB8D00E4783E5180CE70D3Da52D99F9';
 export const ASTER_BUILDER_MAX_FEE_RATE = '0.0001'; // 0.01%
 
@@ -56,7 +58,7 @@ interface Signer {
  *  `agentAddress` when signing approveAgent. See server/lib/agent-keystore.js. */
 export async function getMyAsterAgentAddress(userAddress: string): Promise<string | null> {
   try {
-    const res = await fetch(`/aster-agent-address?user=${encodeURIComponent(userAddress)}`);
+    const res = await asterFetch(`/aster-agent-address?user=${encodeURIComponent(userAddress)}`);
     const data = await res.json();
     return typeof data?.agentAddress === 'string' ? data.agentAddress : null;
   } catch {
@@ -77,7 +79,7 @@ export async function getMyAsterAgentAddress(userAddress: string): Promise<strin
  */
 export async function getAsterAccount(userAddress: string): Promise<Record<string, unknown> | null> {
   try {
-    const res = await fetch(`/aster-signed/fapi/v3/accountWithJoinMargin?user=${encodeURIComponent(userAddress)}`);
+    const res = await asterFetch(`/aster-signed/fapi/v3/accountWithJoinMargin?user=${encodeURIComponent(userAddress)}`);
     const data = await res.json();
     if (!data || typeof data !== 'object' || !Array.isArray((data as Record<string, unknown>).positions)) return null;
     return data;
@@ -104,7 +106,7 @@ export interface AsterAgentApproval {
  *  don't). */
 export async function getAsterAgents(userAddress: string): Promise<AsterAgentApproval[]> {
   try {
-    const res = await fetch(`/aster-signed/fapi/v3/agent?user=${encodeURIComponent(userAddress)}`);
+    const res = await asterFetch(`/aster-signed/fapi/v3/agent?user=${encodeURIComponent(userAddress)}`);
     const data = await res.json();
     return Array.isArray(data) ? data : [];
   } catch {
@@ -144,7 +146,7 @@ export interface AsterBuilderApproval {
  *  every other /aster-signed/* read). */
 export async function getAsterBuilders(userAddress: string): Promise<AsterBuilderApproval[]> {
   try {
-    const res = await fetch(`/aster-signed/fapi/v3/builder?user=${encodeURIComponent(userAddress)}`);
+    const res = await asterFetch(`/aster-signed/fapi/v3/builder?user=${encodeURIComponent(userAddress)}`);
     const data = await res.json();
     return Array.isArray(data) ? data : [];
   } catch {
@@ -343,7 +345,7 @@ export async function getAsterIncomeHistory(sinceMs: number, userAddress: string
     const batch = windows.slice(i, i + INCOME_BATCH);
     const results = await Promise.all(batch.map(async ({ start, end }) => {
       try {
-        const res = await fetch(`/aster-signed/fapi/v3/income?incomeType=REALIZED_PNL&startTime=${start}&endTime=${end}&limit=1000&user=${encodeURIComponent(userAddress)}`);
+        const res = await asterFetch(`/aster-signed/fapi/v3/income?incomeType=REALIZED_PNL&startTime=${start}&endTime=${end}&limit=1000&user=${encodeURIComponent(userAddress)}`);
         const data = await res.json();
         return Array.isArray(data) ? data : [];
       } catch {

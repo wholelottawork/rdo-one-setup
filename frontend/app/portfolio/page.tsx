@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useRef } from 'react';
 import { ensureAsterAgentApproved, ensureBscNetwork, getBscCapableProvider, getAsterIncomeHistory } from '@/lib/aster-agent';
+import { asterFetch } from '@/lib/aster-session';
 import { useWallet } from '@/lib/wallet';
 import { SiteNav } from '@/components/shared/SiteNav';
 
@@ -1162,7 +1163,7 @@ export default function PortfolioPage() {
     // field names) — only the URL + signed auth changed from the old,
     // now-dead v2/account endpoint.
     async function fetchAsterPositions(address: string) {
-      const r = await fetch(`/aster-signed/fapi/v3/accountWithJoinMargin?user=${encodeURIComponent(address)}`);
+      const r = await asterFetch(`/aster-signed/fapi/v3/accountWithJoinMargin?user=${encodeURIComponent(address)}`);
       if (!r.ok) throw new Error('HTTP '+r.status);
       const data = await r.json();
       if (!data || !Array.isArray(data.positions)) throw new Error('agent not approved');

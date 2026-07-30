@@ -12,6 +12,8 @@
 // the POST 4xx's; we retry rather than give up (approval may land while the
 // terminal is open).
 
+import { asterFetch } from './aster-session';
+
 const ASTER_WS = 'wss://fstream.asterdex.com/ws';
 
 export interface AsterUserStreamHandlers {
@@ -30,7 +32,7 @@ export function startAsterUserStream(
   let alive = true;
 
   async function signedCall(method: 'POST' | 'PUT' | 'DELETE', path: string) {
-    const res = await fetch(`/aster-signed${path}`, {
+    const res = await asterFetch(`/aster-signed${path}`, {
       method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ user: userAddress }),

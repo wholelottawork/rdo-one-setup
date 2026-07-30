@@ -42,6 +42,9 @@ const nextConfig = {
       { source: '/aster-fapi/:path*',       destination: `${BACKEND_URL}/api/aster-fapi/:path*` },
       { source: '/aster-oi-bulk',           destination: `${BACKEND_URL}/api/aster-oi-bulk` },
       { source: '/aster-signed/:path*',     destination: `${BACKEND_URL}/api/aster-signed/:path*` },
+      // Trading session for the signed routes — one wallet signature in, an
+      // HttpOnly cookie back out (backend/src/lib/aster-session.ts).
+      { source: '/aster-session',           destination: `${BACKEND_URL}/api/aster-session` },
       { source: '/aster-agent-address',     destination: `${BACKEND_URL}/api/aster-agent-address` },
       { source: '/aster-leverage-brackets', destination: `${BACKEND_URL}/api/aster-leverage-brackets` },
       { source: '/aster-approve-agent',     destination: `${BACKEND_URL}/api/aster-approve-agent` },

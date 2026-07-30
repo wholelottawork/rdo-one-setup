@@ -4,6 +4,7 @@
 // supplies mode/address getters, the HL loaders, and its refresh fn — the
 // Aster loaders and DOM renderers below are self-contained.
 import { fmt, fmtSz } from "@/lib/format";
+import { asterFetch } from "@/lib/aster-session";
 
 const btmPaneMap: Record<string, string> = {
   positions: "btPositions",
@@ -129,7 +130,7 @@ export function renderFundingHistory(rows: any[]) {
 // ── EXTRA/Aster bottom-tab data (open orders / fills / funding) ──
 export async function getAsterOpenOrdersLocal(addr: string) {
   try {
-    const r = await fetch(
+    const r = await asterFetch(
       `/aster-signed/fapi/v3/allOrders?limit=100&user=${encodeURIComponent(addr)}`,
     );
     const data = await r.json();
@@ -165,7 +166,7 @@ export async function getAsterOpenOrdersLocal(addr: string) {
 
 export async function getAsterFundingLocal(addr: string) {
   try {
-    const r = await fetch(
+    const r = await asterFetch(
       `/aster-signed/fapi/v3/income?incomeType=FUNDING_FEE&limit=100&user=${encodeURIComponent(addr)}`,
     );
     const data = await r.json();
@@ -184,7 +185,7 @@ export async function getAsterFundingLocal(addr: string) {
 
 export async function getAsterOrderHistoryLocal(addr: string) {
   try {
-    const r = await fetch(
+    const r = await asterFetch(
       `/aster-signed/fapi/v3/allOrders?limit=100&user=${encodeURIComponent(addr)}`,
     );
     const data = await r.json();
@@ -222,7 +223,7 @@ export async function getAsterOrderHistoryLocal(addr: string) {
 // accounts.
 export async function getAsterFillsLocal(addr: string) {
   try {
-    const r = await fetch(
+    const r = await asterFetch(
       `/aster-signed/fapi/v3/userTrades?limit=100&user=${encodeURIComponent(addr)}`,
     );
     const data = await r.json();

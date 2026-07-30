@@ -6,7 +6,7 @@
     "start": "tsx src/index.ts",
     "dev": "tsx watch src/index.ts",
     "typecheck": "tsc --noEmit",
-    "test": "node src/lib/wallet-auth.test.ts"
+    "test": "tsx src/lib/wallet-auth.test.ts && tsx src/lib/aster-session.test.ts"
   },
   "dependencies": {
     "@fastify/cors": "^9.0.1",
