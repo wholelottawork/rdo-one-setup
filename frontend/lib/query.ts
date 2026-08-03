@@ -43,3 +43,26 @@ export function cachedFetch<T>(
 ): Promise<T> {
   return getQueryClient().fetchQuery({ queryKey: key, queryFn: fetcher, staleTime });
 }
+
+/**
+ * JSON fetch with a deadline and one retry.
+ *
+ * A bare fetch() has no timeout, so a hung upstream proxy left the market
+ * panels sitting on "Loading…" forever with nothing to click. This throws on
+ * timeout, transport error or non-2xx — always, so callers can render a retry
+ * state instead of a spinner that never resolves.
+ */
+export async function fetchJson<T = any>(
+  url: string,
+  { timeout = 8_000, retries = 1, ...init }: RequestInit & { timeout?: number; retries?: number } = {},
+): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const res = await fetch(url, { ...init, signal: AbortSignal.timeout(timeout) });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return (await res.json()) as T;
+    } catch (e) {
+      if (attempt >= retries) throw e;
+    }
+  }
+}

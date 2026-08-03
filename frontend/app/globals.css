@@ -656,6 +656,16 @@ body.mode-aster {
   border-color: var(--hl-border);
 }
 
+/* Indicator menu: the checkmark only shows for indicators that are on.
+   `visibility` rather than `display` so the labels stay aligned. */
+.ind-row:not(.on) .ind-tick {
+  visibility: hidden;
+}
+
+.ind-row.on {
+  color: var(--hl-text-primary);
+}
+
 /* .chart-subhdr-tools base styles migrated to Tailwind */
 
 .chart-tool-btn:hover {

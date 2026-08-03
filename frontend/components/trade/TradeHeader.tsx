@@ -84,6 +84,29 @@ export function TradeHeader() {
                   </span>
                 </div>
               </div>
+              <div className="h-px bg-[#1f1f1f] my-2.5"></div>
+              {/* Shortcut reference — the bindings live in trade/shortcuts.ts.
+                  Deliberately view-only actions; nothing here submits an order. */}
+              <div className="flex gap-2.5 items-start">
+                <span className="text-[10px] font-bold tracking-[0.5px] py-0.5 px-[7px] rounded shrink-0 mt-0.5 bg-white/[0.08] text-[#878c8f]">KEYS</span>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                  {[
+                    ["1–7", "Interval"],
+                    ["B / S", "Buy / Sell side"],
+                    ["A", "Focus size"],
+                    ["M", "Market picker"],
+                    ["O", "Order book"],
+                    ["I", "Indicators"],
+                    ["?", "This panel"],
+                    ["Esc", "Close"],
+                  ].map(([key, what]) => (
+                    <span key={key} className="flex items-center gap-[5px] text-[11px] text-[#878c8f]">
+                      <kbd className="font-[var(--hl-font)] text-[10px] font-semibold text-white bg-white/[0.08] border border-[#1f1f1f] rounded-[3px] py-px px-[5px] leading-[1.6]">{key}</kbd>
+                      {what}
+                    </span>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
           <div className="w-px h-[31px] shrink-0"></div>

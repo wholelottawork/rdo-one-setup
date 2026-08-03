@@ -38,10 +38,33 @@ export function ChartPanel() {
                 1D
               </button>
             </div>
-            <div className="shrink-0">
-              <button className="font-[var(--hl-font)] text-[11px] font-bold text-[var(--hl-text-secondary)] bg-transparent border-none rounded-[7px] py-1 px-2.5 cursor-pointer transition-colors duration-100 hover:text-white hover:bg-[#1a1a1a]" title="Indicators">
+            <div className="shrink-0 relative">
+              <button id="indBtn" className="font-[var(--hl-font)] text-[11px] font-bold text-[var(--hl-text-secondary)] bg-transparent border-none rounded-[7px] py-1 px-2.5 cursor-pointer transition-colors duration-100 hover:text-white hover:bg-[#1a1a1a]" title="Indicators">
                 <span data-i18n="indicators">Indicators</span>
               </button>
+              {/* Toggled by lib/chart.ts's initIndicatorMenu — each row's
+                  data-ind is the indicator name toggleIndicator() expects. */}
+              <div
+                id="indMenu"
+                className="hidden absolute right-0 top-full mt-1 z-30 w-[168px] py-1 bg-[#0d0d0d] border border-[#1f1f1f] rounded-md shadow-[0_8px_24px_rgba(0,0,0,0.6)]"
+              >
+                {[
+                  ["volume", "Volume"],
+                  ["sma", "SMA 20"],
+                  ["ema", "EMA 50"],
+                  ["boll", "Bollinger 20·2"],
+                  ["rsi", "RSI 14"],
+                ].map(([id, label]) => (
+                  <div
+                    key={id}
+                    data-ind={id}
+                    className="ind-row flex items-center gap-2 px-2.5 py-1.5 text-[11px] font-semibold text-[var(--hl-text-secondary)] cursor-pointer hover:bg-[#161616] hover:text-white"
+                  >
+                    <span className="ind-tick w-3 shrink-0 text-[#50d2c1]">✓</span>
+                    {label}
+                  </div>
+                ))}
+              </div>
               <button
                 className="font-[var(--hl-font)] text-[11px] font-bold text-[var(--hl-text-secondary)] bg-transparent border-none rounded-[7px] py-1 px-2.5 cursor-pointer transition-colors duration-100 hover:text-white hover:bg-[#1a1a1a]"
                 onClick={() => (window as any).toggleObFloat?.()}

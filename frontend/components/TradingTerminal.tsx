@@ -2,13 +2,14 @@
 
 import { useEffect, useRef } from "react";
 import { useWallet } from "@/lib/wallet";
-import { cachedFetch } from "@/lib/query";
+import { cachedFetch, fetchJson } from "@/lib/query";
 import { fmt, fmtSz, fmtLarge, fmtAster, ivLabel, countdown, asterRound } from "@/lib/format";
 import { createAsterUserStreamSync } from "./trade/asterUserStreamSync";
 import { createBottomTabs } from "./trade/bottomTabs";
 import { createOrderFlow } from "./trade/orderFlow";
 import { createMarketList } from "./trade/marketList";
 import { createMarketFeed } from "./trade/marketFeed";
+import { initShortcuts } from "./trade/shortcuts";
 import { TradeHeader } from "./trade/TradeHeader";
 import { XTrackerPanel } from "./trade/XTrackerPanel";
 import { ChartPanel } from "./trade/ChartPanel";
@@ -615,32 +616,43 @@ export default function TradingTerminal() {
           return FUT_SYMS.includes(txt) ? txt : lmpSym;
         }
 
+        // fetchJson gives every leg a deadline and one retry — a bare fetch()
+        // has no timeout, so a hung /fapi proxy used to leave this panel on
+        // "Loading…" with nothing to click.
         async function fetchLmpData(sym: string) {
           const B = "/fapi",
             s = sym + "USDT";
           try {
             const [ticker, oiData, lsRatio, takerRatio, oiHist] =
               await Promise.all([
-                fetch(`${B}/fapi/v1/ticker/24hr?symbol=${s}`).then((r) =>
-                  r.json(),
-                ),
-                fetch(`${B}/fapi/v1/openInterest?symbol=${s}`).then((r) =>
-                  r.json(),
-                ),
-                fetch(
+                fetchJson(`${B}/fapi/v1/ticker/24hr?symbol=${s}`),
+                fetchJson(`${B}/fapi/v1/openInterest?symbol=${s}`),
+                fetchJson(
                   `${B}/futures/data/globalLongShortAccountRatio?symbol=${s}&period=5m&limit=1`,
-                ).then((r) => r.json()),
-                fetch(
+                ),
+                fetchJson(
                   `${B}/futures/data/takerlongshortRatio?symbol=${s}&period=5m&limit=1`,
-                ).then((r) => r.json()),
-                fetch(
+                ),
+                fetchJson(
                   `${B}/futures/data/openInterestHist?symbol=${s}&period=5m&limit=12`,
-                ).then((r) => r.json()),
+                ),
               ]);
             return { sym, ticker, oiData, lsRatio, takerRatio, oiHist };
           } catch {
             return null;
           }
+        }
+
+        // Swap a stranded panel for a Retry that re-runs the shared fetch.
+        function lmpFail(id: string) {
+          const e = document.getElementById(id);
+          if (!e) return;
+          e.innerHTML =
+            '<div class="lmp-loading">Couldn\'t load <button class="lmp-retry text-[10px] font-semibold text-[#50d2c1] bg-transparent border border-[#1f1f1f] rounded px-1.5 py-0.5 ml-1.5 cursor-pointer">Retry</button></div>';
+          e.querySelector(".lmp-retry")?.addEventListener("click", () => {
+            e.innerHTML = '<div class="lmp-loading">Loading…</div>';
+            refresh();
+          });
         }
 
         function renderLiqMap(data: any) {
@@ -807,6 +819,15 @@ export default function TradingTerminal() {
 
         async function refresh() {
           const data = await fetchLmpData(lmpSym);
+          // Keep the last good render on a failed refresh; only offer a retry
+          // when there is nothing on screen yet.
+          if (!data) {
+            if (!lmpData) {
+              lmpFail(lmpTab === "liqmap" ? "lmpBody" : "lmpOiBody");
+              lmpFail("lmpAiBody");
+            }
+            return;
+          }
           lmpData = data;
           renderLiqMap(data);
           renderOiFlow(data);
@@ -956,6 +977,7 @@ export default function TradingTerminal() {
       initBtmResize();
       initObFloat();
       initLiqMap();
+      initShortcuts();
       await marketFeed.loadMarket("BTC");
       await loadMeta();
       startPriceStream(marketList.getMarkets("hl").slice(0, 20), onPrice, null, onTrade);

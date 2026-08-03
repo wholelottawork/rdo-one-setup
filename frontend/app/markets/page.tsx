@@ -1,7 +1,7 @@
 'use client';
 import { useEffect } from 'react';
 import { SiteNav } from '@/components/shared/SiteNav';
-import { cachedFetch } from '@/lib/query';
+import { cachedFetch, fetchJson } from '@/lib/query';
 
 export default function MarketsPage() {
   useEffect(() => {
@@ -22,6 +22,23 @@ export default function MarketsPage() {
     const el  = (id: string) => document.getElementById(id);
     const set = (id: string, v: string) => { const e = el(id); if (e) e.textContent = v; };
     const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
+
+    // Every panel here starts on "Loading…". Before fetchJson had a deadline a
+    // hung proxy left that on screen forever with nothing to click; now a dead
+    // read swaps in a Retry that re-runs just that panel's fetch. `wrap` exists
+    // because the perps panel is a <tbody> and needs a row/cell around it.
+    const LOADING = '<div class="p-5 text-center text-[#878c8f] text-xs">Loading…</div>';
+    const RETRY_BTN = '<button class="retry-btn text-[11px] font-semibold text-[#50d2c1] bg-transparent border border-[#1f1f1f] rounded px-2 py-1 cursor-pointer hover:bg-[#161616]">Retry</button>';
+    function fail(id: string, retry: () => void, wrap: (h: string) => string = h => h) {
+      const e = el(id);
+      if (!e) return;
+      e.innerHTML = wrap(`<div class="flex items-center justify-center gap-2.5 p-5 text-[#878c8f] text-xs">Couldn't load${RETRY_BTN}</div>`);
+      e.querySelector('.retry-btn')?.addEventListener('click', () => {
+        e.innerHTML = wrap(LOADING);
+        retry();
+      });
+    }
+    const asRow = (cols: number) => (h: string) => `<tr><td colspan="${cols}">${h}</td></tr>`;
 
     function fmtLarge(n: number) {
       if (!isFinite(n) || n === null) return '—';
@@ -51,9 +68,7 @@ export default function MarketsPage() {
     async function cgFetch(path: string) {
       try {
         return await cachedFetch(['coingecko', path], async () => {
-          const res = await fetch('/coingecko' + path);
-          if (!res.ok) throw new Error('HTTP ' + res.status);
-          const data = await res.json();
+          const data = await fetchJson('/coingecko' + path);
           if (data?.status?.error_code) throw new Error('CG error');
           return data;
         }, CG_TTL);
@@ -67,9 +82,7 @@ export default function MarketsPage() {
 
     async function fetchTicker() {
       try {
-        const res = await fetch(`/binance/api/v3/ticker/24hr?symbols=${encodeURIComponent(JSON.stringify(SYMS))}`);
-        if (!res.ok) return;
-        const data = await res.json();
+        const data = await fetchJson(`/binance/api/v3/ticker/24hr?symbols=${encodeURIComponent(JSON.stringify(SYMS))}`);
         if (!Array.isArray(data)) return;
         data.forEach((t: any) => {
           const px = parseFloat(t.lastPrice), ch = parseFloat(t.priceChangePercent);
@@ -102,9 +115,8 @@ export default function MarketsPage() {
 
     async function fetchSparklines() {
       try {
-        const res = await fetch('/binance/api/v3/klines?symbol=BTCUSDT&interval=4h&limit=42');
-        if (!res.ok) return;
-        const klines = await res.json();
+        const klines = await fetchJson<any[]>('/binance/api/v3/klines?symbol=BTCUSDT&interval=4h&limit=42');
+        if (!Array.isArray(klines) || !klines.length) return;
         const mcPts  = klines.map((k:any,i:number) => [i, parseFloat(k[4])]);
         const volPts = klines.map((k:any,i:number) => [i, parseFloat(k[7])]);
         const mcLast  = mcPts[mcPts.length-1][1], mc24ago = mcPts[Math.max(0,mcPts.length-7)][1];
@@ -141,17 +153,20 @@ export default function MarketsPage() {
     async function fetchGlobal() {
       const [gj,fgj]=await Promise.allSettled([
         cgFetch('/api/v3/global'),
-        fetch('/feargreed/fng/?limit=1').then(r=>r.json()),
+        fetchJson('/feargreed/fng/?limit=1'),
       ]);
       const d=gj.status==='fulfilled'?gj.value?.data:null;
       if(d){globalData=d;set('s-mcap',fmtLarge(d.total_market_cap?.usd??0));set('s-vol',fmtLarge(d.total_volume?.usd??0));set('s-btc',(d.market_cap_percentage?.btc??0).toFixed(1)+'%');renderMarketStats();}
+      // The stats table needs either global or coin data; if neither ever
+      // landed it would otherwise stay on "Loading…".
+      else if(!globalData&&!coins.length)fail('mkt-stats-body',fetchGlobal);
       const fg=fgj.status==='fulfilled'?fgj.value?.data?.[0]:null;
       if(fg){const fgEl=el('s-fg');if(fgEl){fgEl.textContent=fg.value;fgEl.style.color=fgColor(fg.value);}set('s-fg-l',fg.value_classification+' ('+fg.value+')');}
     }
 
     async function fetchTrending() {
       const json=await cgFetch('/api/v3/search/trending');
-      if(!json?.coins)return;
+      if(!json?.coins){fail('trending',fetchTrending);return;}
       const items=json.coins.slice(0,7).map((c:any)=>c.item);
       const trendEl=el('trending');
       if(!trendEl)return;
@@ -163,7 +178,9 @@ export default function MarketsPage() {
 
     async function fetchCoins() {
       const json=await cgFetch('/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=50&page=1&sparkline=false&price_change_percentage=7d,24h');
-      if(!Array.isArray(json))return;
+      // Only strand a retry if nothing was ever rendered — a failed refresh
+      // over good data should leave the good data alone.
+      if(!Array.isArray(json)){if(!coins.length){fail('coins-tbl',fetchCoins);fail('gainers',fetchCoins);}return;}
       coins=json.slice(0,20);
       const gainers=[...json].filter(c=>(c.price_change_percentage_24h??0)>0).sort((a,b)=>(b.price_change_percentage_24h??0)-(a.price_change_percentage_24h??0)).slice(0,7);
       const gainersEl=el('gainers');
@@ -210,9 +227,7 @@ export default function MarketsPage() {
 
     async function fetchHLPerps() {
       try {
-        const r=await fetch('/hl/info',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type:'metaAndAssetCtxs'})});
-        if(!r.ok) throw new Error('HTTP '+r.status);
-        const data=await r.json();
+        const data=await fetchJson('/hl/info',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type:'metaAndAssetCtxs'})});
         if(!Array.isArray(data)) throw new Error('unexpected response');
         const [meta,ctxs]=data;
         hlData=meta.universe.map((coin:any,i:number)=>{
@@ -224,7 +239,7 @@ export default function MarketsPage() {
           return{name:coin.name,maxLev:coin.maxLeverage,px,chgAbs,chgPct,fund8h,vol,oi};
         });
         renderHLTable();
-      }catch(e){console.error('HL perps:',e);}
+      }catch(e){console.error('HL perps:',e);if(!hlData.length)fail('hl-tbody',fetchHLPerps,asRow(6));}
     }
 
     function renderHLTable() {
@@ -273,11 +288,11 @@ export default function MarketsPage() {
       const B='/fapi',s=sym+'USDT';
       try {
         const [ticker,oiData,lsRatio,takerRatio,oiHist]=await Promise.all([
-          fetch(`${B}/fapi/v1/ticker/24hr?symbol=${s}`).then(r=>r.json()),
-          fetch(`${B}/fapi/v1/openInterest?symbol=${s}`).then(r=>r.json()),
-          fetch(`${B}/futures/data/globalLongShortAccountRatio?symbol=${s}&period=5m&limit=1`).then(r=>r.json()),
-          fetch(`${B}/futures/data/takerlongshortRatio?symbol=${s}&period=5m&limit=1`).then(r=>r.json()),
-          fetch(`${B}/futures/data/openInterestHist?symbol=${s}&period=5m&limit=12`).then(r=>r.json()),
+          fetchJson(`${B}/fapi/v1/ticker/24hr?symbol=${s}`),
+          fetchJson(`${B}/fapi/v1/openInterest?symbol=${s}`),
+          fetchJson(`${B}/futures/data/globalLongShortAccountRatio?symbol=${s}&period=5m&limit=1`),
+          fetchJson(`${B}/futures/data/takerlongshortRatio?symbol=${s}&period=5m&limit=1`),
+          fetchJson(`${B}/futures/data/openInterestHist?symbol=${s}&period=5m&limit=12`),
         ]);
         return{sym,ticker,oiData,lsRatio,takerRatio,oiHist};
       }catch(e){console.error('futData:',e);return null;}
@@ -352,6 +367,13 @@ export default function MarketsPage() {
 
     async function refreshFut() {
       const data=await fetchFutData(futSym);
+      // A failed read leaves the last good render in place; only offer a retry
+      // when there is nothing to show. All three panels share one fetch, so
+      // one retry re-runs the lot.
+      if(!data){
+        if(!futData){fail(futTab==='liqmap'?'liqmap-body':'inflow-body',refreshFut);fail('ai-body',refreshFut);}
+        return;
+      }
       futData=data;
       if(futTab==='liqmap')renderLiqMap(data);else renderInflow(data);
       renderAISignals(data);
