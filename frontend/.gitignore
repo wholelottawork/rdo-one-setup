@@ -5,10 +5,11 @@ out/
 # Dependencies
 node_modules/
 
-# Env files — NEVER commit these to this public repo
-.env
-.env.local
-.env.*.local
+# Env files — NEVER commit these to this public repo.
+# Catch-all so a stray .env.production can't slip in; the checked-in
+# .env.example (values are placeholders only) is the one exception.
+.env*
+!.env.example
 
 # OS
 .DS_Store

@@ -1,0 +1,212 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# RDO ONE — single-VPS deployment.
+#
+#   internet → nginx (80/443) ─┬→ frontend (Next standalone, :3002)
+#                              └→ backend  (Fastify, :3001)
+#                                     └→ redis (:6379, internal only)
+#
+# Everything secret lives in a single root .env, supplied via env_file and
+# never baked into an image. See deploy/RUNBOOK.md before first deploy.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Every service logs through Docker's json-file driver, which is UNBOUNDED by
+# default — one chatty week and the VPS disk fills, which takes down the whole
+# box, not just the noisy service. This cap is not optional.
+#
+# 30MB per service is also the entire retention story: there is no log shipper
+# and no external error tracker, so anything older than the last 30MB is gone.
+# That is what makes the backend's log VOLUME a correctness concern rather than
+# tidiness — a Redis outage logging every failed reconnect would push every
+# other line out of the window inside two days, destroying the evidence of
+# whatever caused it. src/plugins/redis.ts throttles that to one line a minute
+# for exactly this reason, and production runs at level `warn` with the money
+# paths (tagged "audit":"money") opted back up to `info`.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  # ───────────────────────────────────────────────────────────────────────────
+  # Redis — datastore, not cache. See deploy/redis/redis.conf and P0-7.
+  # ───────────────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    logging: *default-logging
+    # NO `ports:` mapping, deliberately. Publishing 6379 would expose a
+    # datastore holding encrypted user agent keys to the entire internet —
+    # cloud firewalls do not save you here, because Docker writes its own
+    # iptables rules that bypass ufw. Only the internal network reaches it.
+    command: >
+      redis-server /usr/local/etc/redis/redis.conf
+      --requirepass "${REDIS_PASSWORD:?REDIS_PASSWORD is required — see .env.example}"
+    volumes:
+      # NAMED volume. An anonymous volume or a bare container path would put
+      # /data in the container's writable layer, where `docker compose down`
+      # discards it along with every stored agent key.
+      - redis_data:/data
+      - ./deploy/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    environment:
+      # redis-cli reads this instead of taking -a on the command line, which
+      # keeps the password out of the process list and out of the "Warning:
+      # using a password with -a is insecure" noise in the healthcheck logs.
+      REDISCLI_AUTH: ${REDIS_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Backend — Fastify, run by tsx (no build step).
+  # ───────────────────────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: rdo-one/backend:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    logging: *default-logging
+    # Reaps zombie processes; the app itself handles SIGTERM (src/index.ts).
+    init: true
+    # Long enough for the graceful shutdown to quit Redis and release the TP/SL
+    # watcher's 30s lock. The Docker default is 10s, which would SIGKILL mid-
+    # pass and leave the lock held until its TTL expires — a window in which no
+    # instance places TP/SL protections.
+    stop_grace_period: 45s
+    depends_on:
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: "3001"
+      # Composed here rather than duplicated in .env so the password can never
+      # drift out of sync with the one Redis is actually started with.
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      # Derived from DOMAIN for the same reason. Note src/plugins/cors.ts treats
+      # an empty list as "allow any origin" — deriving it means it is never
+      # accidentally empty in production.
+      ALLOWED_ORIGINS: https://${DOMAIN},https://www.${DOMAIN}
+      # Stamped on the backend's boot log line. deploy/deploy.sh sets IMAGE_TAG
+      # to the short git SHA, so "which build produced this log?" is answerable
+      # from the log itself rather than from deploy timestamps and memory.
+      RELEASE: ${IMAGE_TAG:-latest}
+    expose:
+      - "3001"
+    # healthcheck is defined in backend/Dockerfile.
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Frontend — Next.js standalone server.
+  # ───────────────────────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      # BUILD ARGS, not environment. Next inlines NEXT_PUBLIC_* into the client
+      # bundle at build time; passing them below as `environment:` would do
+      # exactly nothing and ship a bundle pointing at ws://localhost:3001/ws.
+      # Changing either value requires a REBUILD, not a restart.
+      args:
+        # Next serializes rewrites during `next build`; without this, the
+        # frontend image proxies to its localhost instead of this service.
+        BACKEND_URL: http://backend:3001
+        NEXT_PUBLIC_HL_WS_URL: ${NEXT_PUBLIC_HL_WS_URL:?must be set at build time — Next inlines it into the browser bundle}
+        NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: ${NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID:-}
+    image: rdo-one/frontend:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    logging: *default-logging
+    init: true
+    stop_grace_period: 20s
+    depends_on:
+      # service_started, not service_healthy: the Next server proxies to the
+      # backend per request and returns a 502 if it is not there yet, which is
+      # a far better failure than refusing to start the web tier at all.
+      backend:
+        condition: service_started
+    environment:
+      NODE_ENV: production
+      PORT: "3002"
+      HOSTNAME: 0.0.0.0
+      # Also supplied at build time above because Next serializes rewrites.
+      BACKEND_URL: http://backend:3001
+    expose:
+      - "3002"
+    # healthcheck is defined in frontend/Dockerfile.
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # nginx — TLS termination, real client IPs, WebSocket upgrades.
+  # ───────────────────────────────────────────────────────────────────────────
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    logging: *default-logging
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      # Both service_started rather than service_healthy, deliberately. The
+      # backend reports unhealthy whenever Redis is down (by design — /health
+      # returns 503). Gating nginx on health would mean a Redis blip takes the
+      # entire site offline instead of degrading the routes that need Redis,
+      # which is the opposite of what the P0-1 work set out to achieve.
+      backend:
+        condition: service_started
+      frontend:
+        condition: service_started
+    volumes:
+      # Rendered by the base image's entrypoint: /etc/nginx/templates/*.template
+      # → /etc/nginx/conf.d/*.conf, with ${DOMAIN} substituted.
+      - ./deploy/nginx/templates:/etc/nginx/templates:ro
+      - certbot_etc:/etc/letsencrypt:ro
+      - certbot_www:/var/www/certbot:ro
+    environment:
+      DOMAIN: ${DOMAIN:?DOMAIN is required — see .env.example}
+      # CRITICAL. Without this filter, envsubst replaces EVERY $var in the
+      # template — including nginx's own $host, $remote_addr and
+      # $proxy_add_x_forwarded_for — with empty strings, producing a config
+      # that either fails to load or silently forwards blank client IPs.
+      # The value is a regex matched against environment variable NAMES.
+      NGINX_ENVSUBST_FILTER: "^DOMAIN$$"
+    # Reload every 6h so a certificate certbot renewed in the background is
+    # actually picked up; without this nginx serves the old cert until the next
+    # deploy, which may well be after it expires.
+    #
+    # Note the `exec /docker-entrypoint.sh nginx ...` rather than `exec nginx`.
+    # The image's entrypoint only runs its /docker-entrypoint.d/ scripts — the
+    # envsubst step that renders templates/ into conf.d/ — when its first
+    # argument is literally "nginx". Overriding `command:` with a shell (as the
+    # reload loop requires) makes the first argument /bin/sh, so that check
+    # fails and the templates are NEVER rendered: nginx silently comes up on
+    # the image's stock welcome-page config, with no ${DOMAIN} server block and
+    # no TLS listener on 443 at all. Re-invoking the entrypoint restores it.
+    command: >
+      /bin/sh -c "while :; do sleep 6h & wait $${!}; nginx -s reload; done &
+      exec /docker-entrypoint.sh nginx -g 'daemon off;'"
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # certbot — renewal only. First issuance is deploy/init-letsencrypt.sh.
+  # ───────────────────────────────────────────────────────────────────────────
+  certbot:
+    image: certbot/certbot:latest
+    restart: unless-stopped
+    logging: *default-logging
+    volumes:
+      - certbot_etc:/etc/letsencrypt
+      - certbot_www:/var/www/certbot
+    # `renew` is a no-op until a cert is within 30 days of expiry, so running
+    # it twice a day is cheap and stays well inside Let's Encrypt rate limits.
+    entrypoint: >
+      /bin/sh -c "trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h & wait $${!}; done"
+
+volumes:
+  # External-by-name is not used here, but the name is what protects the data:
+  # a named volume survives `docker compose down`. It does NOT survive
+  # `docker compose down -v` — see deploy/deploy.sh, which never issues that.
+  redis_data:
+  certbot_etc:
+  certbot_www:

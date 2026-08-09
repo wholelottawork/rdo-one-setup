@@ -6,3 +6,10 @@ dist/
 tsconfig.tsbuildinfo
 next-env.d.ts
 .claude/
+
+# ── Deployment ─────────────────────────────────────────────────────────────
+# .env is already ignored above; .env.example is placeholders only and is
+# meant to be committed.
+.deploy-history
+backups/
+deploy/nginx/htpasswd

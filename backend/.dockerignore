@@ -1,0 +1,15 @@
+node_modules
+npm-debug.log
+
+# Never bake secrets into an image layer. AGENT_KEY_ENCRYPTION_SECRET decrypts
+# every stored per-user Aster agent key; it is supplied at run time via
+# env_file. .env.example is a placeholder-only file and harmless, but there is
+# no reason for it in the image either.
+.env
+.env.*
+
+Dockerfile
+.dockerignore
+*.md
+.git
+.gitignore

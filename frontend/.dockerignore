@@ -1,0 +1,17 @@
+node_modules
+.next
+out
+npm-debug.log
+
+# NEXT_PUBLIC_* values reach the build as ARGs from the root .env, never as a
+# file inside the build context — a .env copied in here would silently win over
+# them during `next build`.
+.env
+.env.*
+
+Dockerfile
+.dockerignore
+*.md
+.git
+.gitignore
+tsconfig.tsbuildinfo

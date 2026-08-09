@@ -1,0 +1,146 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# RDO ONE — LOCAL testing stack.
+#
+#   browser → frontend (Next standalone, 127.0.0.1:3002)
+#                 └→ backend (Fastify, 127.0.0.1:3001) → redis (internal)
+#
+# This is a STANDALONE compose file, not an override of docker-compose.yml.
+# The production stack fronts everything with nginx + Let's Encrypt, which
+# needs a real domain and a real certificate — neither exists on a laptop, and
+# faking them is more moving parts than it buys. So nginx and certbot are
+# simply absent here and the two app containers publish their own ports.
+#
+# Everything else is byte-identical to production: the same Dockerfiles, the
+# same Next standalone build, the same Redis config and durability settings.
+# What you test here is what ships.
+#
+#   Run:  docker compose -f docker-compose.local.yml --env-file .env.local up --build
+#
+# `name:` gives this stack its own project namespace, so its volumes and
+# containers can never collide with a production `docker compose up` run from
+# the same checkout.
+# ─────────────────────────────────────────────────────────────────────────────
+name: rdo-one-local
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  # ───────────────────────────────────────────────────────────────────────────
+  # Redis — same image and same config file as production.
+  # ───────────────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    logging: *default-logging
+    command: >
+      redis-server /usr/local/etc/redis/redis.conf
+      --requirepass "${REDIS_PASSWORD:?REDIS_PASSWORD is required — see .env.local.example}"
+    # Published, unlike production, so `redis-cli` can inspect what the app
+    # wrote. Bound to 127.0.0.1 explicitly: a bare "6379:6379" would listen on
+    # every interface, and Docker's own iptables rules bypass the host firewall
+    # — on a café network that publishes a password-protected datastore holding
+    # encrypted agent keys to the room.
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      # Named volume, so restarting the stack does not wipe the agent keys and
+      # TP/SL watches you just created while testing.
+      - redis_data:/data
+      - ./deploy/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    environment:
+      REDISCLI_AUTH: ${REDIS_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Backend — Fastify via tsx, same Dockerfile as production.
+  # ───────────────────────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: rdo-one/backend:local
+    restart: unless-stopped
+    logging: *default-logging
+    init: true
+    stop_grace_period: 45s
+    depends_on:
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env.local
+    environment:
+      # NODE_ENV=production on purpose. Running the shipping code path is the
+      # entire point of testing in Docker; `npm run dev` in two terminals is
+      # the tool for the other job.
+      NODE_ENV: production
+      PORT: "3001"
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      # The browser reaches the API through Next's same-origin rewrite proxy,
+      # so CORS is not normally in play — but list every host you might open
+      # the app on anyway, because an empty ALLOWED_ORIGINS means "allow any
+      # origin" (src/plugins/cors.ts) and that is not what you want to be
+      # testing against.
+      ALLOWED_ORIGINS: http://${LOCAL_HOST:-rdo.localtest.me}:3002,http://localhost:3002,http://127.0.0.1:3002
+      RELEASE: local
+      # Production runs at `warn`. Locally you want to see the request log and
+      # the money-path audit lines without digging.
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    # Published so you can curl the backend directly (/health, /api/*) without
+    # going through Next. 127.0.0.1 only, same reasoning as Redis above.
+    ports:
+      - "127.0.0.1:3001:3001"
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Frontend — Next.js standalone, same Dockerfile as production.
+  # ───────────────────────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # Next resolves rewrites during `next build`, so the backend service
+        # URL must be present while the image is built as well as at runtime.
+        BACKEND_URL: http://backend:3001
+        # BUILD arg, not runtime env — `next build` inlines this into the
+        # browser bundle and nothing re-reads it afterwards. Changing
+        # LOCAL_HOST therefore needs `up --build`, not `up`.
+        #
+        # It cannot be localhost/127.0.0.1: next.config.js fails the build on
+        # those, because in a shipped bundle they mean "the visitor's own
+        # machine". That guard is right, and it applies here too — so local
+        # testing uses a hostname that RESOLVES to 127.0.0.1 instead.
+        # rdo.localtest.me is a public wildcard DNS record pointing at
+        # 127.0.0.1, so it needs no /etc/hosts entry — but it does need DNS.
+        # Offline, add "127.0.0.1 rdo.local" to /etc/hosts and set
+        # LOCAL_HOST=rdo.local in .env.local.
+        NEXT_PUBLIC_HL_WS_URL: ws://${LOCAL_HOST:-rdo.localtest.me}:3001/ws
+        NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: ${NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID:-}
+    image: rdo-one/frontend:local
+    restart: unless-stopped
+    logging: *default-logging
+    init: true
+    stop_grace_period: 20s
+    depends_on:
+      backend:
+        condition: service_started
+    environment:
+      NODE_ENV: production
+      PORT: "3002"
+      HOSTNAME: 0.0.0.0
+      # Keep this at runtime too for Next commands that evaluate the config
+      # when the server starts.
+      BACKEND_URL: http://backend:3001
+    ports:
+      - "127.0.0.1:3002:3002"
+
+volumes:
+  redis_data:
