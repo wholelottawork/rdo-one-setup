@@ -66,7 +66,6 @@ const T: Record<string, Record<string, string>> = {
     sourceAccount: 'SOURCE ACCOUNT', amount: 'AMOUNT',
     receiveAs: 'RECEIVE AS', destAddress: 'DESTINATION ADDRESS',
     direction: 'Direction', autoTransfer: 'Auto Transfer',
-    asterApiCreds: 'Aster API credentials',
     langEn: 'English', langRu: 'Русский', langZh: '中文',
   },
   ru: {
@@ -136,7 +135,6 @@ const T: Record<string, Record<string, string>> = {
     sourceAccount: 'ИСТОЧНИК', amount: 'СУММА',
     receiveAs: 'ПОЛУЧИТЬ КАК', destAddress: 'АДРЕС НАЗНАЧЕНИЯ',
     direction: 'Направление', autoTransfer: 'Авто перевод',
-    asterApiCreds: 'API ключи Aster',
     langEn: 'English', langRu: 'Русский', langZh: '中文',
   },
   zh: {

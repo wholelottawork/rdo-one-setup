@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import type { Redis } from 'ioredis';
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import { peekSession, readSessionToken, requireSession, startSession } from './aster-session.ts';
+import { endSession, peekSession, readSessionToken, requireSession, startSession } from './aster-session.ts';
 
 // Smallest thing that behaves like the two Redis calls this module makes.
 function fakeRedis() {
@@ -44,7 +44,7 @@ const redis = fakeRedis();
 const reply = fakeReply();
 const ttl = await startSession(redis as unknown as Redis, reply as unknown as FastifyReply, '0xAbC0000000000000000000000000000000000001');
 
-assert.ok(ttl > 0, 'session has a lifetime');
+assert.ok(ttl !== null && ttl > 0, 'session has a lifetime');
 const setCookie = reply.headers['set-cookie'];
 assert.match(setCookie, /HttpOnly/, 'script in the page must not be able to read the token');
 assert.match(setCookie, /SameSite=Strict/, 'no other site may send this cookie — that is the CSRF story');
@@ -93,5 +93,39 @@ assert.equal(
   null,
 );
 assert.equal(noRedis.sent[0]?.code, 503);
+
+// ── Redis dying MID-request ───────────────────────────────────────────────
+// `redisOk` is a live flag, not a lease: it can read true and the very next
+// command still throw. That throw used to surface as a 500, which tells a
+// caller "the server is broken" when the truth is "the session store is down".
+function deadRedis() {
+  const boom = async () => { throw new Error('Connection is closed.'); };
+  return { set: boom, get: boom, del: boom } as unknown as Redis;
+}
+
+const midFlight = fakeReply();
+assert.equal(
+  await requireSession({ redis: deadRedis(), redisOk: true }, req(cookieHeader), midFlight as unknown as FastifyReply),
+  null,
+  'a session that cannot be read is not a session',
+);
+assert.equal(midFlight.sent[0]?.code, 503, 'a Redis throw is 503, never 500');
+
+// Minting must not hand back a cookie whose token was never stored — that is a
+// session guaranteed to fail on the caller's next request.
+const mintFailed = fakeReply();
+assert.equal(
+  await startSession(deadRedis(), mintFailed as unknown as FastifyReply, '0xAbC0000000000000000000000000000000000001'),
+  null,
+);
+assert.equal(mintFailed.sent[0]?.code, 503);
+assert.equal(mintFailed.headers['set-cookie'], undefined, 'no cookie for a session that was never stored');
+
+// Logging OUT is the one place a Redis failure is swallowed: the row expires on
+// its own TTL, and refusing here would leave the caller holding a live cookie.
+const loggedOut = fakeReply();
+await endSession(deadRedis(), req(cookieHeader), loggedOut as unknown as FastifyReply, true);
+assert.match(loggedOut.headers['set-cookie'], /Max-Age=0/, 'the cookie is cleared even when Redis is gone');
+assert.equal(loggedOut.sent.length, 0, 'and it is not an error to the caller');
 
 console.log('aster-session: all checks passed');

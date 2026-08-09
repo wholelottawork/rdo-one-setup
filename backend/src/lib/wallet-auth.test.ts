@@ -49,7 +49,7 @@ assert.notEqual(verifyMessage(tampered, sig).toLowerCase(), wallet.address.toLow
 // Same for the amount, and for the action itself.
 const biggerAmount = authMessage('aster-withdraw', wallet.address, { asset: 'USDT', amount: '2500', address: '0xdead000000000000000000000000000000000000' }, 1700000000000);
 assert.notEqual(verifyMessage(biggerAmount, sig).toLowerCase(), wallet.address.toLowerCase(), 'changing the amount must break the signature');
-const otherAction = authMessage('aster-creds-delete', wallet.address, { asset: 'USDT', amount: '25', address: '0xdead000000000000000000000000000000000000' }, 1700000000000);
+const otherAction = authMessage('aster-session', wallet.address, { asset: 'USDT', amount: '25', address: '0xdead000000000000000000000000000000000000' }, 1700000000000);
 assert.notEqual(verifyMessage(otherAction, sig).toLowerCase(), wallet.address.toLowerCase(), 'a signature for one action must not authorize another');
 
 console.log('wallet-auth: all checks passed');

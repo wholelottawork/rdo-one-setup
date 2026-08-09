@@ -54,10 +54,35 @@ export function readSessionToken(req: Pick<FastifyRequest, 'headers'>): string |
   return null;
 }
 
-/** Mints a session for an ALREADY-VERIFIED address and sets the cookie. */
-export async function startSession(redis: Redis, reply: FastifyReply, user: string): Promise<number> {
+/**
+ * Redis went away mid-request. Distinct from "no session" so callers answer
+ * 503 rather than 401 (which would tell a user with a perfectly good session
+ * to re-sign, and the re-sign would fail too) and never 500.
+ *
+ * `redisOk` is checked before these calls, but it is a live flag, not a lease:
+ * Redis can die in the gap. This is that gap.
+ */
+export class RedisUnavailableError extends Error {
+  constructor(cause?: unknown) {
+    super('Redis unavailable', { cause });
+    this.name = 'RedisUnavailableError';
+  }
+}
+
+/** Mints a session for an ALREADY-VERIFIED address and sets the cookie.
+ *  Returns null after having sent a 503 if the session store is unreachable —
+ *  minting a cookie whose token was never stored would hand the caller a
+ *  session that fails on its very next request. */
+export async function startSession(
+  redis: Redis, reply: FastifyReply, user: string,
+): Promise<number | null> {
   const token = crypto.randomBytes(32).toString('hex');
-  await redis.set(redisKey(token), user.toLowerCase(), 'EX', SESSION_TTL_S);
+  try {
+    await redis.set(redisKey(token), user.toLowerCase(), 'EX', SESSION_TTL_S);
+  } catch {
+    reply.code(503).send({ code: 503, msg: 'Sessions unavailable (Redis down)' });
+    return null;
+  }
   reply.header('set-cookie', cookie(token, SESSION_TTL_S));
   return SESSION_TTL_S;
 }
@@ -68,14 +93,24 @@ export async function endSession(
   redis: Redis, req: FastifyRequest, reply: FastifyReply, redisOk: boolean,
 ): Promise<void> {
   const token = readSessionToken(req);
-  if (token && redisOk) await redis.del(redisKey(token));
+  // Swallowed on purpose, and only here: the server-side row expires on its
+  // own TTL, and the caller asked to be logged OUT — answering 503 would leave
+  // them holding a live cookie. Clearing it is the part that must not fail.
+  if (token && redisOk) await redis.del(redisKey(token)).catch(() => {});
   reply.header('set-cookie', cookie('', 0));
 }
 
-/** The session's address, or null — no response sent. For "do I have one?". */
+/** The session's address, or null — no response sent. For "do I have one?".
+ *  Throws RedisUnavailableError rather than returning null when the store is
+ *  unreachable: "unknown" must not be squashed into "not logged in". */
 export async function peekSession(redis: Redis, req: FastifyRequest): Promise<string | null> {
   const token = readSessionToken(req);
-  return token ? redis.get(redisKey(token)) : null;
+  if (!token) return null;
+  try {
+    return await redis.get(redisKey(token));
+  } catch (err) {
+    throw new RedisUnavailableError(err);
+  }
 }
 
 /**
@@ -101,7 +136,13 @@ export async function requireSession(
     reply.code(503).send({ code: 503, msg: 'Sessions unavailable (Redis down)' });
     return null;
   }
-  const user = await peekSession(fastify.redis, req);
+  let user: string | null;
+  try {
+    user = await peekSession(fastify.redis, req);
+  } catch {
+    reply.code(503).send({ code: 503, msg: 'Sessions unavailable (Redis down)' });
+    return null;
+  }
   if (!user) {
     reply.code(401).send({ code: 401, msg: 'Trading session expired — authorize with your wallet' });
     return null;

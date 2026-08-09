@@ -5,13 +5,16 @@ import { fetchJSON } from '../lib/fetcher';
 import { registerCachedProxy } from '../lib/cached-proxy';
 import { signAsterV3Request, signAsterV3RequestAs } from '../lib/aster-auth';
 import { getOrCreateUserAgent } from '../lib/agent-keystore';
-import { deleteAsterCreds, hmacQuery, loadAsterCreds, saveAsterCreds } from '../lib/aster-creds';
 import { addTpslWatch, startTpslWatcher } from '../lib/aster-tpsl-watcher';
 import { verifyWalletAuth } from '../lib/wallet-auth';
 import { endSession, peekSession, requireSession, startSession } from '../lib/aster-session';
+import { toPlainDecimal, verifyAsterWithdrawRequest } from '../lib/aster-withdraw';
+import { moneyLog, moneyWarn } from '../lib/money-log';
 import type { AsterOIBulkBody } from '../types';
 
 const ASTER_FAPI = 'https://fapi.asterdex.com';
+// Withdrawal fee quotes live on a different host from everything else.
+const ASTER_SAPI = 'https://sapi.asterdex.com';
 
 const ASTER_HEADERS = {
   Referer: 'https://www.asterdex.com/',
@@ -112,14 +115,22 @@ export default async function asterRoutes(fastify: FastifyInstance) {
     const owner = await authed(reply, 'aster-session', user, {}, timestamp, signature);
     if (!owner) return;
     const expiresIn = await startSession(fastify.redis, reply, owner);
+    if (expiresIn === null) return; // 503 already sent — no cookie was set
     return { user: owner, expiresIn };
   });
 
   // "Do I already have one?" — no signature, no prompt, and it can only ever
   // report the caller's own cookie back to them.
   fastify.get('/aster-session', async (req: FastifyRequest) => {
-    if (!fastify.redisOk) return { user: null };
-    return { user: await peekSession(fastify.redis, req) };
+    // `unavailable` distinguishes "you are not logged in" from "we can't tell"
+    // so the frontend doesn't drop a live session on a Redis blip. Additive:
+    // callers that only read `user` are unaffected.
+    if (!fastify.redisOk) return { user: null, unavailable: true };
+    try {
+      return { user: await peekSession(fastify.redis, req) };
+    } catch {
+      return { user: null, unavailable: true };
+    }
   });
 
   fastify.delete('/aster-session', async (req: FastifyRequest, reply: FastifyReply) => {
@@ -181,12 +192,54 @@ export default async function asterRoutes(fastify: FastifyInstance) {
     const body = { ...((req.body ?? {}) as Record<string, string>), user: auth.user };
     const signedQuery = await signAsterV3RequestAs(auth.wallet, body);
 
-    return signedPassthrough(`${ASTER_FAPI}/${path}`, {
+    const data = await signedPassthrough(`${ASTER_FAPI}/${path}`, {
       method: 'POST',
       headers: SIGNED_HEADERS,
       body: signedQuery,
     });
+
+    // Order placement is a money path and, until now, one that left no trace:
+    // production logs at `warn`, this route returns 200 whatever Aster says,
+    // and a rejected order was indistinguishable from a placed one after the
+    // fact. `signedQuery` is deliberately NOT logged — it carries the agent
+    // signature. The body fields below are the user's own order parameters.
+    logOrderOutcome(path, auth.user, body, data);
+
+    return data;
   });
+
+  // Aster answers a rejected order with HTTP 200 and a negative `code`, so the
+  // status tells you nothing — the body is the only outcome there is.
+  function logOrderOutcome(
+    path: string,
+    user: string,
+    body: Record<string, string>,
+    data: unknown,
+  ) {
+    if (!/\border\b/i.test(path)) return; // only the order endpoints are money
+    const r = (data ?? {}) as { code?: number; msg?: string; orderId?: number | string; status?: string };
+    const line = {
+      user,
+      path,
+      symbol: body.symbol,
+      side: body.side,
+      type: body.type,
+      quantity: body.quantity,
+      price: body.price,
+      stopPrice: body.stopPrice,
+      reduceOnly: body.reduceOnly,
+      closePosition: body.closePosition,
+    };
+    if (typeof r.code === 'number' && r.code < 0) {
+      moneyWarn(fastify, 'order.rejected', { ...line, code: r.code, msg: r.msg });
+    } else {
+      moneyLog(fastify, 'order.placed', {
+        ...line,
+        orderId: r.orderId != null ? String(r.orderId) : null,
+        status: r.status ?? null,
+      });
+    }
+  }
 
   // PUT/DELETE variants of the same signed passthrough — needed for the
   // listenKey user-data-stream lifecycle (PUT to keepalive, DELETE to
@@ -249,14 +302,118 @@ export default async function asterRoutes(fastify: FastifyInstance) {
 
   startTpslWatcher(fastify);
 
-  // ── Aster V1 credentials + the endpoints that need them ───────────────────
-  // Withdraw and deposit-address are V1 (API key + HMAC), not V3 agent-signed.
-  // The browser used to hold that key/secret pair and sign withdrawals itself;
-  // it now posts them here once and never sees them again. See lib/aster-creds.
-  // `user` is a PUBLIC address, so it can never be taken on trust here — these
-  // credentials move funds. Every state-changing V1 route below requires a
-  // wallet signature over its own parameters (lib/wallet-auth.ts) and keys off
-  // the address recovered from that signature, never off the request body.
+  // ── Withdrawal (Aster V3) ─────────────────────────────────────────────────
+  // This used to POST /fapi/v1/withdraw with X-MBX-APIKEY + HMAC. That
+  // endpoint does not exist in Aster's API — not in V1, not in V3 — and the
+  // V1 credentials it wanted cannot be issued any more (Aster stopped on
+  // 2026-03-25). It had never been run against a live account, which is why
+  // nobody noticed. The V3 replacement below was confirmed live; see
+  // todo/01-RESULT.md for the recipe and the evidence.
+  //
+  // THE SERVER HOLDS NO WITHDRAWAL CAPABILITY. Both signatures are made by
+  // the user's own wallet in the browser (frontend/lib/asterWithdraw.ts) and
+  // this route only verifies and forwards them. The per-user agent keys in
+  // lib/agent-keystore.ts are minted with canWithdraw:false and Aster rejects
+  // them here at the permission check, so there is no key on this machine
+  // that could move funds out of anyone's Aster account.
+
+  // The `fee` is a SIGNED field, so it has to be known before the wallet
+  // prompt — the user is authorizing it. This quote is public (no signer, no
+  // agent, unlike /fapi/v3/aster/user-withdraw-info which hard-requires
+  // `signer`) and it is the same number Aster verifies against: confirmed by
+  // the live withdrawal in todo/01-RESULT.md, where BNB-on-BSC quoted
+  // gasCost 1.7E-4 and the accepted signature carried fee "0.00017".
+  //
+  // Which is the catch worth spelling out: Aster returns small fees in
+  // EXPONENT notation, and a signature over "1.7e-4" does not match one over
+  // "0.00017". The fee leaves here already normalized to the exact string the
+  // browser must sign, so no caller has to remember that.
+  //
+  // Uncached and fail-closed on purpose: a stale fee is a rejected signature,
+  // and a missing one must stop the withdrawal rather than let anything
+  // downstream guess.
+  fastify.get('/aster-withdraw-fee', async (req: FastifyRequest, reply: FastifyReply) => {
+    const { chainId, asset } = req.query as Record<string, string>;
+    if (!/^\d+$/.test(chainId ?? '')) return reply.code(400).send({ msg: 'chainId required' });
+    if (!/^[A-Z0-9]{1,20}$/.test(asset ?? '')) return reply.code(400).send({ msg: 'asset required' });
+
+    let data: Record<string, unknown>;
+    try {
+      const res = await fetch(
+        `${ASTER_SAPI}/api/v3/aster/withdraw/estimateFee?chainId=${chainId}&asset=${asset}`,
+        { headers: ASTER_HEADERS, signal: AbortSignal.timeout(8000) },
+      );
+      data = (await res.json()) as Record<string, unknown>;
+    } catch {
+      return reply.code(502).send({ msg: 'Could not reach Aster for a withdrawal fee quote' });
+    }
+    const gasCost = data.gasCost;
+    if (typeof gasCost !== 'number' || !Number.isFinite(gasCost) || gasCost < 0)
+      return reply.code(502).send({
+        msg: typeof data.msg === 'string' ? data.msg : 'Aster returned no withdrawal fee',
+      });
+
+    return {
+      fee: toPlainDecimal(gasCost),
+      usdValue: typeof data.gasUsdValue === 'number' ? data.gasUsdValue : null,
+      chainId,
+      asset,
+    };
+  });
+
+  // `user` is a public address, so it is never taken on trust — but here the
+  // proof travels with the request rather than in a cookie:
+  // verifyAsterWithdrawRequest recovers BOTH signatures and requires each to
+  // be `user`'s. That checks more than a session would: the second signature
+  // covers the destination, amount and fee, so this route also confirms that
+  // what is going on the wire is what the wallet was shown. Nothing is
+  // forwarded that we could not verify ourselves.
+  //
+  // `query` is forwarded byte for byte — it IS the signed payload of the auth
+  // signature, so rebuilding it from parsed parts would invalidate it.
+  fastify.post('/aster-withdraw', async (req: FastifyRequest, reply: FastifyReply) => {
+    const { query, signature } = (req.body ?? {}) as Record<string, unknown>;
+    const check = verifyAsterWithdrawRequest(query, signature);
+    if (!check.ok) {
+      // No user to attribute it to — the signatures are exactly what failed to
+      // verify — so this records the shape of the rejection and nothing else.
+      moneyWarn(fastify, 'withdraw.rejected', { status: check.status, reason: check.msg });
+      return reply.code(check.status).send({ msg: check.msg });
+    }
+
+    // THE REQUEST BODY IS NEVER LOGGED. It carries two signatures that
+    // together ARE a withdrawal, and Aster accepts a replay of the pair until
+    // the nonce ages out — a log file holding them is a log file that can
+    // move someone's funds.
+    //
+    // What IS logged is the verified, non-secret substance of it: who, how
+    // much, of what, to where. Those are the fields that answer "did the 3am
+    // withdrawal go through?" without holding anything replayable. They come
+    // from `check.fields`, i.e. from signatures this process already recovered
+    // and matched — not from whatever the body claimed.
+    const { user, asset, amount, fee, chainId, receiver } = check.fields;
+    const start = Date.now();
+    moneyLog(fastify, 'withdraw.forwarded', { user, asset, amount, fee, chainId, receiver });
+
+    const data = await signedPassthrough(`${ASTER_FAPI}/fapi/v3/aster/user-withdraw`, {
+      method: 'POST',
+      headers: SIGNED_HEADERS,
+      body: `${query as string}&signature=${signature as string}`,
+    });
+
+    const r = (data ?? {}) as { code?: number; msg?: string };
+    const accepted = !(typeof r.code === 'number' && r.code < 0);
+    const outcome = { user, asset, amount, chainId, receiver, code: r.code ?? null, msg: r.msg ?? null, tookMs: Date.now() - start };
+    if (accepted) moneyLog(fastify, 'withdraw.result', outcome);
+    else moneyWarn(fastify, 'withdraw.result', outcome);
+
+    return data;
+  });
+
+  // `user` is a PUBLIC address, so it is never taken on trust: this helper is
+  // the only thing that turns one into an authenticated owner. The caller's
+  // wallet signs the action name and its parameters (lib/wallet-auth.ts) and
+  // the address comes back out of that signature, never off the request body.
   async function authed(
     reply: FastifyReply,
     action: string,
@@ -270,83 +427,6 @@ export default async function asterRoutes(fastify: FastifyInstance) {
       action, user, params, timestamp, signature,
     });
   }
-
-  async function requireCreds(reply: FastifyReply, user: string) {
-    if (!fastify.redisOk) {
-      reply.code(503).send({ msg: 'Credential store unavailable (Redis down) — cannot sign Aster V1 requests' });
-      return null;
-    }
-    const creds = await loadAsterCreds(fastify.redis, user);
-    if (!creds) {
-      reply.code(412).send({ msg: 'No Aster API credentials saved — add them on the Transfer page first' });
-      return null;
-    }
-    return creds;
-  }
-
-  fastify.post('/aster-creds', async (req: FastifyRequest, reply: FastifyReply) => {
-    const { user, apiKey, apiSecret, timestamp, signature } = (req.body ?? {}) as Record<string, string>;
-    if (!apiKey || !apiSecret)
-      return reply.code(400).send({ msg: 'apiKey and apiSecret required' });
-    const owner = await authed(reply, 'aster-creds-save', user, {}, timestamp, signature);
-    if (!owner) return;
-    await saveAsterCreds(fastify.redis, owner, { apiKey, apiSecret });
-    return { saved: true };
-  });
-
-  // Existence only — no secret, no state change, so this one stays open rather
-  // than making every page load prompt for a wallet signature. All it reveals
-  // is whether a public address has credentials on file.
-  fastify.get('/aster-creds', async (req: FastifyRequest, reply: FastifyReply) => {
-    const user = (req.query as Record<string, string>).user;
-    if (!user) return reply.code(400).send({ msg: 'user required' });
-    if (!fastify.redisOk) return { saved: false, unavailable: true };
-    return { saved: !!(await loadAsterCreds(fastify.redis, user)) };
-  });
-
-  fastify.delete('/aster-creds', async (req: FastifyRequest, reply: FastifyReply) => {
-    const { user, timestamp, signature } = (req.body ?? {}) as Record<string, string>;
-    const owner = await authed(reply, 'aster-creds-delete', user, {}, timestamp, signature);
-    if (!owner) return;
-    await deleteAsterCreds(fastify.redis, owner);
-    return { deleted: true };
-  });
-
-  fastify.post('/aster-withdraw', async (req: FastifyRequest, reply: FastifyReply) => {
-    const { user, amount, address, asset = 'USDT', timestamp, signature } = (req.body ?? {}) as Record<string, string>;
-    if (!amount || !address) return reply.code(400).send({ msg: 'amount and address required' });
-    // The signature covers asset/amount/address, so an intercepted one can't be
-    // replayed against a different destination or a larger amount.
-    const owner = await authed(reply, 'aster-withdraw', user, { asset, amount: String(amount), address }, timestamp, signature);
-    if (!owner) return;
-    const creds = await requireCreds(reply, owner);
-    if (!creds) return;
-    const signed = hmacQuery(creds.apiSecret, {
-      asset,
-      amount: String(amount),
-      address,
-      timestamp: String(Date.now()),
-    });
-
-    return signedPassthrough(`${ASTER_FAPI}/fapi/v1/withdraw?${signed}`, {
-      method: 'POST',
-      headers: { 'X-MBX-APIKEY': creds.apiKey, ...ASTER_HEADERS },
-    });
-  });
-
-  fastify.get('/aster-deposit-address', async (req: FastifyRequest, reply: FastifyReply) => {
-    const { user, coin = 'USDT', network = 'ARBITRUM', timestamp, signature } = req.query as Record<string, string>;
-    const owner = await authed(reply, 'aster-deposit-address', user, { coin, network }, timestamp, signature);
-    if (!owner) return;
-    const creds = await requireCreds(reply, owner);
-    if (!creds) return;
-    const signed = hmacQuery(creds.apiSecret, { coin, network, timestamp: String(Date.now()) });
-    const d = (await signedPassthrough(`${ASTER_FAPI}/fapi/v1/capital/deposit/address?${signed}`, {
-      headers: { 'X-MBX-APIKEY': creds.apiKey, ...ASTER_HEADERS },
-    })) as Record<string, any>;
-
-    return { address: d?.address ?? d?.data?.address ?? null, msg: d?.msg };
-  });
 
   // approveAgent (Aster Code builder-program endpoint) is PUBLIC
   // (unauthenticated) and signed by the END USER's own wallet client-side,

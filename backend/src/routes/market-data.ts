@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { registerCachedProxy } from '../lib/cached-proxy';
+import { config } from '../config';
 
 /**
  * Cached GET passthroughs for the read-only market-data upstreams. All four are
@@ -22,8 +23,23 @@ export default async function marketDataRoutes(fastify: FastifyInstance) {
     prefix: '/feargreed', target: 'https://api.alternative.me', ttl: 3600, keyNs: 'fg',
   });
 
-  // LI.FI — cross-chain routes/quotes.
+  // LI.FI — cross-chain routes/quotes. Unauthenticated, li.quest allows only 75
+  // /quote calls per two hours *per IP*, and every user of this backend shares
+  // the VPS's one IP. A free Partner Portal key lifts that to 100/min (~24x) and
+  // is sent as the custom `x-lifi-api-key` header. Running without a key stays a
+  // supported configuration (dev machines have none), so when it is unset we
+  // send no header at all rather than an empty one, which upstream may reject.
+  //
+  // ponytail: this cache barely helps /quote. registerCachedProxy keys on the
+  // full URL, and a quote URL carries fromAmount plus both addresses, so each
+  // keystroke in the Transfer amount field is a fresh key and a guaranteed miss.
+  // It is left alone on purpose: a quote's transactionRequest.data encodes the
+  // exact amount and the fromAddress/toAddress it was built for, so neither
+  // bucketing the amount nor dropping the addresses from the key is safe — the
+  // first would sign a transaction for the wrong amount, the second would hand
+  // one wallet another wallet's calldata. The API key alone covers the volume.
   registerCachedProxy(fastify, {
     prefix: '/lifi-api', target: 'https://li.quest', ttl: 10, keyNs: 'lifi',
+    ...(config.lifiApiKey ? { headers: { 'x-lifi-api-key': config.lifiApiKey } } : {}),
   });
 }

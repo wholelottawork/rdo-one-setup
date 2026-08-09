@@ -7,7 +7,14 @@ import type { Redis } from 'ioredis';
 declare module 'fastify' {
   interface FastifyInstance {
     redis: Redis;
-    redisOk: boolean;
+    /**
+     * Whether Redis is reachable RIGHT NOW. Backed by a getter, so it is
+     * readonly and must be read at the point of use — copying it into a
+     * long-lived variable reintroduces the stale-snapshot bug it replaced.
+     * Even a `true` read races with a Redis that dies a millisecond later, so
+     * callers on money paths must also survive the command throwing.
+     */
+    readonly redisOk: boolean;
   }
 }
 

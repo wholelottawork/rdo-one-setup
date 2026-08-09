@@ -2,10 +2,11 @@ import crypto from "node:crypto";
 import { config } from "../config";
 
 // AES-256-GCM at-rest encryption for anything this process must store but must
-// never hand back to a browser — per-user Aster agent private keys
-// (agent-keystore.ts) and Aster V1 API credentials (aster-creds.ts). Both key
-// off the same AGENT_KEY_ENCRYPTION_SECRET, so losing that secret invalidates
-// both stores together and users re-enter what they had.
+// never hand back to a browser. One consumer is left: the per-user Aster agent
+// private keys in agent-keystore.ts. The Aster V1 API credentials that used to
+// share this box are gone (they were withdrawal-capable; nothing on this
+// machine is any more), so losing AGENT_KEY_ENCRYPTION_SECRET now costs users
+// an agent re-approval, not a funds-capable secret.
 const ALGO = "aes-256-gcm";
 
 function getEncryptionKey(): Buffer {

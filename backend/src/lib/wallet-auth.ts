@@ -91,8 +91,20 @@ export async function verifyWalletAuth({
   }
 
   // Single use. SET NX means a replay inside the skew window loses the race.
+  //
+  // `redisOk` was true a few lines up, but that is a read of a live flag, not a
+  // lease — Redis can die in between, and on these routes the throw would come
+  // back as a 500. A 500 reads as "the server is broken, maybe retry" when the
+  // truth is "the replay guard is down, so this must not proceed": fail closed
+  // with the same 503 the flag check sends.
   const digest = crypto.createHash('sha256').update(signature).digest('hex');
-  const fresh = await redis.set(`auth:used:${digest}`, '1', 'PX', MAX_SKEW_MS * 2, 'NX');
+  let fresh: string | null;
+  try {
+    fresh = await redis.set(`auth:used:${digest}`, '1', 'PX', MAX_SKEW_MS * 2, 'NX');
+  } catch {
+    reply.code(503).send({ msg: 'Authorization unavailable (Redis down)' });
+    return null;
+  }
   if (fresh === null) {
     reply.code(401).send({ msg: 'Authorization already used — retry the action' });
     return null;

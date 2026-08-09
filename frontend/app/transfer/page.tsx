@@ -1,8 +1,22 @@
 'use client';
 import { useEffect, useRef } from 'react';
 import { SiteNav } from '@/components/shared/SiteNav';
-import { useWallet, getEVMProvider } from '@/lib/wallet';
+import { useWallet, getEVMProvider, switchEvmNetwork, EVM_NETWORKS } from '@/lib/wallet';
 import { walletAuth as signAction } from '@/lib/wallet-auth';
+import {
+  ASTER_DEPOSIT_CHAIN,
+  asterVault,
+  encodeDepositFor,
+  isNativeCurrency,
+} from '@/lib/asterDeposit';
+import {
+  asterNonce,
+  buildAsterAuthTypedData,
+  buildAsterWithdrawQuery,
+  buildAsterWithdrawTypedData,
+  normalizeAsterAmount,
+  toPlainDecimal,
+} from '@/lib/asterWithdraw';
 
 const PAGE_CSS = `
 main{max-width:600px;margin:0 auto;padding:0 24px 60px;padding-top:calc(40px + 8px)}
@@ -32,7 +46,6 @@ main{max-width:600px;margin:0 auto;padding:0 24px 60px;padding-top:calc(40px + 8
 .prog-msg.go{color:#50d2c1}
 .prog-msg.ok{color:#1fa67d}
 .prog-msg.fail{color:#ed7088}
-.api-note{font-size:10px;color:#878c8f;margin-bottom:16px}
 .lang-wrap{position:relative}
 .lang-btn{display:flex;align-items:center;justify-content:center;width:28px;height:28px;background:transparent;border:1px solid #1f1f1f;border-radius:4px;color:#878c8f;cursor:pointer}
 .lang-dropdown{position:absolute;top:calc(100% + 6px);right:0;z-index:900;background:#0d0d0d;border:1px solid #1f1f1f;border-radius:4px;padding:4px 0;min-width:110px;box-shadow:0 8px 24px rgba(0,0,0,.5);display:none}
@@ -115,7 +128,11 @@ export default function TransferPage() {
 
     let wdSrc    = 'hl';
     let dpDest   = 'hl';
-    let credsSaved = false;
+    // The fee currently SHOWN to the user for an Aster withdrawal. It is a
+    // signed field, so this is also the value that must end up in the
+    // signature — execWithdraw re-quotes just before prompting and refuses to
+    // sign a different number than the one on screen.
+    let asterWdFee: string | null = null;
     let btwDir   = 'hl-to-aster';
     let hlEquity = 0;
     let curQuote: any  = null;
@@ -149,7 +166,6 @@ export default function TransferPage() {
       if (wdDest) wdDest.placeholder = addr + ' (connected)';
       set('wd-bal', 'Connected: ' + s);
       loadHLEquity(addr);
-      refreshCreds(addr);
       refreshDpBal();
     }
     onConnectedRef.current = onConnected;
@@ -177,6 +193,12 @@ export default function TransferPage() {
       set('wd-from-cur', isHL ? 'USDC' : 'USDT');
       set('wd-bal', isHL && hlEquity ? `Balance: $${fmt(hlEquity)} USDC` : ' ');
       fillTokenSel('wd-to-token', '42161', isHL ? 'USDC' : 'USDT');
+      // Aster's fee is a signed field — quote it as soon as the user picks
+      // Aster so it is on screen well before the wallet prompt, not revealed
+      // by it. Hyperliquid's withdrawal fee is fixed and not signed.
+      asterWdFee = null;
+      set('wd-fee', ' ');
+      if (!isHL) refreshAsterWdFee().catch((e: any) => set('wd-fee', e.message));
       updateWdConvHint();
     }
 
@@ -270,11 +292,27 @@ export default function TransferPage() {
             stepSet(2, 'done', `${toSym} sent to ${destShort}`);
           }
         } else {
-          if (!requireCreds('wd-st')) { if (btn) btn.disabled = false; return; }
+          // The fee goes INTO the signature, so it has to be settled and on
+          // screen before the wallet prompt — and it has to be the number the
+          // user already saw. A quote that moved between then and now stops
+          // the withdrawal rather than substituting itself silently.
+          const shown = asterWdFee;
+          let fee: string;
+          try { fee = await refreshAsterWdFee(); }
+          catch (e: any) { return showSt('wd-st', 'err', e.message); }
+          if (shown === null)
+            return showSt('wd-st', 'err', `Aster’s withdrawal fee is ${fee} USDT — press Withdraw again to authorize it.`);
+          if (shown !== fee)
+            return showSt('wd-st', 'err', `Aster’s withdrawal fee changed to ${fee} USDT — check the new total and press Withdraw again.`);
+          if (amt <= Number(fee))
+            return showSt('wd-st', 'err', `Amount must be more than the ${fee} USDT Aster withdrawal fee`);
+          // What actually lands in the wallet is net of the fee; polling for
+          // the gross amount would time out on a withdrawal that succeeded.
+          const arriving = BigInt(Math.round((amt - Number(fee)) * 1e6 * 0.97));
           if (isSame) {
             initProg('wd', ['Withdraw USDT from Aster']);
-            stepSet(0, 'active', 'Signing and submitting…');
-            await asterWithdrawRaw(amt, destAddr);
+            stepSet(0, 'active', `Fee ${fee} USDT — confirm both signatures in your wallet…`);
+            await asterWithdrawRaw(prov, user, amt, destAddr, fee);
             stepSet(0, 'done', `${fmt(amt)} USDT → ${destShort}`);
           } else {
             initProg('wd', [
@@ -282,12 +320,12 @@ export default function TransferPage() {
               'Wait for USDT in wallet',
               `Convert USDT → ${toSym} via LI.FI`,
             ]);
-            stepSet(0, 'active', 'Signing Aster withdrawal…');
-            await asterWithdrawRaw(amt, user);
+            stepSet(0, 'active', `Fee ${fee} USDT — confirm both signatures in your wallet…`);
+            await asterWithdrawRaw(prov, user, amt, user, fee);
             stepSet(0, 'done', `${fmt(amt)} USDT withdrawal submitted`);
             stepSet(1, 'active', 'Polling every 12s…');
             const before = await getERC20Bal(prov, USDT_ARB, user);
-            await pollBal(prov, USDT_ARB, user, BigInt(Math.round(amt*1e6*0.97)), before, 600000);
+            await pollBal(prov, USDT_ARB, user, arriving, before, 600000);
             stepSet(1, 'done', 'USDT arrived in wallet');
             stepSet(2, 'active', `Getting LI.FI route to ${toSym}…`);
             const bal = await getERC20Bal(prov, USDT_ARB, user);
@@ -403,7 +441,6 @@ export default function TransferPage() {
       const toHL   = dpDest === 'hl';
       const tgt    = dpTarget();
       const tgtSym = toHL ? 'USDC' : 'USDT';
-      if (!toHL && !requireCreds('dp-st')) return;
       const fromChain = (el('dp-from-chain') as HTMLSelectElement | null)?.value || '42161';
       const fromToken = (el('dp-from-token') as HTMLSelectElement | null)?.value || '';
       const fromSym   = selSym('dp-from-token');
@@ -416,7 +453,7 @@ export default function TransferPage() {
         `Convert ${fromSym} → ${tgtSym} on Arbitrum via LI.FI`,
         `Wait for ${tgtSym} in wallet`,
       ];
-      labels.push(toHL ? 'Send USDC to the Hyperliquid bridge' : 'Send USDT to your Aster deposit address');
+      labels.push(toHL ? 'Send USDC to the Hyperliquid bridge' : 'Deposit USDT to your Aster futures account');
       initProg('dp', labels);
       try {
         const user = await requireEVM();
@@ -449,17 +486,22 @@ export default function TransferPage() {
         const last = labels.length - 1;
         if (toHL && sendAmt < HL_MIN_DEPOSIT)
           throw new Error('Hyperliquid ignores deposits under 5 USDC — it would be lost. Funds are still in your wallet.');
-        let dest = HL_BRIDGE;
-        if (!toHL) {
-          stepSet(last, 'active', 'Getting Aster deposit address…');
-          const dep = await asterDepositAddr();
-          if (!dep) throw new Error('Could not fetch the Aster deposit address — check your API credentials');
-          dest = dep;
+        if (toHL) {
+          stepSet(last, 'active', `Sending ${fmt(Number(sendAmt) / 1e6)} ${tgtSym} — confirm in wallet…`);
+          const dh = await erc20Send(prov, tgt, user, HL_BRIDGE, sendAmt.toString());
+          await pollReceipt(prov, dh);
+          stepSet(last, 'done', 'Sent — Hyperliquid credits it in ~1 min');
+        } else {
+          // Aster is a vault call, not a transfer: ensureApproval only prompts
+          // when the existing allowance is short.
+          await ensureChain(prov, ASTER_DEPOSIT_CHAIN, 'Switch your wallet to Arbitrum to deposit to Aster');
+          stepSet(last, 'active', `Checking ${tgtSym} allowance — approve in wallet if prompted…`);
+          await ensureApproval(prov, tgt, user, asterVault(ASTER_DEPOSIT_CHAIN), sendAmt.toString());
+          stepSet(last, 'active', `Depositing ${fmt(Number(sendAmt) / 1e6)} ${tgtSym} — confirm in wallet…`);
+          const dh = await asterDepositFor(prov, ASTER_DEPOSIT_CHAIN, tgt, user, sendAmt.toString());
+          await pollAsterDeposit(prov, dh);
+          stepSet(last, 'done', 'Credited to your Aster futures account ✓');
         }
-        stepSet(last, 'active', `Sending ${fmt(Number(sendAmt) / 1e6)} ${tgtSym} — confirm in wallet…`);
-        const dh = await erc20Send(prov, tgt, user, dest, sendAmt.toString());
-        await pollReceipt(prov, dh);
-        stepSet(last, 'done', toHL ? 'Sent — Hyperliquid credits it in ~1 min' : 'Sent to Aster ✓');
         showSt('dp-st', 'ok', 'Deposit complete ✓');
         if (dpAmt) dpAmt.value = '';
       } catch (e: any) {
@@ -766,7 +808,6 @@ export default function TransferPage() {
       const btwAmt = el('btw-amt') as HTMLInputElement | null;
       const amt = parseFloat(btwAmt?.value || '0') || 0;
       if (!amt) return showSt('btw-st', 'err', 'Enter an amount');
-      if (!requireCreds('btw-st')) return;
       const btn = el('btw-btn') as HTMLButtonElement | null;
       if (btn) btn.disabled = true;
       const st = el('btw-st'); if (st) st.style.display = 'none';
@@ -777,7 +818,7 @@ export default function TransferPage() {
             'Withdraw USDC from Hyperliquid',
             'Wait for USDC in wallet (~2 min)',
             'Swap USDC → USDT on Arbitrum',
-            'Send USDT to Aster',
+            'Deposit USDT to your Aster futures account',
           ]);
           stepSet(0, 'active', 'Sign withdrawal in wallet…');
           await hlWithdrawRaw(prov, user, amt, user);
@@ -794,27 +835,35 @@ export default function TransferPage() {
           stepSet(2, 'active', 'Confirming swap…');
           await pollReceipt(prov, sh);
           stepSet(2, 'done', 'USDC → USDT swapped');
-          stepSet(3, 'active', 'Getting Aster deposit address…');
-          let dep = await asterDepositAddr(); if (!dep) dep = user;
+          await ensureChain(prov, ASTER_DEPOSIT_CHAIN, 'Switch your wallet to Arbitrum to deposit to Aster');
           const usdtBal = await getERC20Bal(prov, USDT_ARB, user);
-          stepSet(3, 'active', `Sending ${fmt(Number(usdtBal)/1e6, 2)} USDT — confirm…`);
-          const dh = await erc20Send(prov, USDT_ARB, user, dep, usdtBal.toString());
-          await pollReceipt(prov, dh);
-          stepSet(3, 'done', 'USDT deposited to Aster ✓');
+          stepSet(3, 'active', 'Checking USDT allowance — approve in wallet if prompted…');
+          await ensureApproval(prov, USDT_ARB, user, asterVault(ASTER_DEPOSIT_CHAIN), usdtBal.toString());
+          stepSet(3, 'active', `Depositing ${fmt(Number(usdtBal)/1e6, 2)} USDT — confirm…`);
+          const dh = await asterDepositFor(prov, ASTER_DEPOSIT_CHAIN, USDT_ARB, user, usdtBal.toString());
+          await pollAsterDeposit(prov, dh);
+          stepSet(3, 'done', 'Credited to your Aster futures account ✓');
           showSt('btw-st', 'ok', `Transfer complete — $${fmt(amt)} BASIC → EXTRA`);
         } else {
+          // Same rule as the Withdraw tab: the fee is signed, so it has to be
+          // quoted and shown before the wallet prompt, never after it.
+          let fee: string;
+          try { fee = await asterWithdrawFee(); }
+          catch (e: any) { return showSt('btw-st', 'err', e.message); }
+          if (amt <= Number(fee))
+            return showSt('btw-st', 'err', `Amount must be more than the ${fee} USDT Aster withdrawal fee`);
           initProg('btw', [
-            'Withdraw USDT from Aster',
+            `Withdraw USDT from Aster (fee ${fee} USDT)`,
             'Wait for USDT in wallet',
             'Swap USDT → USDC on Arbitrum',
             'Send USDC to the Hyperliquid bridge',
           ]);
-          stepSet(0, 'active', 'Signing Aster withdrawal…');
-          await asterWithdrawRaw(amt, user);
+          stepSet(0, 'active', `Fee ${fee} USDT — confirm both signatures in your wallet…`);
+          await asterWithdrawRaw(prov, user, amt, user, fee);
           stepSet(0, 'done', `${fmt(amt)} USDT withdrawal submitted`);
           stepSet(1, 'active', 'Polling every 12s (up to 10 min)…');
           const tb = await getERC20Bal(prov, USDT_ARB, user);
-          await pollBal(prov, USDT_ARB, user, BigInt(Math.round(amt*1e6*0.97)), tb, 600000);
+          await pollBal(prov, USDT_ARB, user, BigInt(Math.round((amt - Number(fee)) * 1e6 * 0.97)), tb, 600000);
           stepSet(1, 'done', 'USDT arrived in wallet');
           stepSet(2, 'active', 'Getting LI.FI swap route…');
           const usdtBal = await getERC20Bal(prov, USDT_ARB, user);
@@ -904,6 +953,32 @@ export default function TransferPage() {
       return prov.request({method:'eth_sendTransaction', params:[{from, to:token, data:'0xa9059cbb'+pad(to)+BigInt(amount).toString(16).padStart(64,'0')}]});
     }
 
+    /** Aster's EVM deposit — a vault call, not a transfer to an address.
+     *  Credits `user`'s FUTURES account directly; see @/lib/asterDeposit for
+     *  the calldata and for why the `broker` argument is the dangerous one.
+     *  ERC-20s must be approved for the vault first — the CALLER does that, so
+     *  it can report that extra wallet prompt as its own progress step. */
+    async function asterDepositFor(prov: any, chainId: string, token: string, user: string, amount: string) {
+      const data = encodeDepositFor({ token, forAddress: user, amount });
+      return prov.request({method:'eth_sendTransaction', params:[{
+        from: user, to: asterVault(chainId), data,
+        value: isNativeCurrency(token) ? '0x'+BigInt(amount).toString(16) : '0x0',
+      }]});
+    }
+
+    /** pollReceipt, but a revert on the vault gets a cause rather than the
+     *  bare 'Transaction reverted' — it is almost always an unsupported token
+     *  (`CurrencyNotSupport`) or an allowance that did not land. */
+    async function pollAsterDeposit(prov: any, hash: string) {
+      try {
+        return await pollReceipt(prov, hash);
+      } catch (e: any) {
+        if (/reverted/i.test(String(e?.message ?? '')))
+          throw new Error('Aster’s deposit vault reverted — the token is not supported on this chain, or the approval did not go through. Your funds are still in your wallet.');
+        throw e;
+      }
+    }
+
     async function pollReceipt(prov: any, hash: string, ms = 120000) {
       const end = Date.now() + ms;
       while (Date.now() < end) {
@@ -975,114 +1050,124 @@ export default function TransferPage() {
       return signAction(await requireEVM(), action, params);
     }
 
-    // Aster's withdraw + deposit-address endpoints use the V1 API-key/HMAC
-    // scheme. Both the key and the signing used to live in this page, which
-    // meant a withdrawal-capable secret sat in the DOM. The secret is stored
-    // encrypted server-side now (backend/src/lib/aster-creds.ts) and the
-    // signature is produced there — this file only ever sends the user's
-    // address, the amount and the destination.
-    async function asterWithdrawRaw(amt: number, dest: string) {
-      const asset = 'USDT';
-      const auth = await walletAuth('aster-withdraw', {asset, amount: String(amt), address: dest});
+    // ── Aster withdrawal (V3) ─────────────────────────────────────────────
+    // Withdrawals leave Aster on Arbitrum as USDT; anything else the user
+    // picks is a LI.FI conversion afterwards, not a different withdrawal.
+    const ASTER_WD_CHAIN_ID = '42161';
+    const ASTER_WD_ASSET    = 'USDT';
+
+    /** Aster's own fee quote for this asset/chain, as the exact plain-decimal
+     *  string that goes into the signature. Throws rather than returning a
+     *  fallback: `fee` is signed, so a guessed one is either a rejected
+     *  signature or a withdrawal on terms the user never saw. */
+    async function asterWithdrawFee(): Promise<string> {
+      const r = await fetch(`/aster-withdraw-fee?chainId=${ASTER_WD_CHAIN_ID}&asset=${ASTER_WD_ASSET}`);
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || typeof d?.fee !== 'string')
+        throw new Error(d?.msg || 'Could not get Aster’s withdrawal fee — not signing a withdrawal without it');
+      return d.fee;
+    }
+
+    /** Quote the fee and put it on screen. Returns it so the caller can check
+     *  the user was actually shown what they are about to sign. */
+    async function refreshAsterWdFee(): Promise<string> {
+      const fee = await asterWithdrawFee();
+      asterWdFee = fee;
+      set('wd-fee', `Aster network fee: ${fee} ${ASTER_WD_ASSET}`);
+      return fee;
+    }
+
+    /** The wallet will only sign a typed-data payload whose domain chainId is
+     *  the chain it is currently on, and the withdrawal authorization is
+     *  stamped with the destination chain. */
+    async function ensureWdChain(prov: any) {
+      return ensureChain(prov, ASTER_WD_CHAIN_ID, 'Switch your wallet to Arbitrum to sign the withdrawal');
+    }
+
+    /** eth_sendTransaction and eth_signTypedData_v4 both go wherever the wallet
+     *  is pointed, so anything aimed at a specific chain's contracts has to
+     *  put it there first. */
+    async function ensureChain(prov: any, want: string, why: string) {
+      const on = String(parseInt(await prov.request({method:'eth_chainId'}) as string, 16));
+      if (on === want) return;
+      const net = EVM_NETWORKS.find(n => parseInt(n.chainId, 16) === Number(want));
+      const r = net ? await switchEvmNetwork(prov, net) : {ok:false, reason:'Unknown network'};
+      if (!r.ok) throw new Error(r.reason || why);
+    }
+
+    /**
+     * Two signatures, both from the user's own wallet, over two different
+     * EIP-712 domains — see @/lib/asterWithdraw for the exact payloads.
+     *
+     * 1. the withdrawal authorization (domain `Aster`, destination chainId),
+     *    which binds destination + amount + fee, and
+     * 2. the V3 request-auth wrapper (domain `AsterSignTransaction`, chainId
+     *    1666) over the literal query string.
+     *
+     * Our backend never signs either one and holds no key Aster would accept
+     * for a withdrawal, so there is no server-side capability to steal. It
+     * verifies both and forwards.
+     *
+     * Signature 2 is the sharp edge: chainId 1666 is Aster Chain, which has
+     * no public EVM RPC, so a wallet that enforces "domain chainId must equal
+     * the connected chain" — MetaMask does — cannot produce it and there is
+     * no network to switch to. Wallets that show the domain instead of
+     * enforcing it (Rabby, most WalletConnect mobile wallets) sign fine.
+     * asterAuthSignError below turns that refusal into an explanation rather
+     * than a raw wallet error.
+     */
+    async function asterWithdrawRaw(prov: any, user: string, amt: number, dest: string, fee: string) {
+      await ensureWdChain(prov);
+      const amount = normalizeAsterAmount(toPlainDecimal(amt));
+      const params = {
+        chainId: ASTER_WD_CHAIN_ID,
+        asset: ASTER_WD_ASSET,
+        amount,
+        fee,
+        receiver: dest,
+        userNonce: asterNonce(),
+      };
+      const userSignature = await prov.request({
+        method: 'eth_signTypedData_v4',
+        params: [user, JSON.stringify(buildAsterWithdrawTypedData(params))],
+      }) as string;
+
+      // Separate nonce from userNonce, deliberately — Aster treats them as
+      // unrelated and they may legitimately differ by up to an hour.
+      const query = buildAsterWithdrawQuery({...params, userSignature, user, nonce: asterNonce()});
+      let signature: string;
+      try {
+        signature = await prov.request({
+          method: 'eth_signTypedData_v4',
+          params: [user, JSON.stringify(buildAsterAuthTypedData(query))],
+        }) as string;
+      } catch (e: any) {
+        throw asterAuthSignError(e);
+      }
+
       const res = await fetch('/aster-withdraw', {
         method: 'POST',
         headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({...auth, asset, amount: String(amt), address: dest}),
+        body: JSON.stringify({query, signature}),
       });
+      // Aster answers 200 with {code,msg} on business failures, so status
+      // alone never means success here.
       const d = await res.json().catch(() => ({}));
       if (!res.ok || d.code) throw new Error(d?.msg || d?.message || 'Aster withdrawal failed');
+      return d as {withdrawId?: string; hash?: string};
     }
 
-    async function asterDepositAddr(): Promise<string | null> {
-      try {
-        const coin = 'USDT', network = 'ARBITRUM';
-        const auth = await walletAuth('aster-deposit-address', {coin, network});
-        const p = new URLSearchParams({
-          user: auth.user, coin, network,
-          timestamp: String(auth.timestamp), signature: auth.signature,
-        });
-        const r = await fetch(`/aster-deposit-address?${p}`);
-        if (!r.ok) return null;
-        const d = await r.json();
-        return d?.address || null;
-      } catch { return null; }
-    }
-
-    // Existence check only — the backend never returns the stored secret.
-    async function refreshCreds(addr: string) {
-      const btn = el('creds-btn') as HTMLButtonElement | null;
-      try {
-        const r = await fetch(`/aster-creds?user=${encodeURIComponent(addr)}`);
-        const d = await r.json();
-        credsSaved = !!d.saved;
-      } catch { credsSaved = false; }
-      const st = el('creds-state');
-      if (st) {
-        st.textContent = credsSaved
-          ? 'Saved — stored encrypted on the server, never in this page'
-          : 'Not saved — required for Aster withdrawals and deposits';
-        st.style.color = credsSaved ? '#1fa67d' : 'var(--text3,#878c8f)';
-      }
-      const fields = el('creds-fields');
-      if (fields) fields.style.display = credsSaved ? 'none' : '';
-      if (btn) btn.textContent = credsSaved ? 'Replace credentials' : 'Save credentials';
-    }
-
-    async function saveCreds() {
-      const addr = evmAddressRef.current;
-      if (!addr) return showSt('creds-st', 'err', 'Connect your wallet from the top nav first');
-      const fields = el('creds-fields');
-      // Second click of "Replace credentials" just reopens the inputs.
-      if (credsSaved && fields && fields.style.display === 'none') {
-        fields.style.display = '';
-        return;
-      }
-      const keyEl = el('creds-key') as HTMLInputElement | null;
-      const secEl = el('creds-sec') as HTMLInputElement | null;
-      const apiKey = keyEl?.value.trim() || '', apiSecret = secEl?.value.trim() || '';
-      if (!apiKey || !apiSecret) return showSt('creds-st', 'err', 'Enter both the API key and secret');
-      try {
-        showSt('creds-st', 'inf', 'Confirm in your wallet…');
-        const auth = await walletAuth('aster-creds-save');
-        const r = await fetch('/aster-creds', {
-          method: 'POST',
-          headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({...auth, apiKey, apiSecret}),
-        });
-        const d = await r.json().catch(() => ({}));
-        if (!r.ok || !d.saved) throw new Error(d?.msg || 'Could not save credentials');
-        // Clear the inputs the moment they're stored — no reason to leave the
-        // secret in the DOM after it has been handed off.
-        if (keyEl) keyEl.value = '';
-        if (secEl) secEl.value = '';
-        showSt('creds-st', 'ok', 'Credentials saved ✓');
-        await refreshCreds(addr);
-      } catch (e: any) {
-        showSt('creds-st', 'err', e.message);
-      }
-    }
-
-    async function clearCreds() {
-      const addr = evmAddressRef.current;
-      if (!addr) return;
-      try {
-        const auth = await walletAuth('aster-creds-delete');
-        await fetch('/aster-creds', {
-          method: 'DELETE',
-          headers: {'Content-Type':'application/json'},
-          body: JSON.stringify(auth),
-        });
-        showSt('creds-st', 'ok', 'Credentials removed');
-        await refreshCreds(addr);
-      } catch (e: any) {
-        showSt('creds-st', 'err', e.message);
-      }
-    }
-
-    function requireCreds(stId: string): boolean {
-      if (credsSaved) return true;
-      showSt(stId, 'err', 'Save your Aster API credentials first — the card at the top of this page');
-      return false;
+    function asterAuthSignError(e: any): Error {
+      if (e?.code === 4001) return e;
+      const msg = String(e?.message ?? '');
+      if (/chain/i.test(msg) && /(match|mismatch|differ)/i.test(msg))
+        return new Error(
+          'Your wallet refused to sign Aster’s authorization message: it is stamped with Aster Chain '
+          + '(chainId 1666) and the wallet only signs for the network it is connected to. Aster publishes '
+          + 'no public RPC for that chain, so there is nothing to switch to — use a wallet that does not '
+          + 'enforce this (Rabby, or a mobile wallet over WalletConnect) to withdraw from Aster.',
+        );
+      return e instanceof Error ? e : new Error(msg || 'Wallet refused to sign');
     }
 
     function showSt(id: string, type: string, msg: string) {
@@ -1109,8 +1194,6 @@ export default function TransferPage() {
     (window as any).scheduleQuote     = scheduleQuote;
     (window as any).execSend          = execSend;
     (window as any).sendMax           = sendMax;
-    (window as any).saveCreds         = saveCreds;
-    (window as any).clearCreds        = clearCreds;
     (window as any).onSwChainChange   = onSwChainChange;
     (window as any).scheduleSwQuote   = scheduleSwQuote;
     (window as any).swFlip            = swFlip;
@@ -1153,29 +1236,6 @@ export default function TransferPage() {
           <div className="page-sub" data-i18n="transferSub">Withdraw in any currency · Send to any address · Move between accounts</div>
         </div>
 
-        {/* Aster API credentials — entered once, stored encrypted server-side.
-            Every Aster withdrawal/deposit is signed there, so the secret never
-            lives in this page. */}
-        <div className="card" style={{marginBottom:'16px'}}>
-          <div className="field-lbl" data-i18n="asterApiCreds">Aster API credentials</div>
-          <div className="api-note" id="creds-state">Connect your wallet to check</div>
-          <div id="creds-fields">
-            <div className="api-row" style={{marginTop:'8px'}}>
-              <input className="api-input" type="text" id="creds-key" placeholder="API Key" autoComplete="off" />
-              <input className="api-input" type="password" id="creds-sec" placeholder="API Secret" autoComplete="off" />
-            </div>
-            <div className="api-note">
-              Sent once over HTTPS, encrypted at rest, and never returned to the browser.
-              Only needed for Aster (EXTRA) withdrawals and deposits.
-            </div>
-          </div>
-          <div style={{display:'flex', gap:'8px', marginTop:'8px'}}>
-            <button className="exec-btn as" id="creds-btn" style={{flex:1}} onClick={() => (window as any).saveCreds()}>Save credentials</button>
-            <button className="max-btn" style={{padding:'0 14px'}} onClick={() => (window as any).clearCreds()}>Remove</button>
-          </div>
-          <div className="status" id="creds-st" />
-        </div>
-
         <div className="xfr-tabs">
           <button className="xfr-tab active" onClick={() => (window as any).setTab('withdraw')} data-i18n="withdraw">Withdraw</button>
           <button className="xfr-tab" onClick={() => (window as any).setTab('deposit')} data-i18n="deposit">Deposit</button>
@@ -1201,6 +1261,9 @@ export default function TransferPage() {
               </div>
             </div>
             <div className="bal-hint" id="wd-bal">&nbsp;</div>
+            {/* Aster's withdrawal fee is a SIGNED field — it lives here so the
+                user reads it before the wallet prompt, not inside it. */}
+            <div className="bal-hint" id="wd-fee">&nbsp;</div>
             <div className="field-lbl" data-i18n="receiveAs">Receive as</div>
             <div className="pair-row">
               <div className="sel-wrap" style={{flex:'1.3'}}>

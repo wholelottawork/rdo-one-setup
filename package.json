@@ -9,6 +9,9 @@
     "build": "npm --prefix frontend run build",
     "test": "npm --prefix frontend test && npm --prefix backend test"
   },
+  "engines": {
+    "node": ">=20"
+  },
   "devDependencies": {
     "concurrently": "^10.0.3"
   }
