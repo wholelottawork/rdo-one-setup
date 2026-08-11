@@ -233,6 +233,13 @@ export default function TransferPage() {
     // Aster going out, and what the account ends up holding coming in.
     let btwAsset = 'USDT';
     let hlEquity = 0;
+    // Whether hlEquity is a READ or merely its initial 0, and why the read
+    // failed if it did. Both hints and both MAX buttons have to distinguish
+    // "not read yet", "read failed" and "account is empty" — a bare 0 renders
+    // all three as an empty account, and MAX then does nothing with no reason
+    // given.
+    let hlEquityLoaded = false;
+    let hlEquityErr = '';
     // Aster's withdrawable balance, and a generation counter for the load that
     // produced it: reading it is an async round trip that can outlive the user
     // switching the source back to Hyperliquid, and a late reply must not
@@ -291,17 +298,43 @@ export default function TransferPage() {
     }
     onConnectedRef.current = onConnected;
 
+    /** The Hyperliquid balance line in whichever of its four states applies.
+     *  Shared by the Withdraw tab and the Between Accounts tab, which read the
+     *  same number and used to disagree about how to render it — the latter
+     *  printed a blank line for everything that was not a loaded balance. */
+    function hlBalText() {
+      if (!evmAddressRef.current) return 'Connect wallet to see balance';
+      if (hlEquityErr) return hlEquityErr;
+      if (!hlEquityLoaded) return 'Reading your Hyperliquid balance…';
+      return `Balance: $${fmt(hlEquity)} USDC`;
+    }
+
+    /** Reads it if it is not already in hand. Every entry point that shows the
+     *  balance calls this, because the read is no longer guaranteed to have
+     *  been kicked off by a connect that happened before this page mounted. */
+    function ensureHLEquity() {
+      const addr = evmAddressRef.current;
+      if (addr && !hlEquityLoaded) void loadHLEquity(addr);
+    }
+
     async function loadHLEquity(addr: string) {
+      hlEquityErr = '';
       try {
         const r = await fetch(HL+'/info', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({type:'clearinghouseState', user:addr})});
+        if (!r.ok) throw new Error(`Hyperliquid returned HTTP ${r.status}`);
         const d = await r.json();
         // Prefer marginSummary (account-wide total incl. isolated); crossMarginSummary
         // is all-zeros for isolated-margin accounts, which zeroed the HL balance.
         const ms = d.marginSummary || d.crossMarginSummary || {};
-        hlEquity = parseFloat(ms.accountValue ?? 0);
-        if (wdSrc === 'hl') set('wd-bal', `Balance: $${fmt(hlEquity)} USDC`);
-        if (btwDir === 'hl-to-aster') set('btw-bal', `Balance: $${fmt(hlEquity)} USDC`);
-      } catch {}
+        hlEquity = parseFloat(ms.accountValue ?? 0) || 0;
+        hlEquityLoaded = true;
+      } catch (e: any) {
+        hlEquity = 0;
+        hlEquityLoaded = false;
+        hlEquityErr = `Could not read your Hyperliquid balance: ${e?.message ?? 'unknown error'}`;
+      }
+      if (wdSrc === 'hl') set('wd-bal', hlBalText());
+      if (btwDir === 'hl-to-aster') set('btw-bal', hlBalText());
     }
 
     function setWdSrc(src: string) {
@@ -331,7 +364,8 @@ export default function TransferPage() {
       asterWithdrawableChain = '';
 
       if (isHL) {
-        set('wd-bal', hlEquity ? `Balance: $${fmt(hlEquity)} USDC` : ' ');
+        set('wd-bal', hlBalText());
+        ensureHLEquity();
       } else {
         refreshAsterWdFee().catch((e: any) => set('wd-fee', e.message));
         loadAsterAvail();
@@ -547,7 +581,7 @@ export default function TransferPage() {
       if (wdSrc === 'hl') {
         set('wd-bal', a && hlEquity
           ? `Balance: $${fmt(hlEquity)} USDC  ·  After: $${fmt(Math.max(0, hlEquity - a))}`
-          : evmAddressRef.current ? `Balance: $${fmt(hlEquity)} USDC` : 'Connect wallet to see balance');
+          : hlBalText());
       } else if (asterWithdrawable > 0) {
         const on = asterWithdrawableChain ? ` on ${chainName(asterWithdrawableChain)}` : '';
         const d = asterDisplayDecimals(wdAsset);
@@ -561,8 +595,13 @@ export default function TransferPage() {
       const wdAmt = el('wd-amt') as HTMLInputElement | null;
       if (!wdAmt) return;
       if (wdSrc === 'hl') {
-        if (hlEquity > 0) { wdAmt.value = hlEquity.toFixed(2); onWdAmtInput(); }
-        return;
+        if (hlEquity > 0) { wdAmt.value = hlEquity.toFixed(2); onWdAmtInput(); return; }
+        // Same rule as the Aster branch below: a MAX that fills nothing has to
+        // say why, and "still reading" is a different answer from "empty".
+        ensureHLEquity();
+        return showSt('wd-st', 'err', hlEquityErr || (evmAddressRef.current
+          ? (hlEquityLoaded ? 'No USDC in your Hyperliquid account' : 'Still reading your Hyperliquid balance — try again in a moment')
+          : 'Connect your wallet from the top nav first'));
       }
       // Aster's fee comes OUT of the withdrawn amount, so the whole
       // withdrawable amount is a valid ask — execWithdraw only rejects it if it
@@ -1459,7 +1498,11 @@ export default function TransferPage() {
       setBtwCurBadge();
       updateBtwHint();
       if (isHL) {
-        set('btw-bal', hlEquity ? `Balance: $${fmt(hlEquity)} USDC` : ' ');
+        // A blank line here was the whole bug on this direction: a balance that
+        // had not been read yet is indistinguishable from an empty account, and
+        // nothing on this path ever asked for the read either.
+        set('btw-bal', hlBalText());
+        ensureHLEquity();
       } else {
         // The Aster side of this tab never asked for a balance at all — it
         // blanked the hint and MAX did nothing, which read as "you have no
@@ -1480,8 +1523,11 @@ export default function TransferPage() {
       const btwAmt = el('btw-amt') as HTMLInputElement | null;
       if (!btwAmt) return;
       if (btwDir === 'hl-to-aster') {
-        if (hlEquity > 0) btwAmt.value = hlEquity.toFixed(2);
-        return;
+        if (hlEquity > 0) { btwAmt.value = hlEquity.toFixed(2); return; }
+        ensureHLEquity();
+        return showSt('btw-st', 'err', hlEquityErr || (evmAddressRef.current
+          ? (hlEquityLoaded ? 'No USDC in your Hyperliquid account to move' : 'Still reading your Hyperliquid balance — try again in a moment')
+          : 'Connect your wallet from the top nav first'));
       }
       // Withdrawable, not account balance — see loadAsterWithdrawable. Rendered
       // at the asset's own precision: toFixed(2) turns a withdrawable 0.019 BNB
@@ -2357,6 +2403,15 @@ export default function TransferPage() {
     set('send-cur-badge', selSym('from-token'));
     void refreshSendBal();
     setDir('hl-to-aster');
+
+    // The connect bridge only fires onConnected on a CHANGE of evmAddress, and
+    // its effect is declared above this one, so it runs first — with the ref it
+    // reads still null. On a client-side navigation into this page the wallet is
+    // already connected and evmAddress never changes again, so nothing ever
+    // called onConnected and no balance was ever read: every hint sat blank and
+    // both MAX buttons did nothing. A hard reload hid it, because there the
+    // address arrives after mount.
+    if (evmAddressRef.current) onConnected(evmAddressRef.current);
 
     import('@/lib/i18n').then(({ applyTranslations }) => {
       applyTranslations();
