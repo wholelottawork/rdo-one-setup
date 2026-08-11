@@ -744,8 +744,7 @@ export default function TransferPage() {
             await pollPayoutBal(prov, wdChain, payout, user, arriving, before, 600000);
             stepSet(1, 'done', `${asset} arrived in wallet`);
             stepSet(2, 'active', `Getting LI.FI route to ${toSym}…`);
-            const swapping = await convertibleBalance(prov, wdChain, payout, user);
-            const q = await lifiQuote(wdChain, toChain, payout.address, toToken, swapping.toString(), user, destAddr);
+            const q = await quoteConversion(prov, wdChain, payout, asset, toChain, toToken, user, destAddr);
             stepSet(2, 'active', 'Approve + convert — confirm in wallet…');
             const h = await lifiExec(prov, q, user);
             stepSet(2, 'active', 'Confirming…');
@@ -1633,8 +1632,7 @@ export default function TransferPage() {
             swapped = (await erc20BalOn(prov, ARB_CHAIN, USDC_ARB, user)) - paidBefore;
           } else {
             stepSet(2, 'active', 'Getting LI.FI route…');
-            const held = await convertibleBalance(prov, wdChain, payout, user);
-            const q = await lifiQuote(wdChain, ARB_CHAIN, payout.address, USDC_ARB, held.toString(), user, user);
+            const q = await quoteConversion(prov, wdChain, payout, asset, ARB_CHAIN, USDC_ARB, user, user);
             const usdcBefore = await erc20BalOn(prov, ARB_CHAIN, USDC_ARB, user);
             stepSet(2, 'active', 'Approve + convert — confirm in wallet…');
             const sh = await lifiExec(prov, q, user);
@@ -1945,10 +1943,8 @@ export default function TransferPage() {
      *  block. The wallet still shows a hash — one that no explorer can find —
      *  and marks it failed, while nothing was actually spent. */
     async function assertCanAffordRoute(prov: any, chainId: string, user: string, quote: any) {
-      const tx  = quote?.transactionRequest ?? {};
-      const val = BigInt(tx.value ?? 0);
-      const px  = BigInt(tx.gasPrice ?? tx.maxFeePerGas ?? 0);
-      const gas = BigInt(tx.gasLimit ?? 0) * px;
+      const val = BigInt(quote?.transactionRequest?.value ?? 0);
+      const gas = routeGasCost(quote);
       // Half again on the gas: the wallet picks its own gas price at
       // confirmation time, minutes after the quote, and a transaction that
       // only just fits is one gas tick away from this exact failure.
@@ -1962,6 +1958,69 @@ export default function TransferPage() {
         `${fmt(Number(need) / 1e18, 6)} ${sym} (amount plus gas) and the wallet holds ` +
         `${fmt(Number(have) / 1e18, 6)}. Lower the amount or top up. Nothing has been signed.`,
       );
+    }
+
+    /** What a LI.FI route costs in gas, in wei of the SOURCE chain's native
+     *  token.
+     *
+     *  Two sources because neither is always populated: the quote's own
+     *  transactionRequest (gasLimit x price) is what the wallet will charge,
+     *  and estimate.gasCosts is what LI.FI predicts, which is the only one a
+     *  route with no gasPrice on it carries. Take the larger — reading this
+     *  low is what strands a transfer, reading it high only leaves dust. */
+    function routeGasCost(quote: any): bigint {
+      const tx = quote?.transactionRequest ?? {};
+      const px = BigInt(tx.gasPrice ?? tx.maxFeePerGas ?? 0);
+      const fromTx = BigInt(tx.gasLimit ?? 0) * px;
+      const fromEstimate = ((quote?.estimate?.gasCosts ?? []) as any[])
+        .reduce((n, g) => n + BigInt(g?.amount ?? 0), BigInt(0));
+      return fromTx > fromEstimate ? fromTx : fromEstimate;
+    }
+
+    /** Quote the conversion of a payout that has just landed in the wallet,
+     *  sized so the wallet can actually pay for it.
+     *
+     *  An ERC-20 payout and the gas that moves it are separate balances, so
+     *  one quote is the whole story. A NATIVE payout is the same balance
+     *  twice: every wei offered to the route is a wei that cannot pay the
+     *  route's gas. The flat NATIVE_GAS_RESERVE convertibleBalance holds back
+     *  is a MAX-button heuristic, not a cost — LI.FI quotes gasLimit in the
+     *  millions for BNB routes, several times that reserve at BSC gas prices —
+     *  so the route got quoted for more than the wallet could ever send.
+     *
+     *  The node then rejects it at broadcast for insufficient funds, which is
+     *  invisible rather than loud: the wallet still returns a hash, nothing
+     *  reaches a chain, no gas is spent, and the user gets pollReceipt's
+     *  'never broadcast' message — which reads like a wallet bug rather than a
+     *  balance that was a fraction of a cent short. Worse here than on the
+     *  deposit side, because the withdrawal has already happened: the funds are
+     *  out of Aster and sitting in the wrong token.
+     *
+     *  So for a native payout the first quote is only there to learn the real
+     *  gas: re-quote for what is left after paying it, and sign THAT. */
+    async function quoteConversion(
+      prov: any, chainId: string, payout: AsterPayoutToken, asset: string,
+      toChain: string, toToken: string, user: string, dest: string,
+    ) {
+      const held = await convertibleBalance(prov, chainId, payout, user);
+      const q = await lifiQuote(chainId, toChain, payout.address, toToken, held.toString(), user, dest);
+      if (!payout.native) { await assertCanAffordRoute(prov, chainId, user, q); return q; }
+      // Twice the quoted gas held back, not the 1.5x assertCanAffordRoute
+      // demands: the re-quote is allowed to come back a little dearer than the
+      // quote that sized it, and the wallet picks its own gas price later
+      // still. The slack stays in the wallet as native dust.
+      const keep = routeGasCost(q) * BigInt(2);
+      const bal = await nativeBalOn(prov, chainId, user);
+      if (bal <= keep)
+        throw new Error(
+          `Not enough ${asset} on ${chainName(chainId)} to pay for the conversion — the `
+          + 'withdrawal is in your wallet. Top up a little gas and convert from the Send tab.',
+        );
+      const room = bal - keep;
+      if (room >= held) { await assertCanAffordRoute(prov, chainId, user, q); return q; }
+      const sized = await lifiQuote(chainId, toChain, payout.address, toToken, room.toString(), user, dest);
+      await assertCanAffordRoute(prov, chainId, user, sized);
+      return sized;
     }
 
     async function lifiExec(prov: any, quote: any, user: string) {
