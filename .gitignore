@@ -1,6 +1,5 @@
 node_modules/
 dist/
-.env
 *.local
 .next/
 tsconfig.tsbuildinfo
@@ -13,3 +12,4 @@ next-env.d.ts
 .deploy-history
 backups/
 deploy/nginx/htpasswd
+config.bat
