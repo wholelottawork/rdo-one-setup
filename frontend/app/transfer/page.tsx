@@ -5,7 +5,15 @@ import { useWallet, getEVMProvider, switchEvmNetwork, findEvmNetwork } from '@/l
 import { walletAuth as signAction } from '@/lib/wallet-auth';
 import { ensureAsterAgentApprovedAuto, getAsterAccount } from '@/lib/aster-agent';
 import { asterFetch } from '@/lib/aster-session';
-import { HL_MIN_WITHDRAW, HL_WITHDRAW_FEE, hlArrivingUnits, parseHLBalances } from '@/lib/hlBalance';
+import {
+  HL_MIN_WITHDRAW,
+  HL_WITHDRAW_FEE,
+  hlArrivingUnits,
+  hlErrorMessage,
+  isUnifiedAccount,
+  isUnifiedAccountError,
+  parseHLBalances,
+} from '@/lib/hlBalance';
 import {
   ASTER_DEPOSIT_CHAIN,
   asterVault,
@@ -241,16 +249,17 @@ export default function TransferPage() {
     // Aster going out, and what the account ends up holding coming in.
     let btwAsset = 'USDT';
     // Everything Hyperliquid will let this page move, which is NOT the perp
-    // account value: a unified account keeps its USDC in the SPOT wallet and
-    // only reserves it as perp margin when a position needs it, so an account
-    // showing 9.94 on the exchange reads accountValue 0. Reading only the perp
-    // side reported "no funds" to users who plainly had them.
+    // account value: the USDC lives in the SPOT wallet, so an account showing
+    // 9.94 on the exchange reads accountValue 0. Reading only the perp side
+    // reported "no funds" to users who plainly had them.
     //
-    // withdraw3 pays out of the PERP balance alone, so the two halves are kept
-    // apart: hlPerpAvail can leave immediately, hlSpotUsdc needs a spot→perp
-    // class transfer first (see hlEnsurePerpFunds).
-    let hlPerpAvail = 0;
-    let hlSpotUsdc = 0;
+    // hlReady can be withdrawn as-is; hlNeedsMove needs a spot→perp class
+    // transfer first, and is always 0 on a unified account, where the one
+    // balance backs both sides and class transfers are rejected outright.
+    // See @/lib/hlBalance for the two account modes.
+    let hlReady = 0;
+    let hlNeedsMove = 0;
+    let hlUnified = false;
     let hlAvail = 0;
     // Whether hlAvail is a READ or merely its initial 0, and why the read
     // failed if it did. Both hints and both MAX buttons have to distinguish
@@ -325,12 +334,14 @@ export default function TransferPage() {
       if (!evmAddressRef.current) return 'Connect wallet to see balance';
       if (hlBalErr) return hlBalErr;
       if (!hlBalLoaded) return 'Reading your Hyperliquid balance…';
-      // The split is worth naming: the spot part costs one extra signature on
-      // the way out, and a user watching two wallet prompts for one withdrawal
-      // should have been told why before the first one.
-      const spot = hlSpotUsdc > 0.005 && hlPerpAvail > 0.005
-        ? `  ·  $${fmt(hlPerpAvail)} perps + $${fmt(hlSpotUsdc)} spot`
-        : hlSpotUsdc > 0.005 ? '  ·  held in spot, moved to perps on withdrawal' : '';
+      // Worth naming only on a standard account, where the spot part costs an
+      // extra signature on the way out: a user watching two wallet prompts for
+      // one withdrawal should have been told why before the first one. A
+      // unified account has one balance and one prompt, so it says nothing.
+      const spot = hlUnified ? ''
+        : hlNeedsMove > 0.005 && hlReady > 0.005
+          ? `  ·  $${fmt(hlReady)} perps + $${fmt(hlNeedsMove)} spot`
+          : hlNeedsMove > 0.005 ? '  ·  held in spot, moved to perps on withdrawal' : '';
       return `Balance: $${fmt(hlAvail)} USDC${spot}`;
     }
 
@@ -350,19 +361,24 @@ export default function TransferPage() {
           if (!r.ok) throw new Error(`Hyperliquid returned HTTP ${r.status}`);
           return r.json();
         };
-        // Both halves of the account, exactly as the Portfolio page reads them.
-        const [d, spot] = await Promise.all([
+        // Both halves of the account, plus the mode that decides which of them
+        // is authoritative. The mode read is allowed to fail on its own — a
+        // missing answer means "assume standard", which still works because the
+        // class transfer it leads to is caught and skipped on a unified account.
+        const [d, spot, mode] = await Promise.all([
           post({type:'clearinghouseState', user:addr}),
           post({type:'spotClearinghouseState', user:addr}),
+          post({type:'userAbstraction', user:addr}).catch(() => null),
         ]);
-        const b = parseHLBalances(d, spot);
-        hlPerpAvail = b.perpAvail;
-        hlSpotUsdc = b.spotUsdc;
+        hlUnified = isUnifiedAccount(mode);
+        const b = parseHLBalances(d, spot, hlUnified);
+        hlReady = b.ready;
+        hlNeedsMove = b.needsMove;
         hlAvail = b.total;
         hlBalLoaded = true;
       } catch (e: any) {
-        hlPerpAvail = 0;
-        hlSpotUsdc = 0;
+        hlReady = 0;
+        hlNeedsMove = 0;
         hlAvail = 0;
         hlBalLoaded = false;
         hlBalErr = `Could not read your Hyperliquid balance: ${e?.message ?? 'unknown error'}`;
@@ -2166,14 +2182,21 @@ export default function TransferPage() {
       })});
       const d = await res.json();
       if (d?.status !== 'ok' && d?.response?.type !== 'default')
-        throw new Error(d?.response?.data?.message || d?.error || JSON.stringify(d).slice(0,100));
+        throw new Error(hlErrorMessage(d));
     }
 
     /**
-     * Puts enough USDC on the PERP side to cover a withdrawal, because that is
-     * the only balance withdraw3 pays out of. On a unified account the money
-     * sits in spot, so without this the withdrawal is rejected for insufficient
-     * funds while the exchange plainly shows the balance.
+     * Puts enough USDC on the PERP side to cover a withdrawal on a STANDARD
+     * account, where withdraw3 pays out of the perp balance alone and the money
+     * is usually sitting in spot.
+     *
+     * A unified account has no such split — one balance backs spot and perps
+     * together — and Hyperliquid rejects the transfer with "Action disabled
+     * when unified account is active". That is checked up front from the
+     * account's mode, and caught again from the error itself in case the mode
+     * read failed or the account changed mode between the two calls: the
+     * withdrawal that follows draws on the unified balance either way, so the
+     * only cost of getting it wrong is one refused signature.
      *
      * Returns whether it had to move anything, so the caller can say so.
      */
@@ -2185,21 +2208,34 @@ export default function TransferPage() {
       const EPS = 1e-6;
       if (amt > hlAvail + EPS)
         throw new Error(`Hyperliquid holds $${fmt(hlAvail)} USDC — not enough for a $${fmt(amt)} withdrawal.`);
-      if (hlPerpAvail + EPS >= amt) return false;
+      // Nothing to move, either because the perp side already covers it or
+      // because this account keeps one balance for both sides.
+      if (hlUnified || hlReady + EPS >= amt) return false;
       // Rounded UP so the perp side lands at or above the ask, but never above
       // what spot actually holds.
-      const moving = Math.min(hlSpotUsdc, Math.ceil((amt - hlPerpAvail) * 1e6) / 1e6);
+      const moving = Math.min(hlNeedsMove, Math.ceil((amt - hlReady) * 1e6) / 1e6);
       if (moving <= 0)
-        throw new Error(`Hyperliquid has $${fmt(hlPerpAvail)} USDC available to withdraw — the rest is held as margin.`);
+        throw new Error(`Hyperliquid has $${fmt(hlReady)} USDC available to withdraw — the rest is held as margin.`);
       note?.(`Moving $${fmt(moving)} USDC from spot to perps — sign in wallet…`);
-      await hlUsdClassTransfer(prov, user, moving, true);
+      try {
+        await hlUsdClassTransfer(prov, user, moving, true);
+      } catch (e: any) {
+        if (!isUnifiedAccountError(String(e?.message ?? ''))) throw e;
+        // The account is unified after all: the balance already backs the
+        // withdrawal, so carry on rather than failing on a step that was never
+        // needed. Remembered so the rest of the session stops attempting it.
+        hlUnified = true;
+        hlReady = hlAvail;
+        hlNeedsMove = 0;
+        return false;
+      }
       // The L1 credits this within a block or two, but the withdrawal signed
       // against a balance that has not landed yet is simply rejected, so it is
       // polled rather than assumed.
       for (let i = 0; i < 20; i++) {
         await sleep(1500);
         await loadHLBalances(user);
-        if (hlPerpAvail + EPS >= amt) return true;
+        if (hlReady + EPS >= amt) return true;
       }
       throw new Error('Hyperliquid has not credited the spot → perps transfer yet — check your account and try the withdrawal again.');
     }
@@ -2229,7 +2265,7 @@ export default function TransferPage() {
       })});
       const d = await res.json();
       if (d?.status !== 'ok' && d?.response?.type !== 'default')
-        throw new Error(d?.response?.data?.message || d?.error || JSON.stringify(d).slice(0,100));
+        throw new Error(hlErrorMessage(d));
     }
 
     // Proof to the backend that we control the address we're claiming. `user`
