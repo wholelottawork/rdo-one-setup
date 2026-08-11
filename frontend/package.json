@@ -8,7 +8,7 @@
     "build": "next build",
     "start": "next start -p 3002",
     "lint": "next lint",
-    "test": "node lib/orderMath.test.ts && node lib/authMessage.test.ts && node lib/asterWithdraw.test.ts && node lib/asterAssets.test.ts && node lib/asterDeposit.test.ts && node lib/indicators.test.ts && node lib/walletError.test.ts && node lib/asterAgentParams.test.ts"
+    "test": "node lib/orderMath.test.ts && node lib/authMessage.test.ts && node lib/asterWithdraw.test.ts && node lib/asterAssets.test.ts && node lib/asterDeposit.test.ts && node lib/indicators.test.ts && node lib/walletError.test.ts && node lib/asterAgentParams.test.ts && node lib/hlBalance.test.ts"
   },
   "engines": {
     "node": ">=20"

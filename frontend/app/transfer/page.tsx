@@ -5,6 +5,7 @@ import { useWallet, getEVMProvider, switchEvmNetwork, findEvmNetwork } from '@/l
 import { walletAuth as signAction } from '@/lib/wallet-auth';
 import { ensureAsterAgentApprovedAuto, getAsterAccount } from '@/lib/aster-agent';
 import { asterFetch } from '@/lib/aster-session';
+import { HL_MIN_WITHDRAW, HL_WITHDRAW_FEE, hlArrivingUnits, parseHLBalances } from '@/lib/hlBalance';
 import {
   ASTER_DEPOSIT_CHAIN,
   asterVault,
@@ -160,6 +161,9 @@ export default function TransferPage() {
     // Anything under 5 USDC is swallowed, not refunded — hence HL_MIN_DEPOSIT.
     const HL_BRIDGE = '0x2df1c51e09aecf9cacb7bc98cb1742757f163df7';
     const HL_MIN_DEPOSIT = BigInt(5_000_000); // 5 USDC, 6 decimals
+    // HL_WITHDRAW_FEE / HL_MIN_WITHDRAW / hlArrivingUnits / parseHLBalances all
+    // come from @/lib/hlBalance, where they are unit-tested — the account-shape
+    // rules they encode are the ones this page kept getting wrong.
 
     const el    = (id: string): HTMLElement | null => document.getElementById(id);
     const set   = (id: string, v: string) => { const e = el(id); if (e) e.textContent = v; };
@@ -172,6 +176,10 @@ export default function TransferPage() {
       `${fmt(Number(fromUnits(v, decimals)), asterDisplayDecimals(sym))} ${sym}`;
     const min = (a: bigint, b: bigint) => (a < b ? a : b);
     const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+    /** MAX, at two decimals, never rounding UP past the balance — 9.9449 must
+     *  not become "9.95" and be refused for exceeding the account. */
+    const floorUsd = (n: number) => (Math.floor(n * 100) / 100).toFixed(2);
+    const hlArriving = hlArrivingUnits;
 
     /**
      * Decimal string -> integer token units, WITHOUT ever touching a float.
@@ -232,14 +240,25 @@ export default function TransferPage() {
     // side is always USDC — it holds nothing else — so this names what leaves
     // Aster going out, and what the account ends up holding coming in.
     let btwAsset = 'USDT';
-    let hlEquity = 0;
-    // Whether hlEquity is a READ or merely its initial 0, and why the read
+    // Everything Hyperliquid will let this page move, which is NOT the perp
+    // account value: a unified account keeps its USDC in the SPOT wallet and
+    // only reserves it as perp margin when a position needs it, so an account
+    // showing 9.94 on the exchange reads accountValue 0. Reading only the perp
+    // side reported "no funds" to users who plainly had them.
+    //
+    // withdraw3 pays out of the PERP balance alone, so the two halves are kept
+    // apart: hlPerpAvail can leave immediately, hlSpotUsdc needs a spot→perp
+    // class transfer first (see hlEnsurePerpFunds).
+    let hlPerpAvail = 0;
+    let hlSpotUsdc = 0;
+    let hlAvail = 0;
+    // Whether hlAvail is a READ or merely its initial 0, and why the read
     // failed if it did. Both hints and both MAX buttons have to distinguish
     // "not read yet", "read failed" and "account is empty" — a bare 0 renders
     // all three as an empty account, and MAX then does nothing with no reason
     // given.
-    let hlEquityLoaded = false;
-    let hlEquityErr = '';
+    let hlBalLoaded = false;
+    let hlBalErr = '';
     // Aster's withdrawable balance, and a generation counter for the load that
     // produced it: reading it is an async round trip that can outlive the user
     // switching the source back to Hyperliquid, and a late reply must not
@@ -286,7 +305,7 @@ export default function TransferPage() {
       const wdDest = el('wd-dest') as HTMLInputElement | null;
       if (wdDest) wdDest.placeholder = addr + ' (connected)';
       set('wd-bal', 'Connected: ' + s);
-      loadHLEquity(addr);
+      loadHLBalances(addr);
       refreshDpBal();
       refreshSendBal();
       // Which wallet is connected is only knowable after connect, and so is
@@ -302,39 +321,54 @@ export default function TransferPage() {
      *  Shared by the Withdraw tab and the Between Accounts tab, which read the
      *  same number and used to disagree about how to render it — the latter
      *  printed a blank line for everything that was not a loaded balance. */
-    function hlBalText() {
+    function hlBalHint() {
       if (!evmAddressRef.current) return 'Connect wallet to see balance';
-      if (hlEquityErr) return hlEquityErr;
-      if (!hlEquityLoaded) return 'Reading your Hyperliquid balance…';
-      return `Balance: $${fmt(hlEquity)} USDC`;
+      if (hlBalErr) return hlBalErr;
+      if (!hlBalLoaded) return 'Reading your Hyperliquid balance…';
+      // The split is worth naming: the spot part costs one extra signature on
+      // the way out, and a user watching two wallet prompts for one withdrawal
+      // should have been told why before the first one.
+      const spot = hlSpotUsdc > 0.005 && hlPerpAvail > 0.005
+        ? `  ·  $${fmt(hlPerpAvail)} perps + $${fmt(hlSpotUsdc)} spot`
+        : hlSpotUsdc > 0.005 ? '  ·  held in spot, moved to perps on withdrawal' : '';
+      return `Balance: $${fmt(hlAvail)} USDC${spot}`;
     }
 
     /** Reads it if it is not already in hand. Every entry point that shows the
      *  balance calls this, because the read is no longer guaranteed to have
      *  been kicked off by a connect that happened before this page mounted. */
-    function ensureHLEquity() {
+    function ensureHLBalances() {
       const addr = evmAddressRef.current;
-      if (addr && !hlEquityLoaded) void loadHLEquity(addr);
+      if (addr && !hlBalLoaded) void loadHLBalances(addr);
     }
 
-    async function loadHLEquity(addr: string) {
-      hlEquityErr = '';
+    async function loadHLBalances(addr: string) {
+      hlBalErr = '';
       try {
-        const r = await fetch(HL+'/info', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({type:'clearinghouseState', user:addr})});
-        if (!r.ok) throw new Error(`Hyperliquid returned HTTP ${r.status}`);
-        const d = await r.json();
-        // Prefer marginSummary (account-wide total incl. isolated); crossMarginSummary
-        // is all-zeros for isolated-margin accounts, which zeroed the HL balance.
-        const ms = d.marginSummary || d.crossMarginSummary || {};
-        hlEquity = parseFloat(ms.accountValue ?? 0) || 0;
-        hlEquityLoaded = true;
+        const post = async (body: any) => {
+          const r = await fetch(HL+'/info', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+          if (!r.ok) throw new Error(`Hyperliquid returned HTTP ${r.status}`);
+          return r.json();
+        };
+        // Both halves of the account, exactly as the Portfolio page reads them.
+        const [d, spot] = await Promise.all([
+          post({type:'clearinghouseState', user:addr}),
+          post({type:'spotClearinghouseState', user:addr}),
+        ]);
+        const b = parseHLBalances(d, spot);
+        hlPerpAvail = b.perpAvail;
+        hlSpotUsdc = b.spotUsdc;
+        hlAvail = b.total;
+        hlBalLoaded = true;
       } catch (e: any) {
-        hlEquity = 0;
-        hlEquityLoaded = false;
-        hlEquityErr = `Could not read your Hyperliquid balance: ${e?.message ?? 'unknown error'}`;
+        hlPerpAvail = 0;
+        hlSpotUsdc = 0;
+        hlAvail = 0;
+        hlBalLoaded = false;
+        hlBalErr = `Could not read your Hyperliquid balance: ${e?.message ?? 'unknown error'}`;
       }
-      if (wdSrc === 'hl') set('wd-bal', hlBalText());
-      if (btwDir === 'hl-to-aster') set('btw-bal', hlBalText());
+      if (wdSrc === 'hl') set('wd-bal', hlBalHint());
+      if (btwDir === 'hl-to-aster') set('btw-bal', hlBalHint());
     }
 
     function setWdSrc(src: string) {
@@ -346,10 +380,11 @@ export default function TransferPage() {
       const execBtn = el('wd-exec-btn'); if (execBtn) execBtn.className = 'exec-btn ' + (isHL ? 'hl' : 'as');
       set('wd-from-cur', isHL ? 'USDC' : wdAsset);
       fillTokenSel('wd-to-token', '42161', isHL ? 'USDC' : wdAsset);
-      // Hyperliquid pays out USDC and nothing else, so the currency picker is
-      // meaningless there rather than merely unused.
+      // Shown for both sources — see fillWdAssetSel for why Hyperliquid gets a
+      // fixed one-entry picker instead of no picker at all.
       const assetRow = el('wd-asset-row');
-      if (assetRow) assetRow.style.display = isHL ? 'none' : '';
+      if (assetRow) assetRow.style.display = '';
+      fillWdAssetSel();
       // Aster's fee is a signed field — quote it as soon as the user picks
       // Aster so it is on screen well before the wallet prompt, not revealed
       // by it. Hyperliquid's withdrawal fee is fixed and not signed.
@@ -364,8 +399,8 @@ export default function TransferPage() {
       asterWithdrawableChain = '';
 
       if (isHL) {
-        set('wd-bal', hlBalText());
-        ensureHLEquity();
+        set('wd-bal', hlBalHint());
+        ensureHLBalances();
       } else {
         refreshAsterWdFee().catch((e: any) => set('wd-fee', e.message));
         loadAsterAvail();
@@ -496,7 +531,25 @@ export default function TransferPage() {
     function fillWdAssetSel() {
       const sel = el('wd-asset') as HTMLSelectElement | null;
       if (!sel) return;
-      const prev = sel.value || wdAsset;
+      // Hyperliquid holds USDC and nothing else, so its picker is one fixed
+      // entry rather than a hidden row. Hiding it made the Withdraw tab look
+      // broken next to Aster's picker — "I can't select a currency" — and left
+      // nowhere to say that the PAYOUT currency is chosen under "Receive as",
+      // which works for both venues.
+      if (wdSrc === 'hl') {
+        sel.innerHTML = '<option value="USDC">USDC — all Hyperliquid holds</option>';
+        sel.value = 'USDC';
+        sel.disabled = true;
+        set('wd-asset-hint', 'Hyperliquid pays out USDC — pick any other payout currency under “Receive as”.');
+        return;
+      }
+      sel.disabled = false;
+      set('wd-asset-hint', ' ');
+      // wdAsset, not the select's current value: coming back from Hyperliquid
+      // the select holds the fixed USDC entry written above, and honouring it
+      // would show a currency the rest of the tab (badge, fee, payout chain)
+      // has not switched to.
+      const prev = wdAsset;
       sel.innerHTML = ASTER_WITHDRAW_ASSETS.map(a => {
         const best = matrixBest(a);
         const label = best && best.amount > 0
@@ -579,9 +632,9 @@ export default function TransferPage() {
       const wdAmt = el('wd-amt') as HTMLInputElement | null;
       const a = parseFloat(wdAmt?.value || '0') || 0;
       if (wdSrc === 'hl') {
-        set('wd-bal', a && hlEquity
-          ? `Balance: $${fmt(hlEquity)} USDC  ·  After: $${fmt(Math.max(0, hlEquity - a))}`
-          : hlBalText());
+        set('wd-bal', a && hlAvail
+          ? `Balance: $${fmt(hlAvail)} USDC  ·  After: $${fmt(Math.max(0, hlAvail - a))}`
+          : hlBalHint());
       } else if (asterWithdrawable > 0) {
         const on = asterWithdrawableChain ? ` on ${chainName(asterWithdrawableChain)}` : '';
         const d = asterDisplayDecimals(wdAsset);
@@ -595,12 +648,12 @@ export default function TransferPage() {
       const wdAmt = el('wd-amt') as HTMLInputElement | null;
       if (!wdAmt) return;
       if (wdSrc === 'hl') {
-        if (hlEquity > 0) { wdAmt.value = hlEquity.toFixed(2); onWdAmtInput(); return; }
+        if (hlAvail > 0) { wdAmt.value = floorUsd(hlAvail); onWdAmtInput(); return; }
         // Same rule as the Aster branch below: a MAX that fills nothing has to
         // say why, and "still reading" is a different answer from "empty".
-        ensureHLEquity();
-        return showSt('wd-st', 'err', hlEquityErr || (evmAddressRef.current
-          ? (hlEquityLoaded ? 'No USDC in your Hyperliquid account' : 'Still reading your Hyperliquid balance — try again in a moment')
+        ensureHLBalances();
+        return showSt('wd-st', 'err', hlBalErr || (evmAddressRef.current
+          ? (hlBalLoaded ? 'No USDC in your Hyperliquid account' : 'Still reading your Hyperliquid balance — try again in a moment')
           : 'Connect your wallet from the top nav first'));
       }
       // Aster's fee comes OUT of the withdrawn amount, so the whole
@@ -693,21 +746,23 @@ export default function TransferPage() {
         if (wdSrc === 'hl') {
           if (isSame) {
             initProg('wd', ['Withdraw USDC from Hyperliquid']);
-            stepSet(0, 'active', 'Sign withdrawal in wallet…');
-            await hlWithdrawRaw(prov, user, amt, destAddr);
-            stepSet(0, 'done', `$${fmt(amt)} USDC → ${destShort} (~2 min)`);
+            stepSet(0, 'active', 'Checking your Hyperliquid balance…');
+            // Funds parked in spot need a class transfer first, and that is a
+            // second wallet prompt — the step message says which one is which.
+            await hlWithdrawRaw(prov, user, amt, destAddr, m => stepSet(0, 'active', m));
+            stepSet(0, 'done', `$${fmt(amt)} USDC → ${destShort}, less the ${HL_WITHDRAW_FEE} USDC fee (~2 min)`);
           } else {
             initProg('wd', [
               'Withdraw USDC from Hyperliquid',
               'Wait for USDC on Arbitrum (~2 min)',
               `Convert USDC → ${toSym} via LI.FI`,
             ]);
-            stepSet(0, 'active', 'Sign withdrawal in wallet…');
-            await hlWithdrawRaw(prov, user, amt, user);
+            stepSet(0, 'active', 'Checking your Hyperliquid balance…');
+            await hlWithdrawRaw(prov, user, amt, user, m => stepSet(0, 'active', m));
             stepSet(0, 'done', `$${fmt(amt)} USDC submitted to Arbitrum`);
             stepSet(1, 'active', 'Polling balance every 12s…');
             const before = await erc20BalOn(prov, ARB_CHAIN, USDC_ARB, user);
-            await pollBal(prov, USDC_ARB, user, BigInt(Math.round(amt*1e6*0.97)), before, 360000);
+            await pollBal(prov, USDC_ARB, user, hlArriving(amt), before, 360000);
             stepSet(1, 'done', 'USDC arrived in wallet');
             stepSet(2, 'active', `Getting LI.FI route to ${toSym}…`);
             const bal = await erc20BalOn(prov, ARB_CHAIN, USDC_ARB, user);
@@ -1501,8 +1556,8 @@ export default function TransferPage() {
         // A blank line here was the whole bug on this direction: a balance that
         // had not been read yet is indistinguishable from an empty account, and
         // nothing on this path ever asked for the read either.
-        set('btw-bal', hlBalText());
-        ensureHLEquity();
+        set('btw-bal', hlBalHint());
+        ensureHLBalances();
       } else {
         // The Aster side of this tab never asked for a balance at all — it
         // blanked the hint and MAX did nothing, which read as "you have no
@@ -1523,10 +1578,10 @@ export default function TransferPage() {
       const btwAmt = el('btw-amt') as HTMLInputElement | null;
       if (!btwAmt) return;
       if (btwDir === 'hl-to-aster') {
-        if (hlEquity > 0) { btwAmt.value = hlEquity.toFixed(2); return; }
-        ensureHLEquity();
-        return showSt('btw-st', 'err', hlEquityErr || (evmAddressRef.current
-          ? (hlEquityLoaded ? 'No USDC in your Hyperliquid account to move' : 'Still reading your Hyperliquid balance — try again in a moment')
+        if (hlAvail > 0) { btwAmt.value = floorUsd(hlAvail); return; }
+        ensureHLBalances();
+        return showSt('btw-st', 'err', hlBalErr || (evmAddressRef.current
+          ? (hlBalLoaded ? 'No USDC in your Hyperliquid account to move' : 'Still reading your Hyperliquid balance — try again in a moment')
           : 'Connect your wallet from the top nav first'));
       }
       // Withdrawable, not account balance — see loadAsterWithdrawable. Rendered
@@ -1567,12 +1622,12 @@ export default function TransferPage() {
           initProg('btw', labels);
           const last = labels.length - 1;
 
-          stepSet(0, 'active', 'Sign withdrawal in wallet…');
-          await hlWithdrawRaw(prov, user, amt, user);
+          stepSet(0, 'active', 'Checking your Hyperliquid balance…');
+          await hlWithdrawRaw(prov, user, amt, user, m => stepSet(0, 'active', m));
           stepSet(0, 'done', `$${fmt(amt)} USDC submitted to Arbitrum`);
           stepSet(1, 'active', 'Polling every 12s (up to 6 min)…');
           const ub = await erc20BalOn(prov, ARB_CHAIN, USDC_ARB, user);
-          await pollBal(prov, USDC_ARB, user, BigInt(Math.round(amt * 1e6 * 0.97)), ub, 360000);
+          await pollBal(prov, USDC_ARB, user, hlArriving(amt), ub, 360000);
           stepSet(1, 'done', 'USDC arrived in wallet');
 
           // What ends up being deposited, in the TARGET token's units — which
@@ -2079,7 +2134,83 @@ export default function TransferPage() {
       }]});
     }
 
-    async function hlWithdrawRaw(prov: any, user: string, amt: number, dest: string) {
+    /** Hyperliquid's spot ⇄ perps transfer. Same user-signed EIP-712 shape as
+     *  withdraw3 — the domain chainId must equal the action's signatureChainId,
+     *  which is why both are Arbitrum here. Field ORDER is part of the hash;
+     *  it mirrors USD_CLASS_TRANSFER_SIGN_TYPES in Hyperliquid's own SDK. */
+    async function hlUsdClassTransfer(prov: any, user: string, amount: number, toPerp: boolean) {
+      const nonce = Date.now();
+      // Trimmed to USDC's 6 decimals: the string is signed verbatim, and a
+      // float artefact like 1.2000000000000002 is both unsignable-looking and
+      // more than the account holds.
+      const amtStr = String(Number(amount.toFixed(6)));
+      const td = {
+        types: {
+          EIP712Domain: [{name:'name',type:'string'},{name:'version',type:'string'},{name:'chainId',type:'uint256'},{name:'verifyingContract',type:'address'}],
+          'HyperliquidTransaction:UsdClassTransfer': [
+            {name:'hyperliquidChain',type:'string'},
+            {name:'amount',type:'string'},
+            {name:'toPerp',type:'bool'},
+            {name:'nonce',type:'uint64'},
+          ],
+        },
+        primaryType: 'HyperliquidTransaction:UsdClassTransfer',
+        domain: {name:'HyperliquidSignTransaction', version:'1', chainId:42161, verifyingContract:'0x0000000000000000000000000000000000000000'},
+        message: {hyperliquidChain:'Mainnet', amount:amtStr, toPerp, nonce},
+      };
+      const sig = await prov.request({method:'eth_signTypedData_v4', params:[user, JSON.stringify(td)]});
+      const res = await fetch(HL+'/exchange', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({
+        action: {type:'usdClassTransfer', hyperliquidChain:'Mainnet', signatureChainId:'0xa4b1', amount:amtStr, toPerp, nonce},
+        nonce,
+        signature: {r:sig.slice(0,66), s:'0x'+sig.slice(66,130), v:parseInt(sig.slice(130,132),16)},
+      })});
+      const d = await res.json();
+      if (d?.status !== 'ok' && d?.response?.type !== 'default')
+        throw new Error(d?.response?.data?.message || d?.error || JSON.stringify(d).slice(0,100));
+    }
+
+    /**
+     * Puts enough USDC on the PERP side to cover a withdrawal, because that is
+     * the only balance withdraw3 pays out of. On a unified account the money
+     * sits in spot, so without this the withdrawal is rejected for insufficient
+     * funds while the exchange plainly shows the balance.
+     *
+     * Returns whether it had to move anything, so the caller can say so.
+     */
+    async function hlEnsurePerpFunds(prov: any, user: string, amt: number, note?: (m: string) => void) {
+      await loadHLBalances(user);
+      if (hlBalErr) throw new Error(hlBalErr);
+      // A hair of slack: the balance is a float round-trip through JSON, and a
+      // MAX of exactly the balance must not fail on the last ulp.
+      const EPS = 1e-6;
+      if (amt > hlAvail + EPS)
+        throw new Error(`Hyperliquid holds $${fmt(hlAvail)} USDC — not enough for a $${fmt(amt)} withdrawal.`);
+      if (hlPerpAvail + EPS >= amt) return false;
+      // Rounded UP so the perp side lands at or above the ask, but never above
+      // what spot actually holds.
+      const moving = Math.min(hlSpotUsdc, Math.ceil((amt - hlPerpAvail) * 1e6) / 1e6);
+      if (moving <= 0)
+        throw new Error(`Hyperliquid has $${fmt(hlPerpAvail)} USDC available to withdraw — the rest is held as margin.`);
+      note?.(`Moving $${fmt(moving)} USDC from spot to perps — sign in wallet…`);
+      await hlUsdClassTransfer(prov, user, moving, true);
+      // The L1 credits this within a block or two, but the withdrawal signed
+      // against a balance that has not landed yet is simply rejected, so it is
+      // polled rather than assumed.
+      for (let i = 0; i < 20; i++) {
+        await sleep(1500);
+        await loadHLBalances(user);
+        if (hlPerpAvail + EPS >= amt) return true;
+      }
+      throw new Error('Hyperliquid has not credited the spot → perps transfer yet — check your account and try the withdrawal again.');
+    }
+
+    async function hlWithdrawRaw(prov: any, user: string, amt: number, dest: string, note?: (m: string) => void) {
+      // Hyperliquid refuses these outright, and the error it returns names
+      // neither number.
+      if (amt < HL_MIN_WITHDRAW)
+        throw new Error(`Hyperliquid's minimum withdrawal is ${HL_MIN_WITHDRAW} USDC (it also takes a ${HL_WITHDRAW_FEE} USDC fee).`);
+      await hlEnsurePerpFunds(prov, user, amt, note);
+      note?.('Sign withdrawal in wallet…');
       const ts = Date.now();
       const td = {
         types: {
@@ -2378,10 +2509,11 @@ export default function TransferPage() {
     setTab(['withdraw','deposit','swap','send','between'].includes(wanted) ? wanted : 'withdraw');
     fillChainSel('wd-to-chain');
     fillTokenSel('wd-to-token', '42161', 'USDC');
-    // Populated before any balance is read, so the picker is never empty; the
-    // withdrawable annotations fill in once the matrix lands.
-    fillWdAssetSel();
-    updateWdConvHint();
+    // Through setWdSrc rather than piecemeal, so the tab's default source is
+    // set up by the same code path a click on it uses: the pickers, the badge,
+    // the balance and its read all follow from the source, and the ones this
+    // used to skip stayed in whatever state the markup shipped with.
+    setWdSrc('hl');
     fillChainSel('dp-from-chain');
     setDpDest('hl');
     fillChainSel('sw-chain');
@@ -2448,13 +2580,15 @@ export default function TransferPage() {
               <button className="src-tab hl active" id="wd-btn-hl" onClick={() => (window as any).setWdSrc('hl')}>BASIC · Hyperliquid</button>
               <button className="src-tab as" id="wd-btn-as" onClick={() => (window as any).setWdSrc('aster')}>EXTRA · Aster</button>
             </div>
-            {/* Aster holds more than one currency and will pay any of them out;
-                Hyperliquid pays USDC only, so this row hides for that source. */}
-            <div id="wd-asset-row" style={{display:'none'}}>
+            {/* Aster holds more than one currency and will pay any of them out.
+                Hyperliquid holds USDC only, so the picker is fixed there rather
+                than absent — the payout currency is the "Receive as" row. */}
+            <div id="wd-asset-row">
               <div className="field-lbl">Currency</div>
               <div className="sel-wrap">
                 <select id="wd-asset" onChange={(e) => (window as any).setWdAsset(e.currentTarget.value)}></select>
               </div>
+              <div className="bal-hint" id="wd-asset-hint">&nbsp;</div>
             </div>
             <div className="field-lbl" data-i18n="amount">Amount</div>
             <div className="amt-wrap" id="wd-amt-wrap">
