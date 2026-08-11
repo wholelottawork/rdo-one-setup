@@ -15,7 +15,7 @@ import asterRoutes from './routes/aster';
 import marketDataRoutes from './routes/market-data';
 import rssRoutes from './routes/rss';
 import newsRoutes from './routes/news';
-import swapRoutes from './routes/swap';
+import rpcRoutes from './routes/rpc';
 
 const app = Fastify({
   // Behind nginx every request arrives from the proxy, so without this `req.ip`
@@ -112,7 +112,7 @@ await app.register(asterRoutes,      { prefix: '/api' });
 await app.register(marketDataRoutes, { prefix: '/api' });
 await app.register(rssRoutes,        { prefix: '/api' });
 await app.register(newsRoutes,       { prefix: '/api/news' });
-await app.register(swapRoutes,       { prefix: '/api/swap' });
+await app.register(rpcRoutes,        { prefix: '/api/rpc' });
 
 // ── Shutdown ─────────────────────────────────────────────────────────────────
 // Without this, SIGTERM kills the process outright and the registered onClose

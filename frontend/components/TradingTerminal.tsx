@@ -991,7 +991,12 @@ export default function TradingTerminal() {
       <TradeHeader />
 
       {/* ══ WORKSPACE ════════════════════════════════════════════ */}
-      <div className="grid overflow-hidden border-b border-[#1f1f1f]" style={{ gridTemplateColumns: "var(--xt) 1fr var(--tr) var(--tp)" }}>
+      {/* minmax(0,1fr), not 1fr: a bare 1fr floors at the chart column's
+          min-content width, so on a narrower window the whole grid grew wider
+          than the viewport and the last column — the order panel, including
+          its own Connect button — was clipped off the right edge with no
+          scrollbar (overflow:hidden) to reach it. */}
+      <div className="grid overflow-hidden border-b border-[#1f1f1f]" style={{ gridTemplateColumns: "var(--xt) minmax(0,1fr) var(--tr) var(--tp)" }}>
         <XTrackerPanel />
         <ChartPanel />
         <TradesPanel />

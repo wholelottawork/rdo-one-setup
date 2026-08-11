@@ -5,7 +5,7 @@ import 'dotenv/config';
  * touching `process.env` directly, so defaults and names live in one place.
  *
  * Graceful-degradation is deliberate: we do NOT throw at boot for missing
- * secrets. The 1inch / Aster-signer / agent-key features each check their own
+ * secrets. The LI.FI / Aster-signer / agent-key features each check their own
  * value lazily and 503/throw only when actually used (same behavior as before),
  * so the server still starts and serves everything else without them.
  */
@@ -65,8 +65,12 @@ export const config = {
   logRequestBodies: process.env.LOG_REQUEST_BODIES === 'true',
 
   // Optional secrets — empty string when unset; feature code guards on these.
-  oneInchApiKey: process.env.ONEINCH_API_KEY ?? '',
   lifiApiKey: process.env.LIFI_API_KEY ?? '',
+  // Not a secret — the Partner Portal integration string that owns the key
+  // above. Sent as the `integrator` query param on every LI.FI call so the
+  // traffic is attributed to this integration; unset means LI.FI books the
+  // requests against nothing and the Portal analytics stay empty.
+  lifiIntegrator: process.env.LIFI_INTEGRATOR ?? '',
   asterSignerPrivateKey: process.env.ASTER_SIGNER_PRIVATE_KEY ?? '',
   agentKeyEncryptionSecret: process.env.AGENT_KEY_ENCRYPTION_SECRET ?? '',
 } as const;

@@ -38,8 +38,17 @@ export default async function marketDataRoutes(fastify: FastifyInstance) {
   // bucketing the amount nor dropping the addresses from the key is safe — the
   // first would sign a transaction for the wrong amount, the second would hand
   // one wallet another wallet's calldata. The API key alone covers the volume.
+  //
+  // `integrator` is forced on server-side rather than passed by the Transfer
+  // page. It is the Portal integration string that owns the API key, so it is
+  // what LI.FI attributes the traffic (and, if fee receivers are ever wired up,
+  // the fees) to. Letting the browser supply it would mean any caller could
+  // bill quotes to a different integration, and a caller that simply forgot it
+  // would silently lose the attribution. registerCachedProxy overwrites the
+  // caller's value, so neither is possible.
   registerCachedProxy(fastify, {
     prefix: '/lifi-api', target: 'https://li.quest', ttl: 10, keyNs: 'lifi',
     ...(config.lifiApiKey ? { headers: { 'x-lifi-api-key': config.lifiApiKey } } : {}),
+    ...(config.lifiIntegrator ? { query: { integrator: config.lifiIntegrator } } : {}),
   });
 }

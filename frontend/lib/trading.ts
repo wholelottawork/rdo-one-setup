@@ -1,4 +1,5 @@
 import { cachedFetch } from './query';
+import { ensureHlAgent, isAgentRejection } from './hl-agent';
 
 const HL_API          = '/api/hl';
 // Routed through the backend relay (backend/src/ws/relay.ts) rather than
@@ -256,13 +257,7 @@ export async function placeTpslOrders({ symbol, size, isLong, signer, tpPx, slPx
   }
   if (!orders.length) throw new Error('No TP/SL price given');
   const wireAction = { type: 'order', orders, grouping: 'na' };
-  const nonce = nextNonce();
-  const sig   = await signAction(signer, wireAction, nonce);
-  const res   = await fetch(`${HL_API}/exchange`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: wireAction, nonce, signature: sig }),
-  });
-  return res.json();
+  return submitAction(signer, wireAction);
 }
 
 // Edit a resting TP/SL trigger in place (HL `modify` action) — keeps the
@@ -282,13 +277,7 @@ export async function modifyTriggerOrder({ oid, symbol, isBuy, size, triggerPx, 
       t: { trigger: { isMarket: true, triggerPx: px, tpsl: kind } },
     },
   };
-  const nonce = nextNonce();
-  const sig   = await signAction(signer, wireAction, nonce);
-  const res   = await fetch(`${HL_API}/exchange`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: wireAction, nonce, signature: sig }),
-  });
-  return res.json();
+  return submitAction(signer, wireAction);
 }
 
 // Info type is `userFunding` (not userFundingHistory) and startTime is
@@ -452,21 +441,53 @@ async function computeActionHash(wireAction: any, nonce: number) {
   return ethers.keccak256(data);
 }
 
-async function signAction(signer: any, wireAction: any, nonce: number) {
-  const { ethers } = await import('ethers');
+// Signed by the AGENT wallet, never the user's. L1 actions sign over the fixed
+// "Exchange" domain with chainId 1337 — NOT Arbitrum's 42161, which is only
+// used for user-signed actions (approveAgent, usdSend). Wrong chainId
+// recovers the wrong signer → "L1 error: User or API Wallet does not exist".
+// Matches hyperliquid-python-sdk signing.l1_payload.
+//
+// A browser wallet CANNOT produce this signature: MetaMask rejects any typed
+// data whose domain.chainId differs from the active chain, so 1337 is refused
+// on every network. Hence the agent key — see lib/hl-agent.ts.
+async function signL1Action(agent: any, wireAction: any, nonce: number) {
   const hash   = await computeActionHash(wireAction, nonce);
   const domain = {
-    // L1 actions (order/cancel) sign over the fixed "Exchange" domain with
-    // chainId 1337 — NOT Arbitrum's 42161, which is only used for
-    // user-signed actions (usdSend etc). Wrong chainId recovers the wrong
-    // signer → "L1 error: User or API Wallet does not exist". Matches
-    // hyperliquid-python-sdk signing.l1_payload.
     name: 'Exchange', version: '1', chainId: 1337,
     verifyingContract: '0x0000000000000000000000000000000000000000',
   };
   const types = { Agent: [{ name: 'source', type: 'string' }, { name: 'connectionId', type: 'bytes32' }] };
-  const rawSig = await signer.signTypedData(domain, types, { source: 'a', connectionId: hash });
+  const rawSig = await agent.signTypedData(domain, types, { source: 'a', connectionId: hash });
   return { r: rawSig.slice(0, 66), s: '0x' + rawSig.slice(66, 130), v: parseInt(rawSig.slice(130, 132), 16) };
+}
+
+async function postExchange(agent: any, wireAction: any) {
+  const nonce = nextNonce();
+  const sig   = await signL1Action(agent, wireAction, nonce);
+  const res   = await fetch(`${HL_API}/exchange`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: wireAction, nonce, signature: sig }),
+  });
+  return res.json();
+}
+
+/**
+ * Every signed HL action goes through here. `signer` is the USER's wallet and
+ * is used only to authorize an agent when one is needed — it never signs the
+ * action itself, so the happy path costs zero wallet popups.
+ *
+ * An agent can be revoked exchange-side at any moment (the user approves an
+ * unnamed agent on app.hyperliquid.xyz and ours goes with it), with no local
+ * signal. So a rejection that specifically means "unknown agent" re-checks
+ * against HL, re-approves, and retries exactly ONCE — bounded, because the
+ * retry can pop the wallet and a loop here would pop it forever.
+ */
+async function submitAction(signer: any, wireAction: any) {
+  let agent = await ensureHlAgent(signer);
+  const out = await postExchange(agent, wireAction);
+  if (!isAgentRejection(out)) return out;
+  agent = await ensureHlAgent(signer, { revalidate: true });
+  return postExchange(agent, wireAction);
 }
 
 // HL nonces must be strictly increasing per user — Date.now() can repeat
@@ -500,13 +521,7 @@ async function applyLeverage(signer: any, symbol: string, leverage: number, idx:
     if (pos && Number(pos.position.leverage?.value) === req) return req;
   } catch { /* no position / query failed — set it below */ }
   const wireAction = { type: 'updateLeverage', asset: idx, isCross, leverage: req };
-  const nonce = nextNonce();
-  const sig = await signAction(signer, wireAction, nonce);
-  const res = await fetch(`${HL_API}/exchange`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: wireAction, nonce, signature: sig }),
-  });
-  const d = await res.json();
+  const d = await submitAction(signer, wireAction);
   if (d.status !== 'ok')
     throw new Error(`Leverage update failed: ${d.response ?? d.error ?? 'unknown error'}`);
   return req;
@@ -555,13 +570,7 @@ export async function openPosition({ symbol, size, sizeDollars, leverage, isLong
     orders,
     grouping: orders.length > 1 ? 'normalTpsl' : 'na',
   };
-  const nonce = nextNonce();
-  const sig   = await signAction(signer, wireAction, nonce);
-  const res   = await fetch(`${HL_API}/exchange`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: wireAction, nonce, signature: sig }),
-  });
-  const out = await res.json();
+  const out = await submitAction(signer, wireAction);
   out.appliedLeverage = appliedLeverage;
   return out;
 }
@@ -575,24 +584,12 @@ export async function closePosition({ symbol, size, isLong, signer }: any) {
     orders: [{ a: assetIndexMap[symbol] ?? 0, b: !isLong, p: pxToWire(!isLong ? price * (1 + slip) : price * (1 - slip), assetSzDecimals[symbol] ?? 5), s: szToWire(Math.abs(size), assetSzDecimals[symbol] ?? 5), r: true, t: { limit: { tif: 'Ioc' } } }],
     grouping: 'na',
   };
-  const nonce = nextNonce();
-  const sig   = await signAction(signer, wireAction, nonce);
-  const res   = await fetch(`${HL_API}/exchange`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: wireAction, nonce, signature: sig }),
-  });
-  return res.json();
+  return submitAction(signer, wireAction);
 }
 
 export async function cancelOrder({ oid, symbol, signer }: any) {
   const wireAction = { type: 'cancel', cancels: [{ a: assetIndexMap[symbol] ?? 0, o: oid }] };
-  const nonce = nextNonce();
-  const sig   = await signAction(signer, wireAction, nonce);
-  const res   = await fetch(`${HL_API}/exchange`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: wireAction, nonce, signature: sig }),
-  });
-  return res.json();
+  return submitAction(signer, wireAction);
 }
 
 export function startPriceStream(

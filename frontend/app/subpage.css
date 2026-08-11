@@ -89,6 +89,7 @@ html:has(#rdo-nav), body:has(#rdo-nav) {
 .q-skeleton{height:52px;background:rgba(255,255,255,.04);border-radius:4px;animation:pulse 1.2s infinite}
 .info-box{border-radius:6px;padding:11px 13px;font-size:11px;color:#c8d2d6;line-height:1.7;margin-bottom:14px}
 .info-box.neu{background:rgba(255,255,255,.02);border:1px solid #1f1f1f}
+.info-box.warn{background:rgba(245,166,35,.07);border:1px solid rgba(245,166,35,.35);color:#e8c98a}
 .info-box strong{color:#fff}
 .api-row{display:flex;gap:8px;margin-bottom:6px}
 .api-input{flex:1;background:#161616;border:1px solid #1f1f1f;border-radius:6px;padding:8px 12px;font-size:11px;color:#fff;outline:none;transition:border-color .12s;font-family:inherit}

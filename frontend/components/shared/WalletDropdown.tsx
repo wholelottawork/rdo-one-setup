@@ -3,6 +3,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useWallet } from '@/lib/wallet';
+import { clearHlAgent, getHlAgentStatus } from '@/lib/hl-agent';
 
 const shorten = (a: string) => a.slice(0, 6) + '…' + a.slice(-4);
 
@@ -24,9 +25,27 @@ export function WalletDropdown({ address, connectLabel, triggerClassName = 'nav-
   const [open, setOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  // Hyperliquid trading key (lib/hl-agent.ts). Only ever fetched while the
+  // dropdown is open — it costs an /info round trip and nothing outside this
+  // panel displays it.
+  const [agent, setAgent] = useState<{ approved: boolean; address: string | null; validUntil: number } | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => { setMounted(true); }, []);
+
+  // SiteNav passes whichever chain is active, so `address` can be a Solana
+  // one — HL agents are EVM-only, and the row has no meaning there.
+  const isEvm = !!address && /^0x[0-9a-fA-F]{40}$/.test(address);
+
+  useEffect(() => {
+    if (!open || !isEvm || !address) return;
+    let cancelled = false;
+    setAgent(null);
+    getHlAgentStatus(address)
+      .then(st => { if (!cancelled) setAgent(st); })
+      .catch(() => { if (!cancelled) setAgent({ approved: false, address: null, validUntil: 0 }); });
+    return () => { cancelled = true; };
+  }, [open, isEvm, address]);
 
   useEffect(() => {
     function onOutsideClick(e: MouseEvent) {
@@ -43,6 +62,11 @@ export function WalletDropdown({ address, connectLabel, triggerClassName = 'nav-
   // One wallet and nothing else on offer? Skip the chooser — a modal with a
   // single button is just an extra click.
   function onConnectClick() {
+    // ...except when that one option is WalletConnect, which connect() can't
+    // reach: it only ever talks to injected providers, so it would report
+    // "No wallet found" on exactly the setup (mobile, or a desktop with no
+    // extension) that WalletConnect exists to serve.
+    if (wallets.length === 1 && wallets[0].id === 'walletconnect') { connectWith('walletconnect'); return; }
     if (wallets.length <= 1) { connect(); return; }
     setPickerOpen(true);
   }
@@ -95,6 +119,33 @@ export function WalletDropdown({ address, connectLabel, triggerClassName = 'nav-
             </button>
           </div>
           <div className="h-px bg-[#1f1f1f] -mx-3.5" />
+          {isEvm && <>
+          {/* Resetting is safe and needs no warning copy: an HL agent key can
+              trade but never withdraw, and funds/positions/resting orders all
+              live on HL. Dropping it costs one signature on the next order. */}
+          <div className="flex items-center justify-between gap-2.5 py-3 px-0.5">
+            <span className="text-[11px] uppercase tracking-[0.4px] text-[#878c8f]">Trading key</span>
+            {agent === null
+              ? <span className="text-[12px] text-[#878c8f]">…</span>
+              : agent.approved
+                ? (
+                  <span className="flex items-center gap-2">
+                    <span className="text-[12px] text-[#c8d2d6]">
+                      Active{agent.validUntil ? ` · ${Math.max(0, Math.round((agent.validUntil - Date.now()) / 86400000))}d` : ''}
+                    </span>
+                    <button
+                      className="border-none bg-transparent text-[11px] font-[inherit] text-[#878c8f] cursor-pointer p-0 hover:text-white"
+                      onClick={() => { clearHlAgent(address); setAgent({ approved: false, address: null, validUntil: 0 }); }}
+                      title="Forget this device's trading key — the next order re-approves it"
+                    >
+                      Reset
+                    </button>
+                  </span>
+                )
+                : <span className="text-[12px] text-[#878c8f]">Set up on first trade</span>}
+          </div>
+          <div className="h-px bg-[#1f1f1f] -mx-3.5" />
+          </>}
           <button className="flex items-center gap-2.5 w-full pt-3 pb-0.5 px-0.5 border-none bg-transparent text-[#ed7088] text-[13px] font-medium font-[inherit] text-left cursor-pointer hover:opacity-80" onClick={() => { disconnect(); setOpen(false); }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18.36 6.64a9 9 0 11-12.73 0M12 2v10" /></svg>
             Disconnect

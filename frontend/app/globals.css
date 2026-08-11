@@ -92,6 +92,15 @@ body {
 #app {
   display: grid;
   grid-template-rows: var(--hdr) 1fr 4px var(--btm) var(--sb);
+  /* Only rows were declared, so the single implicit COLUMN was auto-sized —
+     and an auto grid track grows to its content's min-content width even when
+     that exceeds the container. The header's min-content therefore set the
+     width of every row, pushing the whole terminal (wallet Connect button,
+     order panel) past the right edge on any window narrower than the header's
+     natural width, with overflow:hidden below removing the scrollbar that
+     would otherwise have reached it. Pinning the column to the container width
+     makes the rows clip internally instead of the grid expanding. */
+  grid-template-columns: minmax(0, 1fr);
   height: 100vh;
   overflow: hidden;
 }
