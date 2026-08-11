@@ -354,16 +354,25 @@ export default function TransferPage() {
       return !!p?.isMetaMask && !p?.isRabby && !p?.isCoinbaseWallet;
     }
 
+    /* Static markup with no interpolation anywhere — carrying the two escape
+       hatches as real links is the only reason this is innerHTML rather than
+       textContent. Keep it that way: the moment any part of this string comes
+       from a balance, an address or an Aster response, it has to go back to
+       textContent or be built as nodes. */
+    const ASTER_WALLET_WARNING_HTML =
+      'MetaMask cannot complete an Aster withdrawal: Aster’s authorization is signed on chain 1666, '
+      + 'which MetaMask refuses and which has no public RPC to switch to. '
+      + '<a href="https://www.asterdex.com/en/withdraw" target="_blank" rel="noopener noreferrer">'
+      + 'Withdraw on Aster’s own site</a>, or use '
+      + '<a href="https://rabby.io/" target="_blank" rel="noopener noreferrer">Rabby</a> '
+      + 'or a mobile wallet over WalletConnect for this one action.';
+
     function showAsterWalletWarning(on: boolean) {
       const warn = el('wd-wallet-warn');
       if (!warn) return;
       const show = on && walletBlocksAsterAuth();
       warn.style.display = show ? 'block' : 'none';
-      warn.textContent = show
-        ? 'MetaMask cannot complete an Aster withdrawal: Aster’s authorization is signed on chain 1666, '
-          + 'which MetaMask refuses and which has no public RPC to switch to. Use Rabby or a mobile wallet '
-          + 'over WalletConnect for this one action.'
-        : '';
+      warn.innerHTML = show ? ASTER_WALLET_WARNING_HTML : '';
     }
 
     function onWdAmtInput() {
@@ -1700,7 +1709,8 @@ export default function TransferPage() {
           'Your wallet refused to sign Aster’s authorization message: it is stamped with Aster Chain '
           + '(chainId 1666) and the wallet only signs for the network it is connected to. Aster publishes '
           + 'no public RPC for that chain, so there is nothing to switch to — use a wallet that does not '
-          + 'enforce this (Rabby, or a mobile wallet over WalletConnect) to withdraw from Aster.',
+          + 'enforce this (Rabby, or a mobile wallet over WalletConnect), or withdraw on Aster’s own site: '
+          + 'https://www.asterdex.com/en/withdraw',
         );
       return e instanceof Error ? e : new Error(msg || 'Wallet refused to sign');
     }
