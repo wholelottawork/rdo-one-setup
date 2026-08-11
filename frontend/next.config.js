@@ -162,8 +162,18 @@ const nextConfig = {
       // LI.FI
       { source: '/lifi-api/:path*', destination: `${BACKEND_URL}/api/lifi-api/:path*` },
       // Read-only JSON-RPC, per chain — for reading a chain the user's wallet
-      // is not currently pointed at (see backend/src/routes/rpc.ts)
+      // is not currently pointed at, and for Solana, whose public endpoint
+      // 403s browsers outright (see backend/src/routes/rpc.ts)
       { source: '/rpc/:path*', destination: `${BACKEND_URL}/api/rpc/:path*` },
+      // Portfolio: Jupiter token metadata + prices, DeFiLlama prices, and the
+      // multi-chain EVM balance sweep. All keyless upstreams that rate limit
+      // per IP, so they go through the backend's cache rather than being
+      // called from each visitor's browser.
+      { source: '/jup-tokens/:path*', destination: `${BACKEND_URL}/api/jup-tokens/:path*` },
+      { source: '/jup-price/:path*',  destination: `${BACKEND_URL}/api/jup-price/:path*` },
+      { source: '/jup-ultra/:path*',  destination: `${BACKEND_URL}/api/jup-ultra/:path*` },
+      { source: '/llama-prices/:path*', destination: `${BACKEND_URL}/api/llama-prices/:path*` },
+      { source: '/evm-balances',      destination: `${BACKEND_URL}/api/evm-balances` },
       // News — aggregated feed, per-source RSS proxies, and the article
       // image proxy (sidesteps ORB on CDNs like CoinDesk's Sanity host)
       { source: '/news',            destination: `${BACKEND_URL}/api/news` },

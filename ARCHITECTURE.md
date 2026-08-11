@@ -304,7 +304,9 @@ rdo-one-setup/
 │   │   ├── routes/
 │   │   │   ├── hl.ts            # Hyperliquid proxy
 │   │   │   ├── aster.ts         # Aster proxy + signing
-│   │   │   ├── market-data.ts   # Binance/CoinGecko/LI.FI
+│   │   │   ├── market-data.ts   # Binance/CoinGecko/LI.FI/Jupiter/DeFiLlama
+│   │   │   ├── rpc.ts           # Read-only JSON-RPC relay (EVM + Solana)
+│   │   │   ├── evm-balances.ts  # Multi-chain portfolio sweep
 │   │   │   ├── news.ts          # Aggregated news
 │   │   │   ├── rss.ts           # Per-source RSS
 │   │   │   └── health.ts        # Health check
@@ -317,6 +319,7 @@ rdo-one-setup/
 │   │   └── lib/
 │   │       ├── cache.ts         # Redis TTL cache
 │   │       ├── cached-proxy.ts  # Cached GET proxy factory
+│       ├── evm-chains.ts    # Shared EVM RPC endpoint allowlist
 │   │       ├── fetcher.ts       # fetch + retry
 │   │       ├── rss-parser.ts    # RSS/Atom parser
 │   │       ├── aster-auth.ts    # Aster HMAC signing
