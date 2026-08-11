@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useRef } from 'react';
-import { ensureAsterAgentApproved, ensureBscNetwork, getBscCapableProvider, getAsterIncomeHistory } from '@/lib/aster-agent';
+import { ensureAsterAgentApprovedAuto, getAsterIncomeHistory } from '@/lib/aster-agent';
 import { asterFetch } from '@/lib/aster-session';
 import { useWallet } from '@/lib/wallet';
 import { SiteNav } from '@/components/shared/SiteNav';
@@ -147,44 +147,6 @@ main{max-width:1400px;margin:0 auto;padding:0 24px 60px;padding-top:calc(var(--n
 .modal-x{background:none;border:none;color:var(--text3);font-size:20px;line-height:1;cursor:pointer;padding:2px 4px;transition:color .12s}
 .modal-x:hover{color:var(--text)}
 .modal-body{padding:20px;overflow-y:auto;flex:1}
-.lifi-frame{width:100%;height:560px;border:none;border-radius:var(--r);display:block;background:var(--bg)}
-.xfer-box{background:var(--bg3);border-radius:12px;padding:14px 16px;margin-bottom:1px}
-.xfer-label{display:flex;align-items:center;justify-content:space-between;font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:10px}
-.xfer-bal-hint{font-size:11px;font-weight:500;color:var(--text3);text-transform:none;letter-spacing:0;display:flex;align-items:center;gap:4px}
-.xfer-max-btn{font-size:10px;font-weight:700;color:var(--accent);background:transparent;border:none;cursor:pointer;font-family:inherit;padding:0;text-transform:uppercase}
-.xfer-row{display:flex;align-items:center;gap:10px}
-.xfer-token-btn{display:flex;align-items:center;gap:6px;background:var(--bg2);border:1px solid var(--border);border-radius:24px;padding:6px 10px 6px 6px;cursor:pointer;font-family:inherit;font-size:14px;font-weight:700;color:var(--text);transition:border-color .12s;white-space:nowrap;flex-shrink:0}
-.xfer-token-btn:hover{border-color:var(--accent)}
-.xfer-tok-icon{width:24px;height:24px;border-radius:50%;object-fit:cover;display:block}
-.xfer-tok-ph{width:24px;height:24px;border-radius:50%;background:var(--bg);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:var(--text2)}
-.xfer-amount-wrap{flex:1;display:flex;flex-direction:column;align-items:flex-end;gap:2px}
-.xfer-amount-input{width:100%;background:transparent;border:none;outline:none;font-family:inherit;font-size:22px;font-weight:700;color:var(--text);text-align:right}
-.xfer-amount-input::placeholder{color:var(--text3)}
-.xfer-amount-usd{font-size:11px;color:var(--text3)}
-.xfer-arrow-row{display:flex;justify-content:center;align-items:center;height:26px;position:relative;z-index:1;margin:0}
-.xfer-arrow-circle{width:26px;height:26px;border-radius:50%;background:var(--bg2);border:2px solid var(--bg3);display:flex;align-items:center;justify-content:center;font-size:13px;color:var(--text3)}
-.xfer-to-row{display:flex;align-items:center;gap:12px}
-.xfer-to-icon{width:36px;height:36px;border-radius:50%;object-fit:cover}
-.xfer-to-name{font-size:14px;font-weight:700}
-.xfer-to-sub{font-size:11px;color:var(--text3);margin-top:1px}
-.xfer-to-right{margin-left:auto;text-align:right}
-.xfer-to-val{font-size:20px;font-weight:700}
-.xfer-to-usd{font-size:11px;color:var(--text3)}
-.xfer-go-btn{width:100%;padding:13px;background:#9b7fee;color:#fff;font-weight:700;font-size:14px;border-radius:12px;border:none;cursor:pointer;font-family:inherit;margin-top:12px;transition:opacity .15s}
-.xfer-go-btn:hover{opacity:.88}
-.xfer-go-btn:disabled{opacity:.4;cursor:not-allowed}
-.dep-tok-list{background:var(--bg2);border:1px solid var(--border);border-radius:8px;margin:4px 0 0;max-height:220px;overflow-y:auto}
-.dep-tok-item{display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;transition:background .1s;border-bottom:1px solid rgba(39,48,53,.5)}
-.dep-tok-item:last-child{border-bottom:none}
-.dep-tok-item:hover{background:var(--bg3)}
-.dep-tok-item-icon{width:32px;height:32px;border-radius:50%;object-fit:cover;flex-shrink:0}
-.dep-tok-item-ph{width:32px;height:32px;border-radius:50%;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--text2);flex-shrink:0}
-.dep-tok-info{flex:1;min-width:0}
-.dep-tok-sym{font-size:13px;font-weight:700}
-.dep-tok-name{font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.dep-tok-right{text-align:right;flex-shrink:0}
-.dep-tok-bal{font-size:12px;font-weight:600}
-.dep-tok-usd{font-size:11px;color:var(--text3)}
 .cal-overlay{display:none;position:fixed;inset:0;z-index:2100;background:rgba(0,0,0,.75);backdrop-filter:blur(6px);align-items:center;justify-content:center;padding:20px}
 .cal-overlay.open{display:flex}
 .cal-modal{width:860px;max-width:96vw;max-height:90vh;overflow-y:auto;background:#111820;border:1px solid rgba(255,255,255,.09);border-radius:8px;padding:24px 28px;display:flex;flex-direction:column;gap:18px}
@@ -309,9 +271,6 @@ export default function PortfolioPage() {
     const USDC_ARB   = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831';
 
     let tokenMeta: Record<string, any> = {};
-    let walletAssets: any[] = [];
-    let depToken: any = null;
-    let depTokListOpen = false;
     let hlFills: any[] = [];
     let hlDailyPnl: Record<string, number> = {};
     let currentRange = 'ALL';
@@ -495,7 +454,6 @@ export default function PortfolioPage() {
       } catch(e: any) { set('total-sub','Error'); const ab2 = el('assets-body'); if (ab2) ab2.innerHTML=`<div class="empty-assets">${e.message}</div>`; }
     }
     function renderAssets(assets: any[]) {
-      walletAssets = assets;
       const ab = el('assets-body');
       if (!ab) return;
       if (!assets.length) { ab.innerHTML='<div class="empty-assets">No assets found.</div>'; return; }
@@ -950,93 +908,21 @@ export default function PortfolioPage() {
 
     function fmtDate(ts: number){ return new Date(ts).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'2-digit'}); }
 
-    function openDeposit() {
-      const dm = el('deposit-modal'); if (dm) dm.classList.add('open');
-      depBack();
-      if (walletAssets.length) depSelectToken(walletAssets[0]);
-    }
-    function closeDeposit() { const dm = el('deposit-modal'); if (dm) dm.classList.remove('open'); depBack(); }
-    function depBack() {
-      const pick = el('dep-step-pick'); if (pick) pick.style.display='';
-      const lifi = el('dep-step-lifi'); if (lifi) lifi.style.display='none';
-      const back = el('dep-back-btn'); if (back) (back as HTMLElement).style.display='none';
-      const title = el('dep-modal-title'); if (title) title.textContent='Transfer';
-      depTokListOpen=false;
-      const tl = el('dep-token-list'); if (tl) (tl as HTMLElement).style.display='none';
-    }
-    function toggleDepTokenList() {
-      depTokListOpen=!depTokListOpen;
-      const tl = el('dep-token-list'); if (tl) (tl as HTMLElement).style.display=depTokListOpen?'':'none';
-      if(depTokListOpen) renderDepTokList();
-    }
-    function renderDepTokList() {
-      const tl = el('dep-token-list');
-      if (!tl) return;
-      if(!walletAssets.length){tl.innerHTML='<div style="padding:16px;color:var(--text3);text-align:center;font-size:12px">Connect wallet to see tokens</div>';return;}
-      tl.innerHTML=walletAssets.map((a,i)=>{
-        const ic=a.logo?`<img class="dep-tok-item-icon" src="${a.logo}" alt="" onerror="this.className='dep-tok-item-ph';this.textContent='${(a.symbol||'?')[0]}'">`:`<div class="dep-tok-item-ph">${(a.symbol||'?')[0]}</div>`;
-        return `<div class="dep-tok-item" onclick="depSelectIdx(${i})">${ic}<div class="dep-tok-info"><div class="dep-tok-sym">${a.symbol}</div><div class="dep-tok-name">${a.name}</div></div><div class="dep-tok-right"><div class="dep-tok-bal">${fmt(a.balance,a.balance<1?4:2)}</div><div class="dep-tok-usd">${a.value>0.005?'$'+fmt(a.value):'—'}</div></div></div>`;
-      }).join('');
-    }
-    function depSelectIdx(i: number){ depSelectToken(walletAssets[i]); }
-    function depSelectToken(tok: any){
-      depToken=tok; depTokListOpen=false;
-      const tl = el('dep-token-list'); if (tl) (tl as HTMLElement).style.display='none';
-      const ic=tok.logo?`<img class="xfer-tok-icon" src="${tok.logo}" alt="" onerror="this.outerHTML='<div class=xfer-tok-ph>${(tok.symbol||'?')[0]}</div>'">`:`<div class="xfer-tok-ph">${(tok.symbol||'?')[0]}</div>`;
-      const iw = el('dep-token-icon-wrap'); if (iw) iw.innerHTML=ic;
-      const sym = el('dep-token-sym'); if (sym) sym.textContent=tok.symbol;
-      const bal = el('dep-token-bal'); if (bal) bal.textContent=fmt(tok.balance,tok.balance<1?4:2)+' '+tok.symbol;
-      const amt = el('dep-amount') as HTMLInputElement | null; if (amt) amt.value='';
-      const usd = el('dep-amount-usd'); if (usd) usd.textContent='$0.00';
-      const tov = el('dep-to-val'); if (tov) tov.textContent='0.00';
-      const tou = el('dep-to-usd'); if (tou) tou.textContent='$0.00';
-    }
-    function depMax(){
-      if(!depToken)return;
-      const amt = el('dep-amount') as HTMLInputElement | null;
-      if (amt) amt.value=depToken.balance>0?String(Math.floor(depToken.balance*1e6)/1e6):'';
-      depAmountChanged();
-    }
-    function depAmountChanged(){
-      if(!depToken)return;
-      const amt = el('dep-amount') as HTMLInputElement | null;
-      const val=parseFloat(amt?.value||'0')||0, usd=val*(depToken.price||0);
-      const au = el('dep-amount-usd'); if (au) au.textContent='$'+fmt(usd);
-      const tv = el('dep-to-val'); if (tv) tv.textContent=fmt(usd*0.995);
-      const tu = el('dep-to-usd'); if (tu) tu.textContent='~$'+fmt(usd*0.995);
-    }
-    function depStartTransfer(){
-      if(!depToken)return;
-      const amtEl = el('dep-amount') as HTMLInputElement | null;
-      const amt=parseFloat(amtEl?.value||'0')||0;
-      const pick = el('dep-step-pick'); if (pick) pick.style.display='none';
-      const lifi = el('dep-step-lifi'); if (lifi) lifi.style.display='';
-      const back = el('dep-back-btn'); if (back) (back as HTMLElement).style.display='';
-      const title = el('dep-modal-title'); if (title) title.textContent='Bridge via LI.FI';
-      const hlInp = el('hl-addr-input') as HTMLInputElement | null;
-      let url='/lifi.html?mode=deposit';
-      const addr=evmAddressRef.current||hlInp?.value.trim()||'';
-      if(addr) url+='&toAddress='+encodeURIComponent(addr);
-      url+='&fromToken='+encodeURIComponent(depToken.mint===SOL_MINT?'SOL':depToken.mint);
-      if(amt>0) url+='&fromAmount='+amt;
-      const frame = el('lifi-deposit-frame') as HTMLIFrameElement | null;
-      if (frame) frame.src=url;
-    }
-    function openPerpsDeposit(){
-      const hlInp = el('hl-addr-input') as HTMLInputElement | null;
-      const addr=evmAddressRef.current||hlInp?.value.trim()||'';
-      const dm = el('deposit-modal'); if (dm) dm.classList.add('open');
-      const pick = el('dep-step-pick'); if (pick) pick.style.display='none';
-      const lifi = el('dep-step-lifi'); if (lifi) lifi.style.display='';
-      const back = el('dep-back-btn'); if (back) (back as HTMLElement).style.display='';
-      const title = el('dep-modal-title'); if (title) title.textContent='Deposit to Perps via LI.FI';
-      const frame = el('lifi-deposit-frame') as HTMLIFrameElement | null;
-      if (frame) frame.src='/lifi.html?mode=deposit'+(addr?'&toAddress='+encodeURIComponent(addr):'');
-    }
-    function openSwap(){ const sm = el('swap-modal'); if (sm) sm.classList.add('open'); const f = el('lifi-swap-frame') as HTMLIFrameElement | null; if(f&&!f.src) f.src='/lifi.html?mode=swap'; }
-    function closeSwap(){ const sm = el('swap-modal'); if (sm) sm.classList.remove('open'); }
-    function openConvert(){ const cm = el('convert-modal'); if (cm) cm.classList.add('open'); const f = el('lifi-convert-frame') as HTMLIFrameElement | null; if(f&&!f.src) f.src='/lifi.html?mode=convert'; }
-    function closeConvert(){ const cm = el('convert-modal'); if (cm) cm.classList.remove('open'); }
+    // The Deposit / Perps-deposit / Swap / Convert actions used to open an
+    // embedded LI.FI widget in an iframe. That widget page did not survive the
+    // Vite -> Next migration, and rebuilding it would have talked to li.quest
+    // straight from the browser — bypassing /lifi-api, so neither the
+    // server-side LI.FI key nor the integrator string would apply, and the key
+    // cannot be shipped to the browser to fix that. /transfer already does all
+    // four flows natively through the proxy and through this app's own wallet
+    // layer, so these hand off to the matching tab instead.
+    function goTransfer(tab: string) { window.location.href = '/transfer?tab=' + tab; }
+    function openDeposit()      { goTransfer('deposit'); }
+    function openPerpsDeposit() { goTransfer('deposit'); }
+    function openSwap()         { goTransfer('swap'); }
+    // "Convert to USDC" is a swap whose receive side is USDC — same tab, the
+    // user picks USDC in the "You receive" select.
+    function openConvert()      { goTransfer('swap'); }
     async function copyFullAddr() {
       const addr = solAddressRef.current;
       if (!addr) return;
@@ -1088,50 +974,13 @@ export default function PortfolioPage() {
       // Aster deprecated the old public v2/account bulk endpoint this used to
       // call — the current V3 Pro API requires this address's own dedicated
       // agent (server/lib/agent-keystore.js) to be approved first.
-      // ensureAsterAgentApproved probes silently and only prompts the wallet
-      // for a signature when this address hasn't already approved it —
-      // "one time, and again only if needed," no separate button.
-      const provider = (window as any).phantom?.ethereum ?? (window as any).ethereum ?? null;
-
-      // Aster's backend requires domain.chainId=56 baked into the SIGNED
-      // PAYLOAD (confirmed against Aster's own reference client) — that is
-      // NOT the same thing as the wallet's active network needing to BE
-      // BNB Chain. EIP-712 signing doesn't care what network the wallet is
-      // connected to; only some wallets (MetaMask, confirmed via their own
-      // GitHub issues) apply their own guard that refuses/hangs when
-      // domain.chainId doesn't match the active network. So: try signing
-      // on whatever network the wallet is ALREADY on first. If the wallet
-      // doesn't enforce that guard, this succeeds with zero network-switch
-      // prompt. Only fall back to forcing a BSC switch if that first
-      // attempt fails or hangs — bounded by a timeout, since MetaMask's own
-      // bug reports show it can hang forever rather than erroring cleanly
-      // on a mismatched chainId.
-      async function buildSigner(forceSwitch: boolean) {
-        if (!provider) throw new Error('connect an EVM wallet to approve the Aster agent');
-        let signingProvider = provider;
-        if (forceSwitch) {
-          const bscProvider = (await getBscCapableProvider(address)) ?? provider;
-          const net = await ensureBscNetwork(bscProvider);
-          if (!net.ok) throw new Error(net.reason ?? "switch your wallet to BNB Smart Chain (BSC) — Aster's approval signature requires it");
-          signingProvider = bscProvider;
-        }
-        const { ethers } = await import('ethers');
-        return new ethers.BrowserProvider(signingProvider).getSigner();
-      }
-      function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
-        return new Promise((resolve, reject) => {
-          const timer = setTimeout(() => reject(new Error('Signature request timed out')), ms);
-          p.then(v => { clearTimeout(timer); resolve(v); }, e => { clearTimeout(timer); reject(e); });
-        });
-      }
-
-      let approval = await withTimeout(
-        ensureAsterAgentApproved(address, () => buildSigner(false)),
-        30000,
-      ).catch(e => ({ ok: false, alreadyApproved: false, message: e instanceof Error ? e.message : 'Signing failed' }));
-      if (!approval.ok && !approval.alreadyApproved) {
-        approval = await ensureAsterAgentApproved(address, () => buildSigner(true));
-      }
+      // ensureAsterAgentApprovedAuto probes silently and only prompts the
+      // wallet for a signature when this address hasn't already approved it —
+      // "one time, and again only if needed," no separate button. The
+      // chainId-56-domain wallet handling it wraps is documented on the helper;
+      // the Transfer page's Aster withdrawal needs the identical dance, which
+      // is why it lives in lib rather than here.
+      const approval = await ensureAsterAgentApprovedAuto(address);
       if (!approval.ok) {
         ['as-pv-equity','as-pv-upnl','as-pv-ntl','as-pv-avail','as-pv-margin','as-pv-lev'].forEach(id=>set(id,'—'));
         const ph1 = el('as-pv-placeholder'); if (ph1) { ph1.style.display='block'; ph1.innerHTML=`Could not load Aster portfolio: ${approval.message}<br><span style="font-size:10px;color:var(--text3)">Collateral: USDT · Max leverage: 200x</span>`; }
@@ -1285,15 +1134,6 @@ export default function PortfolioPage() {
     (window as any).openAsterDeposit = openAsterDeposit;
     (window as any).calPrev = calPrev;
     (window as any).calNext = calNext;
-    (window as any).closeDeposit = closeDeposit;
-    (window as any).depBack = depBack;
-    (window as any).toggleDepTokenList = toggleDepTokenList;
-    (window as any).depSelectIdx = depSelectIdx;
-    (window as any).depAmountChanged = depAmountChanged;
-    (window as any).depMax = depMax;
-    (window as any).depStartTransfer = depStartTransfer;
-    (window as any).closeSwap = closeSwap;
-    (window as any).closeConvert = closeConvert;
     (window as any).shareCard = shareCard;
     (window as any).downloadCard = downloadCard;
 
@@ -1312,7 +1152,7 @@ export default function PortfolioPage() {
 
     // Keyboard shortcuts
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { closeDeposit(); closeSwap(); closeConvert(); closeCalendarModal(); }
+      if (e.key === 'Escape') { closeCalendarModal(); }
     };
     document.addEventListener('keydown', onKeyDown);
 
@@ -1589,71 +1429,6 @@ export default function PortfolioPage() {
               RDO<span style={{color:'var(--accent)'}}>ONE</span>
             </span>
           </div>
-        </div>
-      </div>
-
-      {/* Deposit Modal */}
-      <div className="overlay" id="deposit-modal" onClick={() => (window as any).closeDeposit()}>
-        <div className="modal" onClick={(e) => e.stopPropagation()} style={{maxWidth:'420px'}}>
-          <div className="modal-hdr">
-            <div style={{display:'flex',alignItems:'center',gap:'6px'}}>
-              <button id="dep-back-btn" onClick={() => (window as any).depBack()} style={{display:'none',background:'transparent',border:'none',color:'var(--text2)',cursor:'pointer',fontSize:'20px',lineHeight:'1',padding:'0 4px 0 0',fontFamily:'inherit'}}>‹</button>
-              <div className="modal-title" id="dep-modal-title">Transfer</div>
-            </div>
-            <button className="modal-x" onClick={() => (window as any).closeDeposit()}>×</button>
-          </div>
-          <div id="dep-step-pick" style={{padding:'0 16px 16px'}}>
-            <div className="xfer-box">
-              <div className="xfer-label">
-                From Tokens
-                <span className="xfer-bal-hint"><span id="dep-token-bal">—</span> <button className="xfer-max-btn" onClick={() => (window as any).depMax()}>Max</button></span>
-              </div>
-              <div className="xfer-row">
-                <button className="xfer-token-btn" id="dep-token-btn" onClick={() => (window as any).toggleDepTokenList()}>
-                  <div id="dep-token-icon-wrap"><div className="xfer-tok-ph">S</div></div>
-                  <span id="dep-token-sym">SOL</span>
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6"/></svg>
-                </button>
-                <div className="xfer-amount-wrap">
-                  <input type="number" id="dep-amount" className="xfer-amount-input" placeholder="0.00" onInput={() => (window as any).depAmountChanged()} />
-                  <div className="xfer-amount-usd" id="dep-amount-usd">$0.00</div>
-                </div>
-              </div>
-            </div>
-            <div id="dep-token-list" className="dep-tok-list" style={{display:'none'}}></div>
-            <div className="xfer-arrow-row"><div className="xfer-arrow-circle">↓</div></div>
-            <div className="xfer-box">
-              <div className="xfer-label">To Perps</div>
-              <div className="xfer-to-row">
-                <img className="xfer-to-icon" src="https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48/logo.png" alt="USDC" onError={(e) => { (e.target as HTMLImageElement).style.display='none'; }} />
-                <div><div className="xfer-to-name">USDC</div><div className="xfer-to-sub">Hyperliquid Perps</div></div>
-                <div className="xfer-to-right">
-                  <div className="xfer-to-val" id="dep-to-val">0.00</div>
-                  <div className="xfer-to-usd" id="dep-to-usd">$0.00</div>
-                </div>
-              </div>
-            </div>
-            <button className="xfer-go-btn" id="dep-go-btn" onClick={() => (window as any).depStartTransfer()}>Transfer</button>
-          </div>
-          <div id="dep-step-lifi" style={{display:'none',padding:'0'}}>
-            <iframe id="lifi-deposit-frame" className="lifi-frame" title="Bridge via LI.FI" allow="clipboard-write"></iframe>
-          </div>
-        </div>
-      </div>
-
-      {/* Swap Modal */}
-      <div className="overlay" id="swap-modal" onClick={() => (window as any).closeSwap()}>
-        <div className="modal" onClick={(e) => e.stopPropagation()} style={{maxWidth:'520px'}}>
-          <div className="modal-hdr"><div className="modal-title">Swap</div><button className="modal-x" onClick={() => (window as any).closeSwap()}>×</button></div>
-          <div className="modal-body" style={{padding:'0'}}><iframe id="lifi-swap-frame" className="lifi-frame" title="Swap via LI.FI" allow="clipboard-write"></iframe></div>
-        </div>
-      </div>
-
-      {/* Convert Modal */}
-      <div className="overlay" id="convert-modal" onClick={() => (window as any).closeConvert()}>
-        <div className="modal" onClick={(e) => e.stopPropagation()} style={{maxWidth:'520px'}}>
-          <div className="modal-hdr"><div className="modal-title">Convert to USDC</div><button className="modal-x" onClick={() => (window as any).closeConvert()}>×</button></div>
-          <div className="modal-body" style={{padding:'0'}}><iframe id="lifi-convert-frame" className="lifi-frame" title="Convert via LI.FI" allow="clipboard-write"></iframe></div>
         </div>
       </div>
     </>

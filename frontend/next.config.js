@@ -1,5 +1,5 @@
 // This app talks to the Fastify backend (../backend/, see
-// backend/routes/proxy.js + news.js + swap.js) instead of hitting upstream
+// backend/routes/proxy.js + news.js) instead of hitting upstream
 // APIs directly — that backend is what adds Redis caching,
 // per-IP rate limiting, and Aster's signed-endpoint agent auth, all of which
 // this app's original direct-to-upstream rewrites had none of (e.g. the bare
@@ -9,6 +9,53 @@
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:3001';
 
 const { PHASE_PRODUCTION_BUILD } = require('next/constants');
+
+const fs = require('fs');
+const path = require('path');
+
+// The repo-root .env.local is the single file that configures the local Docker
+// stack, but `next dev` only reads .env* files inside THIS directory — so a
+// value put there (NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID, say) is silently
+// invisible to the dev server, and the feature it enables just never appears.
+// Pull the NEXT_PUBLIC_* keys across so one file configures both.
+//
+// The prefix filter is a hard requirement, not tidiness: that same file holds
+// REDIS_PASSWORD, AGENT_KEY_ENCRYPTION_SECRET and ASTER_SIGNER_PRIVATE_KEY,
+// and everything returned here gets inlined into the browser bundle. Only
+// NEXT_PUBLIC_* is ever public by contract, so only NEXT_PUBLIC_* crosses.
+//
+// Anything already in process.env wins — Next loads the real environment and
+// frontend/.env* BEFORE requiring this config, so a local override stays an
+// override. In Docker the build context is ./frontend and these files don't
+// exist at all, which makes this a no-op there.
+function publicEnvFromRepoRoot() {
+  const out = {};
+  // .env.local last so it beats .env, matching Next's own precedence.
+  for (const file of ['.env', '.env.local']) {
+    let raw;
+    try {
+      raw = fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
+    } catch {
+      continue; // absent is the normal case in Docker
+    }
+    for (const line of raw.split('\n')) {
+      const m = /^\s*(?:export\s+)?(NEXT_PUBLIC_[A-Z0-9_]+)\s*=\s*(.*)$/.exec(line);
+      if (!m) continue;
+      let value = m[2].trim();
+      const quoted = (value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"));
+      if (quoted && value.length >= 2) value = value.slice(1, -1);
+      if (!value) continue; // an empty assignment is "unset", not ""
+      if (process.env[m[1]]) continue;
+      out[m[1]] = value;
+    }
+  }
+  return out;
+}
+
+const rootPublicEnv = publicEnvFromRepoRoot();
+// Mirrored into process.env as well so the build-time guard below and any
+// server-side read see the same values the bundle gets.
+Object.assign(process.env, rootPublicEnv);
 
 // NEXT_PUBLIC_* values are inlined into the client bundle by `next build` and
 // are never re-read at runtime, so a production image built without
@@ -51,6 +98,9 @@ function assertBuildTimeEnv() {
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Inlined explicitly (not just via process.env) so the values reach the
+  // client bundle under Turbopack as well as webpack.
+  env: rootPublicEnv,
   // Emits a self-contained server + minimal node_modules under
   // .next/standalone/ for a small runtime image. No effect on `next dev`.
   output: 'standalone',
@@ -111,8 +161,9 @@ const nextConfig = {
       { source: '/aster-tpsl-watch',        destination: `${BACKEND_URL}/api/aster-tpsl-watch` },
       // LI.FI
       { source: '/lifi-api/:path*', destination: `${BACKEND_URL}/api/lifi-api/:path*` },
-      // 1inch swap (server-side API key)
-      { source: '/swap/:path*', destination: `${BACKEND_URL}/api/swap/:path*` },
+      // Read-only JSON-RPC, per chain — for reading a chain the user's wallet
+      // is not currently pointed at (see backend/src/routes/rpc.ts)
+      { source: '/rpc/:path*', destination: `${BACKEND_URL}/api/rpc/:path*` },
       // News — aggregated feed, per-source RSS proxies, and the article
       // image proxy (sidesteps ORB on CDNs like CoinDesk's Sanity host)
       { source: '/news',            destination: `${BACKEND_URL}/api/news` },

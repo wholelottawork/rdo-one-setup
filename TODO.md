@@ -51,7 +51,6 @@ act on from a client-supplied `user`, which is a public address. See STATUS.md.
 - HL proxy — POST `/api/hl/*` → api.hyperliquid.xyz, with Redis caching
 - Aster proxy — market data + HMAC-signed endpoints for positions/orders/agent
 - Market data — cached proxies for Binance, CoinGecko, Fear&Greed, LI.FI
-- Swap — 1inch proxy with 3 endpoints: `/api/swap/quote`, `/api/swap/build`, `/api/swap/tokens` (needs `ONEINCH_API_KEY`)
 - News — aggregated RSS from 8 sources + per-source proxies + image proxy
 - WebSocket relay — two WS servers: `/ws` (HL with 50s ping keepalive) and `/aster-stream` (Aster with spoofed headers)
 - Redis — graceful fallback with `redisOk` flag
@@ -117,13 +116,20 @@ Same fix applied to the EXTRA → BASIC leg of **Between Accounts**, which previ
 
 ### 3. ~~Swap UI~~ — **BUILT** (`716497d`)
 
-Swap tab on the Transfer page: network, pay/receive, debounced quote, build →
-allowance → send → receipt. Still needs `ONEINCH_API_KEY` — the tab now says so
-instead of showing a bare error. Uses the page's curated `CHAINS` token list
-rather than 1inch's full one (thousands per chain, would need a searchable
-picker). Original writeup below.
+Swap tab on the Transfer page: network, pay/receive, debounced quote →
+chain switch → allowance → send → receipt. Uses the page's curated `CHAINS`
+token list rather than an aggregator's full one (thousands per chain, would
+need a searchable picker).
 
-**Problem:** Backend has a complete 1inch proxy (`/api/swap/quote`, `/api/swap/build`, `/api/swap/tokens`) but the frontend has zero swap interface.
+**Moved off 1inch.** The backend `/api/swap/*` proxy and `ONEINCH_API_KEY` are
+gone: 1inch now gates portal keys behind KYC. The tab calls the LI.FI quote
+endpoint already proxied at `/lifi-api` with `fromChain === toChain`, which
+LI.FI routes through DEX aggregators (1inch among them) rather than a bridge.
+No key required, and the same `lifiQuote`/`ensureApproval` helpers the Send tab
+uses. The original 1inch writeup is kept below as history — those endpoints no
+longer exist.
+
+**Problem (historical):** Backend has a complete 1inch proxy (`/api/swap/quote`, `/api/swap/build`, `/api/swap/tokens`) but the frontend has zero swap interface.
 
 **What to build:**
 
@@ -175,7 +181,6 @@ picker). Original writeup below.
 |---|---|---|
 | `ALLOWED_ORIGINS` | `http://localhost:3002,http://localhost:3007` | CORS whitelist |
 | `REDIS_URL` | `redis://localhost:6379` | Cache (optional, graceful fallback) |
-| `ONEINCH_API_KEY` | **Empty — needed for swap** | portal.1inch.dev (free) |
 | `ASTER_SIGNER_ADDRESS` | **Empty — needed for EXTRA mode** | Aster Pro API dashboard |
 | `ASTER_SIGNER_PRIVATE_KEY` | **Empty — needed for EXTRA mode** | Aster Pro API dashboard |
 | `AGENT_KEY_ENCRYPTION_SECRET` | **Empty — needed for per-user agent keys** | Any random string |

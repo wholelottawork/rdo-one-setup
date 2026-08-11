@@ -7,6 +7,7 @@
 import { getEVMProvider } from "@/lib/wallet";
 import { asterFetch } from "@/lib/aster-session";
 import { showToast } from "@/lib/toast";
+import { walletErrorMessage } from "@/lib/walletError";
 import { MARKET_SLIPPAGE } from "@/lib/trading";
 import { entryPrice, fillState, tpslError } from "@/lib/orderMath";
 import { fmt, fmtLarge, asterRound } from "@/lib/format";
@@ -329,7 +330,7 @@ export function createOrderFlow(deps: {
                 }),
               })
                 .then((r) => r.json())
-                .catch((e) => ({ msg: e.message }));
+                .catch((e) => ({ msg: walletErrorMessage(e) }));
             const submitTpsl = async () => {
               const results = await Promise.all([
                 tpPx ? placeTpsl("TAKE_PROFIT_MARKET", tpPx) : null,
@@ -398,7 +399,7 @@ export function createOrderFlow(deps: {
           showToast(d.msg ?? "Order failed", "err");
         }
       } catch (e: any) {
-        showToast(e.message ?? "Transaction failed", "err");
+        showToast(walletErrorMessage(e), "err");
       } finally {
         btn.textContent = orig;
         (btn as HTMLButtonElement).disabled = false;
@@ -444,7 +445,7 @@ export function createOrderFlow(deps: {
         showToast(orderErr ?? result.response ?? "Order failed", "err");
       }
     } catch (e: any) {
-      showErr(e.message ?? "Transaction failed");
+      showErr(walletErrorMessage(e));
     } finally {
       btn.textContent = orig;
       (btn as HTMLButtonElement).disabled = false;
@@ -758,7 +759,7 @@ export function createOrderFlow(deps: {
         showToast(orderErr ?? result.response ?? "Close failed", "err");
       }
     } catch (e: any) {
-      showToast(e.message, "err");
+      showToast(walletErrorMessage(e, "Close failed"), "err");
     }
   }
 
@@ -804,7 +805,7 @@ export function createOrderFlow(deps: {
         showToast(d.msg ?? "Close failed", "err");
       }
     } catch (e: any) {
-      showToast(e.message ?? "Close failed", "err");
+      showToast(walletErrorMessage(e, "Close failed"), "err");
     }
   }
 
@@ -830,7 +831,7 @@ export function createOrderFlow(deps: {
           showToast(d.msg ?? "Cancel failed", "err");
         }
       } catch (e: any) {
-        showToast(e.message, "err");
+        showToast(walletErrorMessage(e, "Cancel failed"), "err");
       }
       return;
     }
@@ -848,7 +849,7 @@ export function createOrderFlow(deps: {
         showToast(orderErr ?? result.response ?? "Cancel failed", "err");
       }
     } catch (e: any) {
-      showToast(e.message, "err");
+      showToast(walletErrorMessage(e, "Cancel failed"), "err");
     }
   }
 
@@ -959,7 +960,7 @@ export function createOrderFlow(deps: {
           : deps.getOpenOrders(addr)),
       );
     } catch (e: any) {
-      showToast(e.message ?? "Update failed", "err");
+      showToast(walletErrorMessage(e, "Update failed"), "err");
     }
   }
 
@@ -1009,7 +1010,7 @@ export function createOrderFlow(deps: {
             }),
           })
             .then((r) => r.json())
-            .catch((e) => ({ msg: e.message }));
+            .catch((e) => ({ msg: walletErrorMessage(e) }));
         const results = await Promise.all([
           tpPx ? place("TAKE_PROFIT_MARKET", tpPx) : null,
           slPx ? place("STOP_MARKET", slPx) : null,
@@ -1042,7 +1043,7 @@ export function createOrderFlow(deps: {
       }
       if (deps.getAddr()) refreshPositions(deps.getAddr());
     } catch (e: any) {
-      showToast(e.message ?? "TP/SL failed", "err");
+      showToast(walletErrorMessage(e, "TP/SL failed"), "err");
     }
   }
 

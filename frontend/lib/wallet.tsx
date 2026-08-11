@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { showToast } from './toast';
 import { clearAsterSession } from './aster-session';
+import { clearHlAgent } from './hl-agent';
 
 interface EIP1193Provider {
   request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
@@ -153,6 +154,37 @@ export const EVM_NETWORKS: EvmNetworkOption[] = [
 ];
 
 /**
+ * Chains the app can ASK a wallet to switch to, beyond the nav's curated list.
+ *
+ * EVM_NETWORKS above is the network switcher's menu — it mirrors Aster's own
+ * switcher, and NetworkSwitcher/WalletControls index it POSITIONALLY
+ * (EVM_NETWORKS[0] is BNB, [1] Ethereum, [3] Solana), so nothing may be
+ * inserted into it. But the Transfer page's chain pickers offer Base, Optimism
+ * and Polygon too, and a swap or deposit there still has to move the wallet
+ * onto that chain before it signs: eth_sendTransaction goes wherever the
+ * wallet is pointed. Looking those up in EVM_NETWORKS alone failed with
+ * "Unknown network" and left the wallet where it was.
+ */
+const EXTRA_SWITCHABLE_NETWORKS: EvmNetworkOption[] = [
+  { chainId: '0x2105', name: 'Base', short: 'B', color: '#0052FF', bg: '#0d1b3d', icon: 'https://cryptologos.cc/logos/base-base-logo.png', nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 }, rpcUrls: ['https://mainnet.base.org'], blockExplorerUrls: ['https://basescan.org'] },
+  { chainId: '0xa', name: 'Optimism', short: 'O', color: '#FF0420', bg: '#3d0f14', icon: 'https://cryptologos.cc/logos/optimism-ethereum-op-logo.png', nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 }, rpcUrls: ['https://mainnet.optimism.io'], blockExplorerUrls: ['https://optimistic.etherscan.io'] },
+  { chainId: '0xa86a', name: 'Avalanche', short: 'A', color: '#E84142', bg: '#3d1214', icon: 'https://cryptologos.cc/logos/avalanche-avax-logo.png', nativeCurrency: { name: 'AVAX', symbol: 'AVAX', decimals: 18 }, rpcUrls: ['https://api.avax.network/ext/bc/C/rpc'], blockExplorerUrls: ['https://snowtrace.io'] },
+  { chainId: '0x89', name: 'Polygon', short: 'P', color: '#8247E5', bg: '#241a3d', icon: 'https://cryptologos.cc/logos/polygon-matic-logo.png', nativeCurrency: { name: 'POL', symbol: 'POL', decimals: 18 }, rpcUrls: ['https://polygon-rpc.com'], blockExplorerUrls: ['https://polygonscan.com'] },
+];
+
+/** Resolve a chain id — hex ('0xa4b1') or decimal ('42161' / 42161) — to the
+ *  parameters needed to switch or add it. Solana has no chainId equivalent and
+ *  is never a match. */
+export function findEvmNetwork(chainId: string | number): EvmNetworkOption | undefined {
+  const want = typeof chainId === 'number'
+    ? chainId
+    : parseInt(chainId, chainId.trim().toLowerCase().startsWith('0x') ? 16 : 10);
+  if (Number.isNaN(want)) return undefined;
+  return [...EVM_NETWORKS, ...EXTRA_SWITCHABLE_NETWORKS]
+    .find(n => n.chainId !== 'solana' && parseInt(n.chainId, 16) === want);
+}
+
+/**
  * Picks an EVM provider that can actually switch to `chainId` for
  * `expectedAddress` — needed because Phantom's EVM mode has a hardcoded
  * chain allowlist (Ethereum, Base, Polygon, Monad testnet — confirmed
@@ -283,6 +315,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   // checks out.
   useEffect(() => {
     let cancelled = false;
+    let probeTimer: ReturnType<typeof setTimeout> | undefined;
     // A user who disconnected stays disconnected across reloads, until they
     // explicitly connect again.
     try {
@@ -351,7 +384,20 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       })
       : Promise.resolve();
 
-    Promise.all([evmCheck, solCheck]).finally(() => { if (!cancelled) setChecked(true); });
+    // `checked` gates the ONLY Connect button in the app (WalletDropdown
+    // renders a disabled "…" until it flips), so neither probe above may be
+    // allowed to hold it hostage — and both can hang indefinitely rather than
+    // reject: a locked Phantom never answers connect({onlyIfTrusted:true}),
+    // and eth_accounts goes unanswered on origins an extension declines to
+    // serve (anything that isn't https or literal localhost — e.g. the
+    // rdo.localtest.me hostname the local Docker stack is reached on — is not
+    // a secure context). A hung probe therefore used to leave the user with no
+    // way to connect at all, which is strictly worse than a stale address.
+    // Cap the wait: whichever probe answers late still applies its result
+    // through the same setters, it just no longer blocks the UI.
+    const probeDeadline = new Promise<void>((resolve) => { probeTimer = setTimeout(resolve, 2500); });
+    Promise.race([Promise.all([evmCheck, solCheck]), probeDeadline])
+      .finally(() => { if (!cancelled) setChecked(true); });
 
     // Keep in sync with wallet-side changes (account switch in the
     // extension, or disconnecting Phantom's Solana session directly).
@@ -376,6 +422,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
     return () => {
       cancelled = true;
+      clearTimeout(probeTimer);
       evmProvider?.removeListener?.('accountsChanged', onAccountsChanged);
       solProvider?.off?.('disconnect', onSolDisconnect);
     };
@@ -485,6 +532,12 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     // The Aster trading session outlives the page too — leaving it live would
     // mean "disconnected" in the UI while the backend still trades on request.
     clearAsterSession();
+    // Same for the HL agent keys: "disconnect" has to mean no trading
+    // credential is left behind in this browser. Dropping them is free —
+    // ensureHlAgent re-approves on the next order, one popup. Not cleared on
+    // a mere accountsChanged: those records are namespaced per master address
+    // and stay valid for the account that owns them.
+    clearHlAgent();
     setEvmAddress(null);
     setSolAddress(null);
     try {

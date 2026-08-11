@@ -1,8 +1,9 @@
 'use client';
 import { useEffect, useRef } from 'react';
 import { SiteNav } from '@/components/shared/SiteNav';
-import { useWallet, getEVMProvider, switchEvmNetwork, EVM_NETWORKS } from '@/lib/wallet';
+import { useWallet, getEVMProvider, switchEvmNetwork, findEvmNetwork } from '@/lib/wallet';
 import { walletAuth as signAction } from '@/lib/wallet-auth';
+import { ensureAsterAgentApprovedAuto, getAsterAccount } from '@/lib/aster-agent';
 import {
   ASTER_DEPOSIT_CHAIN,
   asterVault,
@@ -67,6 +68,30 @@ export default function TransferPage() {
     if (evmAddress) onConnectedRef.current?.(evmAddress);
   }, [evmAddress]);
 
+  // Same bridge as onConnectedRef, for the deposit tab's balance hint.
+  const refreshDpBalRef = useRef<(() => void) | null>(null);
+
+  // The deposit balance is read from wherever the wallet is currently pointed:
+  // refreshDpBal refuses to answer when that is not the chain picked in the
+  // "You send" select, because an eth_call goes to the wallet's network and
+  // would otherwise report an Arbitrum balance under a Base selection. Nothing
+  // re-ran it on a network switch — the selects only fire on user input, and
+  // evmAddress does not change when the chain does — so the hint stayed frozen
+  // on "Switch your wallet to Base to see your USDC balance" after the user
+  // actually switched, and MAX went on reading a stale 0.
+  //
+  // Keyed on evmAddress rather than mounted once: getEVMProvider() resolves the
+  // wallet the user PICKED, and that is only known after connect (a
+  // WalletConnect session is never injected on window at all), so a
+  // mount-time subscription would bind to the wrong provider or to none.
+  useEffect(() => {
+    const provider = getEVMProvider();
+    if (!provider) return;
+    const onChainChanged = () => refreshDpBalRef.current?.();
+    provider.on?.('chainChanged', onChainChanged);
+    return () => provider.removeListener?.('chainChanged', onChainChanged);
+  }, [evmAddress]);
+
   useEffect(() => {
     const CHAINS = [
       {id:'42161', name:'Arbitrum', tokens:[
@@ -112,6 +137,10 @@ export default function TransferPage() {
       ]},
     ];
 
+    // Every balance below is an ARBITRUM balance: HL's bridge pays out there,
+    // Aster's vault lives there, and both conversion legs land there. The
+    // wallet is frequently NOT there at the moment we need to read one.
+    const ARB_CHAIN = '42161';
     const USDC_ARB = '0xaf88d065e77c8cc2239327c5edb3a432268e5831';
     const USDT_ARB = '0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9';
     const HL       = '/hl';
@@ -123,8 +152,40 @@ export default function TransferPage() {
 
     const el    = (id: string): HTMLElement | null => document.getElementById(id);
     const set   = (id: string, v: string) => { const e = el(id); if (e) e.textContent = v; };
+    const disableBtn = (id: string) => { const b = el(id) as HTMLButtonElement | null; if (b) b.disabled = true; };
     const fmt   = (n: number, d = 2) => Number(n).toLocaleString('en-US', {minimumFractionDigits:d, maximumFractionDigits:d});
     const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
+    /**
+     * Decimal string -> integer token units, WITHOUT ever touching a float.
+     *
+     * The old `BigInt(Math.round(amt * 10 ** dec))` is exact only while the
+     * result fits a double's ~15-16 significant digits. An 18-decimal token
+     * needs 18, so the conversion lands tens of wei away from the truth — and
+     * MAX made that fatal: reading the balance as a Number and writing it back
+     * produced 598687925568526464 for a wallet holding 598687925568526425, i.e.
+     * an approval and a transfer for 39 wei MORE than existed. The token
+     * rejects that as TransferFromFailed() (0x7939f424), which reaches the user
+     * as a wallet "transaction may fail" warning and nothing else.
+     *
+     * Digits past `decimals` are truncated, never rounded: rounding up is the
+     * direction that recreates the bug.
+     */
+    function toUnits(value: string, decimals: number): bigint {
+      const s = (value ?? '').trim();
+      if (!s || !/^\d*\.?\d*$/.test(s)) return BigInt(0);
+      const [wholeRaw, fracRaw = ''] = s.split('.');
+      const frac = fracRaw.slice(0, decimals).padEnd(decimals, '0');
+      return BigInt((wholeRaw || '0') + (decimals ? frac : ''));
+    }
+
+    /** Integer token units -> exact decimal string, for MAX and for display. */
+    function fromUnits(v: bigint, decimals: number): string {
+      const base = BigInt(10) ** BigInt(decimals);
+      const whole = v / base;
+      const frac = (v % base).toString().padStart(decimals, '0').replace(/0+$/, '');
+      return whole.toString() + (frac ? '.' + frac : '');
+    }
 
     let wdSrc    = 'hl';
     let dpDest   = 'hl';
@@ -133,8 +194,23 @@ export default function TransferPage() {
     // signature — execWithdraw re-quotes just before prompting and refuses to
     // sign a different number than the one on screen.
     let asterWdFee: string | null = null;
+    // The chain that fee was quoted for, and a generation counter for the
+    // quote: the fee is per-chain (0.11 USDT on BNB Chain, 0.51 on Arbitrum)
+    // and both are part of what the user is authorizing.
+    let asterWdFeeChain = '';
+    let asterWdFeeGen = 0;
     let btwDir   = 'hl-to-aster';
     let hlEquity = 0;
+    // Aster's withdrawable balance, and a generation counter for the load that
+    // produced it: reading it is an async round trip that can outlive the user
+    // switching the source back to Hyperliquid, and a late reply must not
+    // overwrite the hint with a balance for the venue no longer selected.
+    let asterAvail = 0;
+    let asterBalGen = 0;
+    // Why asterAvail is 0 when the reason is something other than "the account
+    // holds nothing withdrawable" — MAX reports this instead of echoing the
+    // balance line back at the user.
+    let asterBalErr = '';
     let curQuote: any  = null;
     let qTimer: any   = null;
     let progPfx  = 'wd';
@@ -167,6 +243,13 @@ export default function TransferPage() {
       set('wd-bal', 'Connected: ' + s);
       loadHLEquity(addr);
       refreshDpBal();
+      refreshSendBal();
+      // Which wallet is connected is only knowable after connect, and so is
+      // the Aster balance. Both are re-derived here rather than left showing
+      // whatever the disconnected state said. Still gated on the user having
+      // already picked Aster — that selection is the deliberate action the
+      // agent-approval prompt hangs off, not the connect itself.
+      if (wdSrc === 'aster') { showAsterWalletWarning(true); loadAsterAvail(); }
     }
     onConnectedRef.current = onConnected;
 
@@ -191,15 +274,96 @@ export default function TransferPage() {
       const amtWrap = el('wd-amt-wrap'); if (amtWrap) amtWrap.className = 'amt-wrap' + (isHL ? '' : ' af');
       const execBtn = el('wd-exec-btn'); if (execBtn) execBtn.className = 'exec-btn ' + (isHL ? 'hl' : 'as');
       set('wd-from-cur', isHL ? 'USDC' : 'USDT');
-      set('wd-bal', isHL && hlEquity ? `Balance: $${fmt(hlEquity)} USDC` : ' ');
       fillTokenSel('wd-to-token', '42161', isHL ? 'USDC' : 'USDT');
       // Aster's fee is a signed field — quote it as soon as the user picks
       // Aster so it is on screen well before the wallet prompt, not revealed
       // by it. Hyperliquid's withdrawal fee is fixed and not signed.
       asterWdFee = null;
       set('wd-fee', ' ');
-      if (!isHL) refreshAsterWdFee().catch((e: any) => set('wd-fee', e.message));
+      // Invalidates any Aster balance read still in flight (see asterBalGen).
+      asterBalGen++;
+      asterAvail = 0;
+      showAsterWalletWarning(!isHL);
+      if (isHL) {
+        set('wd-bal', hlEquity ? `Balance: $${fmt(hlEquity)} USDC` : ' ');
+      } else {
+        refreshAsterWdFee().catch((e: any) => set('wd-fee', e.message));
+        loadAsterAvail();
+      }
       updateWdConvHint();
+    }
+
+    /**
+     * Aster's balance is not public: reading it needs this address's own
+     * approved agent, exactly as the Portfolio page's EXTRA tab does. That can
+     * prompt for one approval signature, so it hangs off the deliberate act of
+     * selecting Aster as the withdrawal source — never off connecting a wallet.
+     */
+    async function loadAsterAvail() {
+      const gen = ++asterBalGen;
+      asterAvail = 0;
+      asterBalErr = '';
+      const addr = evmAddressRef.current;
+      if (!addr) {
+        asterBalErr = 'Connect your wallet from the top nav first';
+        return set('wd-bal', 'Connect wallet to see balance');
+      }
+      set('wd-bal', 'Reading your Aster balance…');
+      const stale = () => gen !== asterBalGen;
+      try {
+        const approval = await ensureAsterAgentApprovedAuto(addr);
+        if (stale()) return;
+        if (!approval.ok) {
+          asterBalErr = `Could not read your Aster balance: ${approval.message}`;
+          return set('wd-bal', `Could not read Aster balance: ${approval.message}`);
+        }
+        const acct = await getAsterAccount(addr);
+        if (stale()) return;
+        if (!acct) {
+          asterBalErr = 'Could not read your Aster balance';
+          return set('wd-bal', 'Could not read Aster balance');
+        }
+        const wallet = parseFloat(String(acct.totalWalletBalance ?? acct.totalMarginBalance ?? 0)) || 0;
+        // What can actually leave — the wallet balance less whatever is locked
+        // as margin behind open positions and resting orders. Offering the full
+        // account balance as MAX would just get the withdrawal rejected.
+        const avail  = parseFloat(String(acct.availableBalance ?? wallet)) || 0;
+        asterAvail = avail;
+        set('wd-bal', `Available: ${fmt(avail)} USDT  ·  Account: ${fmt(wallet)} USDT`);
+      } catch (e: any) {
+        if (stale()) return;
+        asterBalErr = `Could not read your Aster balance: ${e?.message ?? 'unknown error'}`;
+        set('wd-bal', asterBalErr);
+      }
+    }
+
+    /**
+     * Aster's second withdrawal signature is stamped with EIP-712 domain
+     * chainId 1666 (Aster Chain), and MetaMask refuses to sign a domain whose
+     * chain differs from the connected one. Aster publishes no public RPC for
+     * 1666, so there is nothing to switch to — it is a dead end, not a prompt
+     * the user can work through. asterAuthSignError explains it when it
+     * happens; this says so BEFORE they enter an amount and burn a signature
+     * on a flow that cannot complete.
+     *
+     * Rabby sets isMetaMask too (and signs this fine), so the flag alone is
+     * not the test — it has to be MetaMask and nothing else claiming to be it.
+     */
+    function walletBlocksAsterAuth(): boolean {
+      const p = getProv() as { isMetaMask?: boolean; isRabby?: boolean; isCoinbaseWallet?: boolean } | null;
+      return !!p?.isMetaMask && !p?.isRabby && !p?.isCoinbaseWallet;
+    }
+
+    function showAsterWalletWarning(on: boolean) {
+      const warn = el('wd-wallet-warn');
+      if (!warn) return;
+      const show = on && walletBlocksAsterAuth();
+      warn.style.display = show ? 'block' : 'none';
+      warn.textContent = show
+        ? 'MetaMask cannot complete an Aster withdrawal: Aster’s authorization is signed on chain 1666, '
+          + 'which MetaMask refuses and which has no public RPC to switch to. Use Rabby or a mobile wallet '
+          + 'over WalletConnect for this one action.'
+        : '';
     }
 
     function onWdAmtInput() {
@@ -209,12 +373,25 @@ export default function TransferPage() {
         set('wd-bal', a && hlEquity
           ? `Balance: $${fmt(hlEquity)} USDC  ·  After: $${fmt(Math.max(0, hlEquity - a))}`
           : evmAddressRef.current ? `Balance: $${fmt(hlEquity)} USDC` : 'Connect wallet to see balance');
+      } else if (asterAvail > 0) {
+        set('wd-bal', a
+          ? `Available: ${fmt(asterAvail)} USDT  ·  After: ${fmt(Math.max(0, asterAvail - a))}`
+          : `Available: ${fmt(asterAvail)} USDT`);
       }
     }
 
     function wdMax() {
       const wdAmt = el('wd-amt') as HTMLInputElement | null;
-      if (wdSrc === 'hl' && hlEquity > 0 && wdAmt) { wdAmt.value = hlEquity.toFixed(2); onWdAmtInput(); }
+      if (!wdAmt) return;
+      if (wdSrc === 'hl') {
+        if (hlEquity > 0) { wdAmt.value = hlEquity.toFixed(2); onWdAmtInput(); }
+        return;
+      }
+      // Aster's fee comes OUT of the withdrawn amount, so the whole available
+      // balance is a valid amount to ask for — execWithdraw only rejects it if
+      // it does not exceed the fee. Nothing is reserved here beyond that.
+      if (asterAvail > 0) { wdAmt.value = asterAvail.toFixed(2); onWdAmtInput(); }
+      else showSt('wd-st', 'err', asterBalErr || 'No withdrawable USDT in your Aster account — an open position or resting order may be holding it as margin');
     }
 
     function onWdToChainChange() {
@@ -224,21 +401,35 @@ export default function TransferPage() {
     }
 
     function updateWdConvHint() {
-      const srcToken = wdSrc === 'hl' ? USDC_ARB : USDT_ARB;
       const toTokenEl = el('wd-to-token') as HTMLSelectElement | null;
       const toChainEl = el('wd-to-chain') as HTMLSelectElement | null;
       const toToken = toTokenEl?.value;
-      const toChain = toChainEl?.value;
+      const toChain = toChainEl?.value || '42161';
       const toSym   = selSym('wd-to-token');
       const hint    = el('wd-conv-hint');
       if (!hint) return;
-      if (toToken === srcToken && toChain === '42161') {
+      const direct = wdSrc === 'hl'
+        // Hyperliquid only ever pays out native USDC on Arbitrum.
+        ? toToken === USDC_ARB && toChain === '42161'
+        // Aster can pay out on any of ASTER_WD_CHAINS, so "direct" is
+        // whatever asterWdChain resolved the destination to.
+        : asterWdChain() === toChain && toSym === ASTER_WD_ASSET;
+      if (direct) {
         hint.style.color = 'var(--text3,#878c8f)';
-        hint.textContent = 'Direct withdrawal — arrives as-is on Arbitrum';
+        hint.textContent = wdSrc === 'hl'
+          ? 'Direct withdrawal — arrives as-is on Arbitrum'
+          : `Direct withdrawal — Aster pays out ${ASTER_WD_ASSET} on ${chainName(toChain)}, no bridge`;
       } else {
         hint.style.color = 'var(--accent,#50d2c1)';
-        hint.textContent = `LI.FI will convert to ${toSym} after the withdrawal lands`;
+        hint.textContent = wdSrc === 'hl'
+          ? `LI.FI will convert to ${toSym} after the withdrawal lands`
+          : `Aster pays out ${ASTER_WD_ASSET} on ${chainName(asterWdChain())}, then LI.FI converts to ${toSym} on ${chainName(toChain)}`;
       }
+      // The fee is quoted per chain (0.11 USDT on BNB Chain against 0.51 on
+      // Arbitrum) and it is a SIGNED field, so a destination change has to
+      // re-quote it — a stale number on screen is one the user did not
+      // actually authorize.
+      if (wdSrc === 'aster') refreshAsterWdFee().catch((e: any) => set('wd-fee', e.message));
     }
 
     async function execWithdraw() {
@@ -259,8 +450,13 @@ export default function TransferPage() {
         const toChain  = toChainEl?.value || '42161';
         const toToken  = toTokenEl?.value || '';
         const toSym    = selSym('wd-to-token');
-        const srcToken = wdSrc === 'hl' ? USDC_ARB : USDT_ARB;
-        const isSame   = toToken === srcToken && toChain === '42161';
+        // Hyperliquid always pays out native USDC on Arbitrum; Aster pays out
+        // USDT on whichever of ASTER_WD_CHAINS the destination resolved to, so
+        // "no conversion needed" is a different test per venue.
+        const wdChain  = wdSrc === 'hl' ? '42161' : asterWdChain();
+        const isSame   = wdSrc === 'hl'
+          ? toToken === USDC_ARB && toChain === '42161'
+          : wdChain === toChain && toSym === ASTER_WD_ASSET;
         const destShort = destAddr === user ? 'your wallet' : destAddr.slice(0,10) + '…';
 
         if (wdSrc === 'hl') {
@@ -279,11 +475,11 @@ export default function TransferPage() {
             await hlWithdrawRaw(prov, user, amt, user);
             stepSet(0, 'done', `$${fmt(amt)} USDC submitted to Arbitrum`);
             stepSet(1, 'active', 'Polling balance every 12s…');
-            const before = await getERC20Bal(prov, USDC_ARB, user);
+            const before = await erc20BalOn(prov, ARB_CHAIN, USDC_ARB, user);
             await pollBal(prov, USDC_ARB, user, BigInt(Math.round(amt*1e6*0.97)), before, 360000);
             stepSet(1, 'done', 'USDC arrived in wallet');
             stepSet(2, 'active', `Getting LI.FI route to ${toSym}…`);
-            const bal = await getERC20Bal(prov, USDC_ARB, user);
+            const bal = await erc20BalOn(prov, ARB_CHAIN, USDC_ARB, user);
             const q = await lifiQuote('42161', toChain, USDC_ARB, toToken, bal.toString(), user, destAddr);
             stepSet(2, 'active', 'Approve + convert — confirm in wallet…');
             const h = await lifiExec(prov, q, user);
@@ -297,38 +493,42 @@ export default function TransferPage() {
           // user already saw. A quote that moved between then and now stops
           // the withdrawal rather than substituting itself silently.
           const shown = asterWdFee;
+          const shownChain = asterWdFeeChain;
           let fee: string;
-          try { fee = await refreshAsterWdFee(); }
+          try { fee = (await refreshAsterWdFee()).fee; }
           catch (e: any) { return showSt('wd-st', 'err', e.message); }
           if (shown === null)
             return showSt('wd-st', 'err', `Aster’s withdrawal fee is ${fee} USDT — press Withdraw again to authorize it.`);
-          if (shown !== fee)
-            return showSt('wd-st', 'err', `Aster’s withdrawal fee changed to ${fee} USDT — check the new total and press Withdraw again.`);
+          // The chain counts as much as the number: the same 0.51 USDT is
+          // quoted on both Arbitrum and Ethereum, so comparing fees alone would
+          // wave through a destination change the user never re-confirmed.
+          if (shown !== fee || shownChain !== wdChain)
+            return showSt('wd-st', 'err', `Aster’s withdrawal terms are now ${fee} USDT paid out on ${chainName(wdChain)} — check them and press Withdraw again.`);
           if (amt <= Number(fee))
             return showSt('wd-st', 'err', `Amount must be more than the ${fee} USDT Aster withdrawal fee`);
           // What actually lands in the wallet is net of the fee; polling for
           // the gross amount would time out on a withdrawal that succeeded.
           const arriving = BigInt(Math.round((amt - Number(fee)) * 1e6 * 0.97));
           if (isSame) {
-            initProg('wd', ['Withdraw USDT from Aster']);
+            initProg('wd', [`Withdraw USDT from Aster to ${chainName(wdChain)}`]);
             stepSet(0, 'active', `Fee ${fee} USDT — confirm both signatures in your wallet…`);
-            await asterWithdrawRaw(prov, user, amt, destAddr, fee);
-            stepSet(0, 'done', `${fmt(amt)} USDT → ${destShort}`);
+            await asterWithdrawRaw(prov, user, amt, destAddr, fee, wdChain);
+            stepSet(0, 'done', `${fmt(amt)} USDT → ${destShort} on ${chainName(wdChain)}`);
           } else {
             initProg('wd', [
-              'Withdraw USDT from Aster',
+              `Withdraw USDT from Aster to ${chainName(wdChain)}`,
               'Wait for USDT in wallet',
               `Convert USDT → ${toSym} via LI.FI`,
             ]);
             stepSet(0, 'active', `Fee ${fee} USDT — confirm both signatures in your wallet…`);
-            await asterWithdrawRaw(prov, user, amt, user, fee);
+            await asterWithdrawRaw(prov, user, amt, user, fee, wdChain);
             stepSet(0, 'done', `${fmt(amt)} USDT withdrawal submitted`);
             stepSet(1, 'active', 'Polling every 12s…');
-            const before = await getERC20Bal(prov, USDT_ARB, user);
+            const before = await erc20BalOn(prov, ARB_CHAIN, USDT_ARB, user);
             await pollBal(prov, USDT_ARB, user, arriving, before, 600000);
             stepSet(1, 'done', 'USDT arrived in wallet');
             stepSet(2, 'active', `Getting LI.FI route to ${toSym}…`);
-            const bal = await getERC20Bal(prov, USDT_ARB, user);
+            const bal = await erc20BalOn(prov, ARB_CHAIN, USDT_ARB, user);
             const q = await lifiQuote('42161', toChain, USDT_ARB, toToken, bal.toString(), user, destAddr);
             stepSet(2, 'active', 'Approve + convert — confirm in wallet…');
             const h = await lifiExec(prov, q, user);
@@ -361,6 +561,7 @@ export default function TransferPage() {
     function onDpFromChainChange() {
       const chainEl = el('dp-from-chain') as HTMLSelectElement | null;
       fillTokenSel('dp-from-token', chainEl?.value || '42161', selSym('dp-from-token'));
+      void autoSwitchChain(chainEl?.value || '42161');
       updateDpHint();
     }
 
@@ -382,6 +583,14 @@ export default function TransferPage() {
     // cheap L2s; read a real gas estimate if a pricier chain is ever added.
     const NATIVE_GAS_RESERVE = 0.0005;
     let dpBal = 0;
+    // The exact balance. dpBal above is a float and only good enough for the
+    // hint text; MAX must fill the input from THIS or it can ask for more than
+    // the wallet holds.
+    let dpBalRaw = BigInt(0);
+    // Why dpBal is 0, when the reason is something other than "the wallet
+    // really holds none". MAX reads this so it can say what is wrong instead
+    // of quietly doing nothing.
+    let dpBalErr = '';
 
     /** Balance of the currently-picked deposit token, for the hint and MAX.
      *  Only meaningful when the wallet is actually ON the picked chain — an
@@ -389,33 +598,44 @@ export default function TransferPage() {
      *  balance under a Base selection would be worse than showing none. */
     async function refreshDpBal() {
       dpBal = 0;
+      dpBalErr = '';
       const user = evmAddressRef.current;
       const sym = selSym('dp-from-token');
-      if (!user) return set('dp-bal', 'Connect wallet to see balance');
+      if (!user) { dpBalErr = 'Connect your wallet from the top nav first'; return set('dp-bal', 'Connect wallet to see balance'); }
       try {
         const prov = getProv();
         const want = (el('dp-from-chain') as HTMLSelectElement | null)?.value || '42161';
         const on = String(parseInt(await prov.request({method:'eth_chainId'}) as string, 16));
         if (on !== want) {
           const name = CHAINS[chainIdx(want)]?.name ?? 'that network';
+          dpBalErr = `Switch your wallet to ${name} first — the balance is read from the network the wallet is on`;
           return set('dp-bal', `Switch your wallet to ${name} to see your ${sym} balance`);
         }
         const token = (el('dp-from-token') as HTMLSelectElement | null)?.value || '';
         const dec = selDec('dp-from-token');
-        dpBal = Number(await tokenBal(prov, token, user)) / 10 ** dec;
+        dpBalRaw = await tokenBal(prov, token, user);
+        dpBal = Number(dpBalRaw) / 10 ** dec;
         set('dp-bal', `Balance: ${fmt(dpBal, dpBal < 1 ? 6 : 2)} ${sym}`);
       } catch {
+        dpBalErr = 'Could not read your balance from the wallet';
         set('dp-bal', 'Could not read balance');
       }
     }
 
     function dpMax() {
       const dpAmt = el('dp-amt') as HTMLInputElement | null;
-      if (!dpAmt || dpBal <= 0) return;
+      if (!dpAmt) return;
+      // dpBal is 0 both when the wallet genuinely holds none of the picked
+      // token and when the balance could not be read at all — no wallet, wallet
+      // pointed at a different chain, failed call. Returning silently made MAX
+      // look broken in exactly the cases the user needs telling about, so say
+      // which one it is instead.
+      if (dpBal <= 0) return showSt('dp-st', 'err', dpBalErr || `No ${selSym('dp-from-token')} in this wallet on this chain`);
       const isNative = ((el('dp-from-token') as HTMLSelectElement | null)?.value || '').toLowerCase() === ZERO_ADDR;
-      const usable = isNative ? dpBal - NATIVE_GAS_RESERVE : dpBal;
-      if (usable <= 0) return showSt('dp-st', 'err', `Not enough ${selSym('dp-from-token')} left to cover gas`);
-      dpAmt.value = String(usable);
+      const dec = selDec('dp-from-token');
+      const usable = isNative ? dpBalRaw - toUnits(String(NATIVE_GAS_RESERVE), dec) : dpBalRaw;
+      if (usable <= BigInt(0)) return showSt('dp-st', 'err', `Not enough ${selSym('dp-from-token')} left to cover gas`);
+      dpAmt.value = fromUnits(usable, dec);
     }
 
     function updateDpHint() {
@@ -458,16 +678,40 @@ export default function TransferPage() {
       try {
         const user = await requireEVM();
         const prov = getProv();
+        // Every deposit ENDS on Arbitrum — Hyperliquid's bridge transfer, or
+        // Aster's approve + depositFor — and those need ETH there for gas. A
+        // conversion route delivers USDT, never gas, so a wallet with none
+        // converts successfully and then cannot move the result: MetaMask
+        // replaces Confirm with an alert and the flow stalls with no error of
+        // its own. Check before anything is signed, not after the funds moved.
+        if (await nativeBalOn(prov, ARB_CHAIN, user) === BigInt(0))
+          throw new Error('No ETH on Arbitrum to pay gas — the final deposit transaction needs it. Send a little ETH to Arbitrum first, then retry.');
         let sendAmt: bigint;
         if (direct) {
-          sendAmt = BigInt(Math.round(amt * 10 ** fromDec));
-          const bal = await getERC20Bal(prov, tgt, user);
+          sendAmt = toUnits(dpAmt?.value || '0', fromDec);
+          const bal = await erc20BalOn(prov, ARB_CHAIN, tgt, user);
           if (bal < sendAmt) throw new Error(`Wallet holds only ${fmt(Number(bal) / 1e6)} ${tgtSym}`);
         } else {
           stepSet(0, 'active', 'Getting LI.FI route…');
           const q = await lifiQuote(fromChain, '42161', fromToken, tgt,
-            BigInt(Math.round(amt * 10 ** fromDec)).toString(), user, user);
-          const before = await getERC20Bal(prov, tgt, user);
+            toUnits(dpAmt?.value || '0', fromDec).toString(), user, user);
+          // Both of these are knowable from the quote, and both used to be
+          // discovered only after the user had signed something.
+          await assertCanAffordRoute(prov, fromChain, user, q);
+          // HL's floor, checked BEFORE the bridge rather than after it. The
+          // old order converted first and then refused to forward the result,
+          // leaving the bridged USDC sitting on Arbitrum — technically "still
+          // in your wallet", but on a chain the user did not start from and
+          // in a token they did not ask for.
+          const willGet = BigInt(q.estimate?.toAmountMin ?? '0');
+          if (toHL && willGet < HL_MIN_DEPOSIT)
+            throw new Error(
+              `This converts to about ${fmt(Number(willGet) / 1e6)} USDC, and Hyperliquid ` +
+              `ignores deposits under 5 USDC. Deposit more ${fromSym}. Nothing has been signed.`,
+            );
+          // Arbitrum-pinned: the wallet is on the SOURCE chain here, because
+          // the conversion below has to be signed there.
+          const before = await erc20BalOn(prov, ARB_CHAIN, tgt, user);
           stepSet(0, 'active', 'Approve + convert — confirm in wallet…');
           const h = await lifiExec(prov, q, user);
           stepSet(0, 'active', 'Confirming…');
@@ -484,6 +728,29 @@ export default function TransferPage() {
           stepSet(1, 'done', `${fmt(Number(sendAmt) / 1e6)} ${tgtSym} arrived`);
         }
         const last = labels.length - 1;
+        // The final leg is ALWAYS on Arbitrum — Hyperliquid's bridge and
+        // Aster's vault both live there — while a converted deposit leaves the
+        // wallet on the SOURCE chain, because that is where the conversion had
+        // to be signed. eth_sendTransaction goes wherever the wallet is
+        // pointed, so both branches switch here; the HL one never did, and sent
+        // its "Arbitrum USDC" transfer to that address on BNB Chain.
+        await ensureChain(prov, ARB_CHAIN, 'Switch your wallet to Arbitrum to finish the deposit');
+        if (!direct) {
+          // Re-read rather than trust the figure pollBal saw. Minutes and a
+          // wallet confirmation pass between the two, and a route that collects
+          // its fee on the DESTINATION side leaves less behind than the arrival
+          // that satisfied the poll — 0.578152 USDT held against 0.592398
+          // requested, which the token contract rejects as "ERC20: transfer
+          // amount exceeds balance" on a transaction the user cannot confirm.
+          // Never ask to move more than the wallet holds at this instant.
+          const held = await erc20BalOn(prov, ARB_CHAIN, tgt, user);
+          if (held < sendAmt) {
+            sendAmt = held;
+            stepSet(last, 'active', `Adjusted to the ${fmt(Number(held) / 1e6)} ${tgtSym} actually in the wallet…`);
+          }
+        }
+        if (sendAmt <= BigInt(0))
+          throw new Error(`No ${tgtSym} arrived in the wallet — nothing to deposit.`);
         if (toHL && sendAmt < HL_MIN_DEPOSIT)
           throw new Error('Hyperliquid ignores deposits under 5 USDC — it would be lost. Funds are still in your wallet.');
         if (toHL) {
@@ -494,7 +761,6 @@ export default function TransferPage() {
         } else {
           // Aster is a vault call, not a transfer: ensureApproval only prompts
           // when the existing allowance is short.
-          await ensureChain(prov, ASTER_DEPOSIT_CHAIN, 'Switch your wallet to Arbitrum to deposit to Aster');
           stepSet(last, 'active', `Checking ${tgtSym} allowance — approve in wallet if prompted…`);
           await ensureApproval(prov, tgt, user, asterVault(ASTER_DEPOSIT_CHAIN), sendAmt.toString());
           stepSet(last, 'active', `Depositing ${fmt(Number(sendAmt) / 1e6)} ${tgtSym} — confirm in wallet…`);
@@ -511,15 +777,15 @@ export default function TransferPage() {
       }
     }
 
-    // ── Swap (1inch, same-chain) ──────────────────────────────────────────────
-    // Deliberately NOT using /swap/tokens: that returns thousands of tokens per
+    // ── Swap (LI.FI, same-chain) ──────────────────────────────────────────────
+    // Same quote endpoint as the Send tab, with fromChain === toChain: LI.FI
+    // routes those through DEX aggregators rather than a bridge. Deliberately
+    // NOT using a token-list endpoint: those return thousands of tokens per
     // chain and would need a searchable picker to be usable, while CHAINS above
-    // already lists the ones this app actually deals in. Swap the source if
-    // someone needs a long tail.
-    // 1inch addresses native gas tokens with this sentinel, not the zero address.
-    const NATIVE_1INCH = '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
-    const ZERO_ADDR    = '0x0000000000000000000000000000000000000000';
-    const swapAddr = (a: string) => (a.toLowerCase() === ZERO_ADDR ? NATIVE_1INCH : a);
+    // already lists the ones this app actually deals in.
+    // LI.FI addresses native gas tokens with the zero address, which is what
+    // CHAINS already carries — no sentinel translation on the way out.
+    const ZERO_ADDR = '0x0000000000000000000000000000000000000000';
 
     let swQuote: any = null;
     let swTimer: any = null;
@@ -528,6 +794,7 @@ export default function TransferPage() {
       const c = (el('sw-chain') as HTMLSelectElement | null)?.value || '42161';
       fillTokenSel('sw-from', c, selSym('sw-from'));
       fillTokenSel('sw-to', c, selSym('sw-to'));
+      void autoSwitchChain(c);
       scheduleSwQuote();
     }
 
@@ -558,26 +825,38 @@ export default function TransferPage() {
       const amt   = parseFloat((el('sw-amt') as HTMLInputElement | null)?.value || '0') || 0;
       if (!amt) return;
       if (src.toLowerCase() === dst.toLowerCase()) return showSt('sw-st', 'err', 'Pick two different tokens');
+      // LI.FI simulates the route against a real account, so fromAddress is
+      // required — there is no anonymous price preview to fall back on.
+      if (!evmAddressRef.current) return showSt('sw-st', 'err', 'Connect your wallet from the top nav first');
       const wrap = el('sw-quote-wrap'); if (wrap) wrap.style.display = '';
       const card = el('sw-qcard'); if (card) card.className = 'quote-card loading';
       const skel = el('sw-skel'); if (skel) skel.style.display = '';
       const body = el('sw-qbody'); if (body) body.style.display = 'none';
       try {
-        const p = new URLSearchParams({
-          chainId: chain,
-          src: swapAddr(src),
-          dst: swapAddr(dst),
-          amount: BigInt(Math.round(amt * 10 ** selDec('sw-from'))).toString(),
-          ...(evmAddressRef.current ? {from: evmAddressRef.current} : {}),
-        });
-        const r = await fetch('/swap/quote?' + p);
-        const d = await r.json();
-        if (!r.ok || d.error) throw new Error(swapErr(d, r.status));
-        const out = Number(d.dstAmount ?? d.toAmount ?? 0) / 10 ** selDec('sw-to');
-        swQuote = {chain, src, dst, amt};
+        const amount = toUnits((el('sw-amt') as HTMLInputElement | null)?.value || '0', selDec('sw-from')).toString();
+        const q = await lifiQuote(chain, chain, src, dst, amount, evmAddressRef.current, evmAddressRef.current);
+        // A 200 with no transactionRequest is a route LI.FI cannot execute —
+        // fail here rather than letting execSwap dereference it.
+        if (!q?.transactionRequest?.to) throw new Error('No executable route found');
+        const toDec  = q.action?.toToken?.decimals ?? selDec('sw-to');
+        const toSym  = q.action?.toToken?.symbol ?? selSym('sw-to');
+        const out    = Number(q.estimate?.toAmount ?? 0) / 10 ** toDec;
+        // Only the routing steps — includedSteps also carries a `protocol`
+        // step for LI.FI's own fee collection, which is not a venue.
+        const via = q.includedSteps
+          ?.filter((s: any) => s.type === 'swap' || s.type === 'cross')
+          .map((s: any) => s.toolDetails?.name || s.tool).filter(Boolean).join(' + ') || '';
+        // LI.FI takes a fee on the route (0.25% at the time of writing) where
+        // 1inch's API took none — it is already deducted from toAmount above,
+        // so show it rather than letting it look like a worse price.
+        const fee = q.estimate?.feeCosts?.reduce((a: number, f: any) => a + Number(f.amountUSD || 0), 0) ?? 0;
+        // The whole quote is kept, not just its inputs: execSwap signs the
+        // transactionRequest LI.FI already built, the way the Send tab does.
+        swQuote = q;
         set('sw-recv-amt', fmt(out, out < 1 ? 6 : 4));
-        set('sw-recv-sym', selSym('sw-to'));
-        set('sw-rate', `1 ${selSym('sw-from')} ≈ ${fmt(out / amt, out / amt < 1 ? 6 : 4)} ${selSym('sw-to')}`);
+        set('sw-recv-sym', toSym);
+        set('sw-rate', `1 ${selSym('sw-from')} ≈ ${fmt(out / amt, out / amt < 1 ? 6 : 4)} ${toSym}${via ? ` · via ${via}` : ''}`);
+        set('sw-fee', fee ? `Route fee ~$${fmt(fee)} — already deducted above` : ' ');
         if (card) card.className = 'quote-card';
         if (skel) skel.style.display = 'none';
         if (body) body.style.display = '';
@@ -587,52 +866,40 @@ export default function TransferPage() {
         if (card) card.className = 'quote-card error';
         if (skel) skel.style.display = 'none';
         if (body) body.style.display = '';
-        set('sw-recv-amt', e.message); set('sw-recv-sym', ''); set('sw-rate', '');
+        set('sw-recv-amt', e.message); set('sw-recv-sym', ''); set('sw-rate', ''); set('sw-fee', '');
       }
     }
 
-    // Without ONEINCH_API_KEY the backend 503s every swap route — say that
-    // plainly instead of surfacing a bare "error".
-    function swapErr(d: any, status: number) {
-      const e = typeof d?.error === 'string' ? d.error : d?.description;
-      if (status === 503 || /ONEINCH_API_KEY/.test(e ?? ''))
-        return 'Swap is not configured — set ONEINCH_API_KEY on the backend';
-      return e || 'No route found';
-    }
-
     async function execSwap() {
-      if (!swQuote) return;
+      const q = swQuote;
+      if (!q) return;
       const btn = el('sw-btn') as HTMLButtonElement | null;
       if (btn) btn.disabled = true;
       const st = el('sw-st'); if (st) st.style.display = 'none';
-      const fromSym = selSym('sw-from'), toSym = selSym('sw-to');
+      const fromSym = q.action?.fromToken?.symbol ?? selSym('sw-from');
+      const toSym   = q.action?.toToken?.symbol   ?? selSym('sw-to');
       initProg('sw', [`Approve ${fromSym}`, `Swap ${fromSym} → ${toSym}`]);
       try {
         const user = await requireEVM();
         const prov = getProv();
-        const amount = BigInt(Math.round(swQuote.amt * 10 ** selDec('sw-from'))).toString();
-        const p = new URLSearchParams({
-          chainId: swQuote.chain,
-          src: swapAddr(swQuote.src),
-          dst: swapAddr(swQuote.dst),
-          amount,
-          from: user,
-          slippage: '1',
-        });
-        stepSet(0, 'active', 'Building the swap…');
-        const r = await fetch('/swap/build?' + p);
-        const d = await r.json();
-        if (!r.ok || d.error || !d.tx) throw new Error(swapErr(d, r.status));
+        const tx = q.transactionRequest;
+        // The quote is built against one chain's router and
+        // eth_sendTransaction goes wherever the wallet is pointed, so put it
+        // on that chain before signing anything.
+        const chainId = String(q.action?.fromChainId ?? (el('sw-chain') as HTMLSelectElement | null)?.value ?? '42161');
+        stepSet(0, 'active', `Switching to ${chainName(chainId)}…`);
+        await ensureChain(prov, chainId, `Switch your wallet to ${chainName(chainId)} to swap`);
         // Native gas tokens need no allowance; ensureApproval no-ops on the
-        // zero address, and 1inch's router is the spender for ERC-20s.
+        // zero address, and LI.FI names the ERC-20 spender in
+        // estimate.approvalAddress (the router can differ per route).
         stepSet(0, 'active', 'Checking allowance…');
-        await ensureApproval(prov, swQuote.src.toLowerCase() === ZERO_ADDR ? '' : swQuote.src, user, d.tx.to, amount);
+        await ensureApproval(prov, q.action?.fromToken?.address ?? '', user, q.estimate?.approvalAddress || tx.to, q.action?.fromAmount ?? '0');
         stepSet(0, 'done', 'Allowance ready');
         stepSet(1, 'active', 'Confirm the swap in your wallet…');
         const hash = await prov.request({method:'eth_sendTransaction', params:[{
-          from: user, to: d.tx.to, data: d.tx.data,
-          value: d.tx.value ? '0x'+BigInt(d.tx.value).toString(16) : '0x0',
-          ...(d.tx.gas ? {gas:'0x'+BigInt(d.tx.gas).toString(16)} : {}),
+          from: user, to: tx.to, data: tx.data,
+          value: tx.value ? '0x'+BigInt(tx.value).toString(16) : '0x0',
+          ...(tx.gasLimit ? {gas:'0x'+BigInt(tx.gasLimit).toString(16)} : {}),
         }]}) as string;
         stepSet(1, 'active', 'Confirming…');
         await pollReceipt(prov, hash);
@@ -680,9 +947,11 @@ export default function TransferPage() {
       const fc = el('from-chain') as HTMLSelectElement | null;
       fillTokenSel('from-token', fc?.value || '42161', selSym('from-token'));
       set('send-cur-badge', selSym('from-token'));
+      void autoSwitchChain(fc?.value || '42161');
+      void refreshSendBal();
       scheduleQuote();
     }
-    function onFromTokenChange() { set('send-cur-badge', selSym('from-token')); scheduleQuote(); }
+    function onFromTokenChange() { set('send-cur-badge', selSym('from-token')); void refreshSendBal(); scheduleQuote(); }
     function onToChainChange() {
       const tc = el('to-chain') as HTMLSelectElement | null;
       fillTokenSel('to-token', tc?.value || '42161', selSym('to-token'));
@@ -721,7 +990,7 @@ export default function TransferPage() {
       const qcard = el('send-qcard'); if (qcard) qcard.className = 'quote-card loading';
       const skel = el('send-skel'); if (skel) skel.style.display = '';
       const qbody = el('send-qbody'); if (qbody) qbody.style.display = 'none';
-      const fromAmount = BigInt(Math.round(amt * 10 ** fromDec)).toString();
+      const fromAmount = toUnits(sendAmt?.value || '0', fromDec).toString();
       try {
         const q = await lifiQuote(fromChain, toChain, fromToken, toToken, fromAmount, evmAddressRef.current, dest);
         curQuote = q;
@@ -759,18 +1028,60 @@ export default function TransferPage() {
       showSt('send-st', 'inf', 'Checking allowance…');
       try {
         const user = await requireEVM(); const prov = getProv();
-        const tx = curQuote.transactionRequest;
-        const fAddr = curQuote.action?.fromToken?.address ?? '';
-        const fAmt  = curQuote.action?.fromAmount ?? '0';
-        await ensureApproval(prov, fAddr, user, curQuote.estimate?.approvalAddress || tx.to, fAmt);
-        if (btn) btn.textContent = 'Confirm in wallet…';
-        showSt('send-st', 'inf', 'Confirm in wallet…');
-        const hash = await prov.request({method:'eth_sendTransaction', params:[{
+        // The displayed quote came from a 650ms debounce while the user was
+        // still typing, and it is signed whenever they eventually press Send —
+        // often minutes later, after reading it and confirming a chain switch.
+        // Intent-based routes (NearIntents et al.) embed a deadline and the
+        // calldata simply stops being valid, which surfaces as a wallet
+        // "likely to fail" warning and a bare custom error rather than
+        // anything this app could explain. So re-quote here and sign THAT.
+        showSt('send-st', 'inf', 'Refreshing the quote…');
+        const fresh = await lifiQuote(
+          String(curQuote.action.fromChainId), String(curQuote.action.toChainId),
+          curQuote.action.fromToken.address, curQuote.action.toToken.address,
+          curQuote.action.fromAmount, user,
+          curQuote.action.toAddress || user,
+        );
+        if (!fresh?.transactionRequest?.to) throw new Error('LI.FI returned no executable route — try again');
+        // Only the price may drift, and only downward past the slippage the
+        // user already accepted is a reason to stop and re-show it.
+        const shown = BigInt(curQuote.estimate?.toAmount ?? '0');
+        const now   = BigInt(fresh.estimate?.toAmount ?? '0');
+        const floor = shown * BigInt(99) / BigInt(100);
+        if (shown > BigInt(0) && now < floor) {
+          curQuote = fresh;
+          fetchQuote();
+          throw new Error('The price moved more than 1% while you were confirming — check the updated quote and send again.');
+        }
+        curQuote = fresh;
+        const tx = fresh.transactionRequest;
+        const fAddr = fresh.action?.fromToken?.address ?? '';
+        const fAmt  = fresh.action?.fromAmount ?? '0';
+        // The quote is built against the SOURCE chain's router, and both the
+        // allowance call and the send go wherever the wallet is pointed. The
+        // picker auto-switches, but the wallet can be moved from under it
+        // afterwards, so confirm here too rather than signing on the wrong one.
+        const srcChain = String(fresh.action?.fromChainId ?? (el('from-chain') as HTMLSelectElement | null)?.value ?? '42161');
+        await ensureChain(prov, srcChain, `Switch your wallet to ${chainName(srcChain)} to send`);
+        showSt('send-st', 'inf', 'Checking allowance…');
+        await ensureApproval(prov, fAddr, user, fresh.estimate?.approvalAddress || tx.to, fAmt);
+        const sendTx = {
           from:user, to:tx.to, data:tx.data,
           value: tx.value ? '0x'+BigInt(tx.value).toString(16) : '0x0',
           ...(tx.gasLimit ? {gas:'0x'+BigInt(tx.gasLimit).toString(16)} : {}),
-        }]}) as string;
-        showSt('send-st', 'ok', `✓ Sent! Tx: ${hash.slice(0,20)}…`);
+        };
+        if (btn) btn.textContent = 'Confirm in wallet…';
+        showSt('send-st', 'inf', 'Confirm in wallet…');
+        const hash = await prov.request({method:'eth_sendTransaction', params:[sendTx]}) as string;
+        // eth_sendTransaction resolves as soon as the wallet ACCEPTS the
+        // transaction, which says nothing about whether it lands. Reporting
+        // "Sent!" there declared success for transactions that were still
+        // pending — and for ones the wallet went on to drop or that reverted,
+        // leaving the UI claiming success while MetaMask showed a failure.
+        // Every other flow on this page waits for the receipt; this one did not.
+        showSt('send-st', 'inf', `Submitted — waiting for confirmation… ${hash.slice(0,20)}…`);
+        await pollReceipt(prov, hash);
+        showSt('send-st', 'ok', `✓ Confirmed! Tx: ${hash.slice(0,20)}…`);
         curQuote = null;
         const sendAmt = el('send-amt') as HTMLInputElement | null;
         if (sendAmt) sendAmt.value = '';
@@ -785,7 +1096,58 @@ export default function TransferPage() {
       }
     }
 
-    function sendMax() { set('send-bal', 'Enter the full amount you want to send'); }
+    // Mirrors the deposit tab's dpBal/dpBalErr pair: 0 means either "the wallet
+    // holds none" or "the balance could not be read", and MAX has to tell the
+    // user which. It used to be a stub that only printed a hint, so MAX looked
+    // dead — it never read a balance or filled the amount at all.
+    let sendBal = 0;
+    /** Exact balance — MAX fills from this, never from the float above. */
+    let sendBalRaw = BigInt(0);
+    let sendBalErr = '';
+
+    /** Balance of the picked send token. Like the deposit tab, only meaningful
+     *  when the wallet is on the picked chain — an eth_call goes wherever the
+     *  wallet is pointed. onFromChainChange auto-switches it there, so this is
+     *  normally true by the time the user reaches MAX. */
+    async function refreshSendBal() {
+      sendBal = 0;
+      sendBalErr = '';
+      const user = evmAddressRef.current;
+      const sym = selSym('from-token');
+      if (!user) { sendBalErr = 'Connect your wallet from the top nav first'; return set('send-bal', 'Connect wallet to see balance'); }
+      try {
+        const prov = getProv();
+        const want = (el('from-chain') as HTMLSelectElement | null)?.value || '42161';
+        const on = String(parseInt(await prov.request({method:'eth_chainId'}) as string, 16));
+        if (on !== want) {
+          const name = chainName(want);
+          sendBalErr = `Switch your wallet to ${name} first — the balance is read from the network the wallet is on`;
+          return set('send-bal', `Switch your wallet to ${name} to see your ${sym} balance`);
+        }
+        const token = (el('from-token') as HTMLSelectElement | null)?.value || '';
+        const dec = selDec('from-token');
+        sendBalRaw = await tokenBal(prov, token, user);
+        sendBal = Number(sendBalRaw) / 10 ** dec;
+        set('send-bal', `Balance: ${fmt(sendBal, sendBal < 1 ? 6 : 2)} ${sym}`);
+      } catch {
+        sendBalErr = 'Could not read your balance from the wallet';
+        set('send-bal', 'Could not read balance');
+      }
+    }
+
+    function sendMax() {
+      const sendAmt = el('send-amt') as HTMLInputElement | null;
+      if (!sendAmt) return;
+      if (sendBal <= 0) return showSt('send-st', 'err', sendBalErr || `No ${selSym('from-token')} in this wallet on this chain`);
+      // A native token pays for its own transfer, so MAX can never mean "all of
+      // it" — the bridge transaction itself would have nothing left for gas.
+      const isNative = ((el('from-token') as HTMLSelectElement | null)?.value || '').toLowerCase() === ZERO_ADDR;
+      const dec = selDec('from-token');
+      const usable = isNative ? sendBalRaw - toUnits(String(NATIVE_GAS_RESERVE), dec) : sendBalRaw;
+      if (usable <= BigInt(0)) return showSt('send-st', 'err', `Not enough ${selSym('from-token')} left to cover gas`);
+      sendAmt.value = fromUnits(usable, dec);
+      scheduleQuote();
+    }
 
     function setDir(dir: string) {
       btwDir = dir;
@@ -824,11 +1186,11 @@ export default function TransferPage() {
           await hlWithdrawRaw(prov, user, amt, user);
           stepSet(0, 'done', `$${fmt(amt)} USDC submitted to Arbitrum`);
           stepSet(1, 'active', 'Polling every 12s (up to 6 min)…');
-          const ub = await getERC20Bal(prov, USDC_ARB, user);
+          const ub = await erc20BalOn(prov, ARB_CHAIN, USDC_ARB, user);
           await pollBal(prov, USDC_ARB, user, BigInt(Math.round(amt*1e6*0.97)), ub, 360000);
           stepSet(1, 'done', 'USDC arrived in wallet');
           stepSet(2, 'active', 'Getting LI.FI swap route…');
-          const usdcBal = await getERC20Bal(prov, USDC_ARB, user);
+          const usdcBal = await erc20BalOn(prov, ARB_CHAIN, USDC_ARB, user);
           const q = await lifiQuote('42161', '42161', USDC_ARB, USDT_ARB, usdcBal.toString(), user, user);
           stepSet(2, 'active', 'Approve + swap — confirm in wallet…');
           const sh = await lifiExec(prov, q, user);
@@ -836,7 +1198,7 @@ export default function TransferPage() {
           await pollReceipt(prov, sh);
           stepSet(2, 'done', 'USDC → USDT swapped');
           await ensureChain(prov, ASTER_DEPOSIT_CHAIN, 'Switch your wallet to Arbitrum to deposit to Aster');
-          const usdtBal = await getERC20Bal(prov, USDT_ARB, user);
+          const usdtBal = await erc20BalOn(prov, ARB_CHAIN, USDT_ARB, user);
           stepSet(3, 'active', 'Checking USDT allowance — approve in wallet if prompted…');
           await ensureApproval(prov, USDT_ARB, user, asterVault(ASTER_DEPOSIT_CHAIN), usdtBal.toString());
           stepSet(3, 'active', `Depositing ${fmt(Number(usdtBal)/1e6, 2)} USDT — confirm…`);
@@ -847,8 +1209,11 @@ export default function TransferPage() {
         } else {
           // Same rule as the Withdraw tab: the fee is signed, so it has to be
           // quoted and shown before the wallet prompt, never after it.
+          // Pinned to Arbitrum, unlike the Withdraw tab: the next three steps
+          // swap that USDT to USDC and hand it to the Hyperliquid bridge, both
+          // of which only exist on Arbitrum.
           let fee: string;
-          try { fee = await asterWithdrawFee(); }
+          try { fee = await asterWithdrawFee(ASTER_WD_FALLBACK_CHAIN); }
           catch (e: any) { return showSt('btw-st', 'err', e.message); }
           if (amt <= Number(fee))
             return showSt('btw-st', 'err', `Amount must be more than the ${fee} USDT Aster withdrawal fee`);
@@ -859,16 +1224,16 @@ export default function TransferPage() {
             'Send USDC to the Hyperliquid bridge',
           ]);
           stepSet(0, 'active', `Fee ${fee} USDT — confirm both signatures in your wallet…`);
-          await asterWithdrawRaw(prov, user, amt, user, fee);
+          await asterWithdrawRaw(prov, user, amt, user, fee, ASTER_WD_FALLBACK_CHAIN);
           stepSet(0, 'done', `${fmt(amt)} USDT withdrawal submitted`);
           stepSet(1, 'active', 'Polling every 12s (up to 10 min)…');
-          const tb = await getERC20Bal(prov, USDT_ARB, user);
+          const tb = await erc20BalOn(prov, ARB_CHAIN, USDT_ARB, user);
           await pollBal(prov, USDT_ARB, user, BigInt(Math.round((amt - Number(fee)) * 1e6 * 0.97)), tb, 600000);
           stepSet(1, 'done', 'USDT arrived in wallet');
           stepSet(2, 'active', 'Getting LI.FI swap route…');
-          const usdtBal = await getERC20Bal(prov, USDT_ARB, user);
+          const usdtBal = await erc20BalOn(prov, ARB_CHAIN, USDT_ARB, user);
           const q = await lifiQuote('42161', '42161', USDT_ARB, USDC_ARB, usdtBal.toString(), user, user);
-          const usdcBefore = await getERC20Bal(prov, USDC_ARB, user);
+          const usdcBefore = await erc20BalOn(prov, ARB_CHAIN, USDC_ARB, user);
           stepSet(2, 'active', 'Approve + swap — confirm in wallet…');
           const sh = await lifiExec(prov, q, user);
           stepSet(2, 'active', 'Confirming swap…');
@@ -877,7 +1242,7 @@ export default function TransferPage() {
           // HL does NOT pick up USDC sitting in the wallet — this step used to
           // just declare success and leave the funds stranded there. The
           // deposit is an explicit transfer to Bridge2.
-          const swapped = (await getERC20Bal(prov, USDC_ARB, user)) - usdcBefore;
+          const swapped = (await erc20BalOn(prov, ARB_CHAIN, USDC_ARB, user)) - usdcBefore;
           if (swapped < HL_MIN_DEPOSIT)
             throw new Error('Swapped USDC is under the 5 USDC Hyperliquid minimum — it stays in your wallet');
           stepSet(3, 'active', `Sending ${fmt(Number(swapped) / 1e6)} USDC — confirm in wallet…`);
@@ -923,10 +1288,69 @@ export default function TransferPage() {
       showSt(progPfx+'-st', 'err', msg);
     }
 
+    /** An eth_call that hit no contract returns '0x' — truthy, so it slipped
+     *  past `hex || '0x0'` and surfaced as "Cannot convert 0x to a BigInt".
+     *  That is never a zero balance, it means the read went to the wrong place,
+     *  so say so instead of quietly reporting 0 (a wrong 0 baseline would
+     *  inflate the "how much arrived" delta the deposit forwards). */
+    function hexToBigInt(hex: string | null | undefined, what: string): bigint {
+      if (hex === null || hex === undefined || hex === '' || hex === '0x')
+        throw new Error(`${what}: no answer from the contract — wrong network for this token?`);
+      return BigInt(hex);
+    }
+
+    /** eth_call pinned to a specific chain, whatever the wallet is pointed at.
+     *  Cross-chain flows must read the DESTINATION chain (has the converted
+     *  USDT landed on Arbitrum yet?) while the wallet is still on the source
+     *  chain to sign there — the wallet cannot answer that, and asking it
+     *  anyway is what produced the '0x'. Uses the wallet when it happens to be
+     *  on the right chain already, and the backend's read-only RPC proxy
+     *  otherwise. */
+    async function ethCallOn(prov: any, chainId: string, to: string, data: string): Promise<string> {
+      try {
+        const on = String(parseInt(await prov.request({method:'eth_chainId'}) as string, 16));
+        if (on === chainId) return await prov.request({method:'eth_call', params:[{to, data}, 'latest']});
+      } catch { /* fall through to the proxy */ }
+      const r = await fetch(`/rpc/${chainId}`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({method: 'eth_call', params: [{to, data}, 'latest']}),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || d.error) throw new Error(d.error || `Could not read ${chainName(chainId)}`);
+      return d.result as string;
+    }
+
+    /** Balance of `token` as held on `chainId`, regardless of where the wallet
+     *  is. Callers that are already guaranteed to be on the right chain can
+     *  still use it — it costs one extra eth_chainId. */
+    async function erc20BalOn(prov: any, chainId: string, token: string, owner: string): Promise<bigint> {
+      const data = '0x70a08231' + owner.slice(2).padStart(64, '0');
+      const hex = await ethCallOn(prov, chainId, token, data);
+      return hexToBigInt(hex, `${chainName(chainId)} balance`);
+    }
+
+    /** Native (gas) balance of `chainId`, wherever the wallet is pointed. */
+    async function nativeBalOn(prov: any, chainId: string, owner: string): Promise<bigint> {
+      try {
+        const on = String(parseInt(await prov.request({method:'eth_chainId'}) as string, 16));
+        if (on === chainId)
+          return hexToBigInt(await prov.request({method:'eth_getBalance', params:[owner, 'latest']}), 'Gas balance');
+      } catch { /* fall through to the proxy */ }
+      const r = await fetch(`/rpc/${chainId}`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({method: 'eth_getBalance', params: [owner, 'latest']}),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || d.error) throw new Error(d.error || `Could not read ${chainName(chainId)}`);
+      return hexToBigInt(d.result, 'Gas balance');
+    }
+
     async function getERC20Bal(prov: any, token: string, owner: string): Promise<bigint> {
       const data = '0x70a08231' + owner.slice(2).padStart(64, '0');
       const hex = await prov.request({method:'eth_call', params:[{to:token, data}, 'latest']});
-      return BigInt(hex || '0x0');
+      return hexToBigInt(hex, 'Token balance');
     }
 
     /** balanceOf for ERC-20s, eth_getBalance for the chain's native token —
@@ -934,7 +1358,7 @@ export default function TransferPage() {
      *  balanceOf on 0x0 silently returns 0 rather than failing. */
     async function tokenBal(prov: any, token: string, owner: string): Promise<bigint> {
       if (!token || token.toLowerCase() === ZERO_ADDR)
-        return BigInt(await prov.request({method:'eth_getBalance', params:[owner, 'latest']}) || '0x0');
+        return hexToBigInt(await prov.request({method:'eth_getBalance', params:[owner, 'latest']}), 'Native balance');
       return getERC20Bal(prov, token, owner);
     }
 
@@ -943,7 +1367,7 @@ export default function TransferPage() {
       if (!token || token === ZERO) return;
       const pad = (v: string) => v.replace(/^0x/, '').padStart(64, '0');
       const allHex = await prov.request({method:'eth_call', params:[{to:token, data:'0xdd62ed3e'+pad(owner)+pad(spender)}, 'latest']});
-      if (BigInt(allHex || '0x0') >= BigInt(amount)) return;
+      if (hexToBigInt(allHex, 'Allowance') >= BigInt(amount)) return;
       const appHash = await prov.request({method:'eth_sendTransaction', params:[{from:owner, to:token, data:'0x095ea7b3'+pad(spender)+BigInt(amount).toString(16).padStart(64,'0')}]});
       await pollReceipt(prov, appHash, 120000);
     }
@@ -986,13 +1410,25 @@ export default function TransferPage() {
         if (r) { if (r.status === '0x0') throw new Error('Transaction reverted'); return r; }
         await sleep(2500);
       }
+      // A hash with no receipt AND no transaction behind it was never
+      // broadcast: the wallet handed back a hash it computed locally and then
+      // dropped the transaction. MetaMask's Smart Transactions does exactly
+      // this — it routes through a private relay and cancels silently when the
+      // relay predicts a failure, leaving nothing on-chain, the nonce
+      // untouched and no gas spent. Indistinguishable from a stuck transaction
+      // unless we look, so look, and say which one it is.
+      const tx = await prov.request({method:'eth_getTransactionByHash', params:[hash]}).catch(() => null);
+      if (!tx) throw new Error(
+        'Your wallet never broadcast this transaction — it is on no chain and no gas was spent. '
+        + 'If you use MetaMask, turn off Settings → Advanced → Smart Transactions and try again.',
+      );
       throw new Error('Confirmation timeout');
     }
 
-    async function pollBal(prov: any, token: string, owner: string, needed: bigint, baseline: bigint, timeoutMs: number) {
+    async function pollBal(prov: any, token: string, owner: string, needed: bigint, baseline: bigint, timeoutMs: number, chainId = ARB_CHAIN) {
       const end = Date.now() + timeoutMs;
       while (Date.now() < end) {
-        const bal = await getERC20Bal(prov, token, owner);
+        const bal = await erc20BalOn(prov, chainId, token, owner);
         if (bal >= baseline + needed) return bal;
         await sleep(12000);
       }
@@ -1004,6 +1440,39 @@ export default function TransferPage() {
       const r = await fetch('/lifi-api/v1/quote?' + p);
       if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error((e as any)?.message || 'LI.FI: no route found'); }
       return r.json();
+    }
+
+    /** Throws when the wallet cannot cover a LI.FI route on the SOURCE chain.
+     *
+     *  The route's own transactionRequest is the only honest cost: for a
+     *  NATIVE deposit the amount being bridged and the gas paying for it come
+     *  out of the same balance, so MAX holding back a flat NATIVE_GAS_RESERVE
+     *  is not enough on its own — LI.FI quoted gasLimit 1_400_469 for
+     *  BNB → Arbitrum USDC, which at BSC's busier gas prices costs several
+     *  times that reserve.
+     *
+     *  Getting this wrong is invisible rather than loud: the node rejects the
+     *  transaction at broadcast for insufficient funds, so it never reaches a
+     *  block. The wallet still shows a hash — one that no explorer can find —
+     *  and marks it failed, while nothing was actually spent. */
+    async function assertCanAffordRoute(prov: any, chainId: string, user: string, quote: any) {
+      const tx  = quote?.transactionRequest ?? {};
+      const val = BigInt(tx.value ?? 0);
+      const px  = BigInt(tx.gasPrice ?? tx.maxFeePerGas ?? 0);
+      const gas = BigInt(tx.gasLimit ?? 0) * px;
+      // Half again on the gas: the wallet picks its own gas price at
+      // confirmation time, minutes after the quote, and a transaction that
+      // only just fits is one gas tick away from this exact failure.
+      const need = val + gas + gas / BigInt(2);
+      if (need <= BigInt(0)) return;
+      const have = await nativeBalOn(prov, chainId, user);
+      if (have >= need) return;
+      const sym = CHAINS[chainIdx(chainId)]?.tokens.find(t => t.addr === ZERO_ADDR)?.sym ?? 'gas';
+      throw new Error(
+        `Not enough ${sym} on ${chainName(chainId)} — this route needs about ` +
+        `${fmt(Number(need) / 1e18, 6)} ${sym} (amount plus gas) and the wallet holds ` +
+        `${fmt(Number(have) / 1e18, 6)}. Lower the amount or top up. Nothing has been signed.`,
+      );
     }
 
     async function lifiExec(prov: any, quote: any, user: string) {
@@ -1051,17 +1520,43 @@ export default function TransferPage() {
     }
 
     // ── Aster withdrawal (V3) ─────────────────────────────────────────────
-    // Withdrawals leave Aster on Arbitrum as USDT; anything else the user
-    // picks is a LI.FI conversion afterwards, not a different withdrawal.
-    const ASTER_WD_CHAIN_ID = '42161';
-    const ASTER_WD_ASSET    = 'USDT';
+    const ASTER_WD_ASSET = 'USDT';
+
+    // Chains Aster will pay a USDT withdrawal out on. Probed against Aster's
+    // own estimateFee endpoint — every other chain this page offers (Base,
+    // Optimism, Polygon, Avalanche) answers "Unsupport token". All three are
+    // switchable, which is not a coincidence we can drop: signature 1's
+    // EIP-712 domain carries the destination chainId, so the wallet has to be
+    // switched to that chain to produce it, and ensureChain can only switch to
+    // a network findEvmNetwork describes.
+    const ASTER_WD_CHAINS = new Set(['1', '56', '42161']);
+
+    // Where a withdrawal goes when the user's destination isn't one Aster pays
+    // out on. Arbitrum, because that is where the LI.FI conversion leg and the
+    // Between Accounts flow both expect the USDT to land.
+    const ASTER_WD_FALLBACK_CHAIN = '42161';
+
+    /** The chain the withdrawal itself leaves Aster on — which is NOT always
+     *  the chain the user picked to receive on. Direct when Aster pays out
+     *  there and the user asked for USDT (one signature pair, one fee, no
+     *  bridge); otherwise it lands on Arbitrum and LI.FI converts from there.
+     *  Withdrawing straight to BNB Chain costs 0.11 USDT against Arbitrum's
+     *  0.51, so this is real money, not just a hop saved. */
+    function asterWdChain(): string {
+      const toChain = (el('wd-to-chain') as HTMLSelectElement | null)?.value || ASTER_WD_FALLBACK_CHAIN;
+      return ASTER_WD_CHAINS.has(toChain) && selSym('wd-to-token') === ASTER_WD_ASSET
+        ? toChain
+        : ASTER_WD_FALLBACK_CHAIN;
+    }
+
+    const chainName = (id: string) => CHAINS[chainIdx(id)]?.name ?? `chain ${id}`;
 
     /** Aster's own fee quote for this asset/chain, as the exact plain-decimal
      *  string that goes into the signature. Throws rather than returning a
      *  fallback: `fee` is signed, so a guessed one is either a rejected
      *  signature or a withdrawal on terms the user never saw. */
-    async function asterWithdrawFee(): Promise<string> {
-      const r = await fetch(`/aster-withdraw-fee?chainId=${ASTER_WD_CHAIN_ID}&asset=${ASTER_WD_ASSET}`);
+    async function asterWithdrawFee(chainId: string): Promise<string> {
+      const r = await fetch(`/aster-withdraw-fee?chainId=${chainId}&asset=${ASTER_WD_ASSET}`);
       const d = await r.json().catch(() => ({}));
       if (!r.ok || typeof d?.fee !== 'string')
         throw new Error(d?.msg || 'Could not get Aster’s withdrawal fee — not signing a withdrawal without it');
@@ -1070,18 +1565,58 @@ export default function TransferPage() {
 
     /** Quote the fee and put it on screen. Returns it so the caller can check
      *  the user was actually shown what they are about to sign. */
-    async function refreshAsterWdFee(): Promise<string> {
-      const fee = await asterWithdrawFee();
-      asterWdFee = fee;
-      set('wd-fee', `Aster network fee: ${fee} ${ASTER_WD_ASSET}`);
-      return fee;
+    async function refreshAsterWdFee(): Promise<{ fee: string; chain: string }> {
+      const gen = ++asterWdFeeGen;
+      const chain = asterWdChain();
+      const fee = await asterWithdrawFee(chain);
+      // Flicking through destinations leaves several quotes in flight, and they
+      // do not answer in issue order — an earlier one landing last would leave
+      // the label describing a chain the user has already moved off. Only the
+      // newest quote may write. The value is still returned either way, so the
+      // caller that asked for it gets its own answer.
+      if (gen === asterWdFeeGen) {
+        asterWdFee = fee;
+        asterWdFeeChain = chain;
+        set('wd-fee', `Aster network fee: ${fee} ${ASTER_WD_ASSET} — paid out on ${chainName(chain)}`);
+      }
+      return { fee, chain };
     }
 
     /** The wallet will only sign a typed-data payload whose domain chainId is
      *  the chain it is currently on, and the withdrawal authorization is
      *  stamped with the destination chain. */
-    async function ensureWdChain(prov: any) {
-      return ensureChain(prov, ASTER_WD_CHAIN_ID, 'Switch your wallet to Arbitrum to sign the withdrawal');
+    async function ensureWdChain(prov: any, chainId: string) {
+      return ensureChain(prov, chainId, `Switch your wallet to ${chainName(chainId)} to sign the withdrawal`);
+    }
+
+    /** A SOURCE chain picker changing is the user saying "operate on this
+     *  chain", and everything behind those pickers — the balance read, the
+     *  allowance check, the transaction itself — goes wherever the WALLET is
+     *  pointed, not where the select is. Move the wallet with the picker
+     *  rather than failing at execution time (or, on the deposit tab, silently
+     *  showing no balance and a MAX of 0).
+     *
+     *  Destination pickers deliberately do NOT call this: a wallet does not
+     *  have to sit on a chain to receive funds there, and the one destination
+     *  that is also a signing domain (Aster withdrawals) is switched by
+     *  execWithdraw via ensureWdChain at the moment it signs. */
+    let chainSwitchGen = 0;
+    async function autoSwitchChain(chainId: string) {
+      if (!evmAddressRef.current) return;
+      const prov = getProv();
+      if (!prov) return;
+      const gen = ++chainSwitchGen;
+      try {
+        const on = String(parseInt(await prov.request({method:'eth_chainId'}) as string, 16));
+        // The user can keep changing the picker while the wallet is still
+        // prompting for the previous one — only the newest pick may switch.
+        if (on === chainId || gen !== chainSwitchGen) return;
+        await ensureChain(prov, chainId, '');
+      } catch {
+        // Refusing the switch is the user's call, and it must not break the
+        // form. Every exec path still calls ensureChain before it signs, so
+        // the refusal resurfaces there with a message attached.
+      }
     }
 
     /** eth_sendTransaction and eth_signTypedData_v4 both go wherever the wallet
@@ -1090,7 +1625,7 @@ export default function TransferPage() {
     async function ensureChain(prov: any, want: string, why: string) {
       const on = String(parseInt(await prov.request({method:'eth_chainId'}) as string, 16));
       if (on === want) return;
-      const net = EVM_NETWORKS.find(n => parseInt(n.chainId, 16) === Number(want));
+      const net = findEvmNetwork(want);
       const r = net ? await switchEvmNetwork(prov, net) : {ok:false, reason:'Unknown network'};
       if (!r.ok) throw new Error(r.reason || why);
     }
@@ -1116,11 +1651,11 @@ export default function TransferPage() {
      * asterAuthSignError below turns that refusal into an explanation rather
      * than a raw wallet error.
      */
-    async function asterWithdrawRaw(prov: any, user: string, amt: number, dest: string, fee: string) {
-      await ensureWdChain(prov);
+    async function asterWithdrawRaw(prov: any, user: string, amt: number, dest: string, fee: string, chainId: string) {
+      await ensureWdChain(prov, chainId);
       const amount = normalizeAsterAmount(toPlainDecimal(amt));
       const params = {
-        chainId: ASTER_WD_CHAIN_ID,
+        chainId,
         asset: ASTER_WD_ASSET,
         amount,
         fee,
@@ -1203,7 +1738,12 @@ export default function TransferPage() {
     (window as any).execBtw           = execBtw;
 
     // Init
-    setTab('withdraw');
+    // ?tab= lets other pages deep-link straight into a tab (the Portfolio
+    // action buttons do). Validated against the known list rather than passed
+    // through, so a bogus value falls back to Withdraw instead of hiding every
+    // tab — setTab only shows the one whose id matches.
+    const wanted = new URLSearchParams(window.location.search).get('tab') ?? '';
+    setTab(['withdraw','deposit','swap','send','between'].includes(wanted) ? wanted : 'withdraw');
     fillChainSel('wd-to-chain');
     fillTokenSel('wd-to-token', '42161', 'USDC');
     updateWdConvHint();
@@ -1213,15 +1753,27 @@ export default function TransferPage() {
     fillTokenSel('sw-from', '42161', 'USDC');
     fillTokenSel('sw-to', '42161', 'ETH');
     set('sw-cur', selSym('sw-from'));
+    // Both exec buttons start disabled, but the `disabled` cannot live in the
+    // JSX: React only dispatches onClick when ITS OWN props for the node say
+    // the button is enabled, and nothing here ever re-renders the component,
+    // so a `disabled` written in JSX stays true in React's props forever. The
+    // imperative `btn.disabled = false` after a quote then produced a button
+    // that LOOKS enabled and swallows every click. Owning the property from
+    // JS in both directions keeps React's view and the DOM in agreement.
+    disableBtn('sw-btn');
+    disableBtn('send-btn');
     fillChainSel('from-chain'); fillChainSel('to-chain');
     fillTokenSel('from-token', '42161');
     fillTokenSel('to-token', '42161', 'ETH');
     set('send-cur-badge', selSym('from-token'));
+    void refreshSendBal();
     setDir('hl-to-aster');
 
     import('@/lib/i18n').then(({ applyTranslations }) => {
       applyTranslations();
     });
+
+    refreshDpBalRef.current = () => { refreshDpBal(); refreshSendBal(); };
   }, []);
 
   return (
@@ -1264,6 +1816,9 @@ export default function TransferPage() {
             {/* Aster's withdrawal fee is a SIGNED field — it lives here so the
                 user reads it before the wallet prompt, not inside it. */}
             <div className="bal-hint" id="wd-fee">&nbsp;</div>
+            {/* Shown only when the connected wallet cannot produce Aster's
+                chain-1666 authorization signature — see walletBlocksAsterAuth. */}
+            <div className="info-box warn" id="wd-wallet-warn" style={{display:'none'}} />
             <div className="field-lbl" data-i18n="receiveAs">Receive as</div>
             <div className="pair-row">
               <div className="sel-wrap" style={{flex:'1.3'}}>
@@ -1368,10 +1923,11 @@ export default function TransferPage() {
                     <span id="sw-recv-sym" style={{fontSize:'13px',fontWeight:600,color:'var(--text3,#878c8f)'}}></span>
                   </div>
                   <div className="conv-hint" id="sw-rate">&nbsp;</div>
+                  <div className="conv-hint" id="sw-fee">&nbsp;</div>
                 </div>
               </div>
             </div>
-            <button className="exec-btn lifi" id="sw-btn" onClick={() => (window as any).execSwap()} disabled>
+            <button className="exec-btn lifi" id="sw-btn" onClick={() => (window as any).execSwap()}>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4"/>
               </svg>
@@ -1386,8 +1942,8 @@ export default function TransferPage() {
           </div>
           <div className="card">
             <div className="info-box neu" style={{marginBottom:0}}>
-              Same-chain swaps via 1inch, routed through the backend so the API key stays server-side.
-              For <strong>cross-chain</strong> moves use the Send tab, which quotes bridges through LI.FI.
+              Same-chain swaps via LI.FI, routed through the backend so any API key stays server-side.
+              For <strong>cross-chain</strong> moves use the Send tab, which quotes bridges through the same aggregator.
             </div>
           </div>
         </div>
@@ -1441,7 +1997,7 @@ export default function TransferPage() {
                 </div>
               </div>
             </div>
-            <button className="exec-btn lifi" id="send-btn" onClick={() => (window as any).execSend()} disabled>
+            <button className="exec-btn lifi" id="send-btn" onClick={() => (window as any).execSend()}>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                 <path d="M5 12h14M12 5l7 7-7 7"/>
               </svg>

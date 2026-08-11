@@ -34,6 +34,7 @@
 // address (used purely for fee attribution), unrelated to whichever
 // per-user agent actually signs a given trade.
 import { asterFetch } from './aster-session';
+import { getBscCapableProvider, ensureBscNetwork, getEVMProvider } from './wallet';
 
 export const ASTER_BUILDER_ADDRESS = '0xdA480541aDB8D00E4783E5180CE70D3Da52D99F9';
 export const ASTER_BUILDER_MAX_FEE_RATE = '0.0001'; // 0.01%
@@ -303,6 +304,60 @@ export async function ensureAsterAgentApproved(
   } catch (e) {
     return { ok: false, alreadyApproved: false, message: e instanceof Error ? e.message : 'Could not get wallet signer' };
   }
+}
+
+/**
+ * ensureAsterAgentApproved with the wallet handling that every caller needs,
+ * so no page has to reimplement it.
+ *
+ * Aster's backend requires domain.chainId=56 baked into the SIGNED PAYLOAD
+ * (confirmed against Aster's own reference client) — that is NOT the same
+ * thing as the wallet's active network needing to BE BNB Chain. EIP-712
+ * signing doesn't care what network the wallet is connected to; only some
+ * wallets (MetaMask, confirmed via their own GitHub issues) apply their own
+ * guard that refuses or hangs when domain.chainId doesn't match the active
+ * network. So: try signing on whatever network the wallet is ALREADY on
+ * first. If the wallet doesn't enforce that guard, this succeeds with zero
+ * network-switch prompt. Only fall back to forcing a BSC switch if that first
+ * attempt fails or hangs — bounded by a timeout, since MetaMask's own bug
+ * reports show it can hang forever rather than erroring cleanly on a
+ * mismatched chainId.
+ *
+ * Never call this on wallet connect: the not-yet-approved branch prompts for
+ * a signature, so it belongs behind a deliberate user action (opening the
+ * Aster portfolio tab, picking Aster as a withdrawal source).
+ */
+export async function ensureAsterAgentApprovedAuto(
+  userAddress: string,
+): Promise<{ ok: boolean; alreadyApproved: boolean; message: string }> {
+  const provider = getEVMProvider();
+
+  async function buildSigner(forceSwitch: boolean): Promise<Signer> {
+    if (!provider) throw new Error('connect an EVM wallet to approve the Aster agent');
+    let signingProvider = provider;
+    if (forceSwitch) {
+      const bscProvider = (await getBscCapableProvider(userAddress)) ?? provider;
+      const net = await ensureBscNetwork(bscProvider);
+      if (!net.ok) throw new Error(net.reason ?? "switch your wallet to BNB Smart Chain (BSC) — Aster's approval signature requires it");
+      signingProvider = bscProvider;
+    }
+    const { ethers } = await import('ethers');
+    return new ethers.BrowserProvider(signingProvider).getSigner();
+  }
+
+  function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('Signature request timed out')), ms);
+      p.then(v => { clearTimeout(timer); resolve(v); }, e => { clearTimeout(timer); reject(e); });
+    });
+  }
+
+  const first = await withTimeout(
+    ensureAsterAgentApproved(userAddress, () => buildSigner(false)),
+    30000,
+  ).catch(e => ({ ok: false, alreadyApproved: false, message: e instanceof Error ? e.message : 'Signing failed' }));
+  if (first.ok || first.alreadyApproved) return first;
+  return ensureAsterAgentApproved(userAddress, () => buildSigner(true));
 }
 
 // Network-switching (EVM_NETWORKS, getEvmProviderFor, switchEvmNetwork,

@@ -22,8 +22,7 @@ Browser (localhost:3007)
   │       ├── Aster DEX API (fapi.aster.trade)
   │       ├── Binance API (api.binance.com)
   │       ├── CoinGecko API (api.coingecko.com)
-  │       ├── LI.FI API (li.quest)
-  │       └── 1inch API (api.1inch.dev)
+  │       └── LI.FI API (li.quest)
   │
   └── WebSocket (direct)
       ├── Hyperliquid WS (wss://api.hyperliquid.xyz/ws)
@@ -94,8 +93,7 @@ All API calls go through `next.config.js` rewrites to the backend at `BACKEND_UR
 - `/aster-signed/*` → Aster signed endpoints (positions, orders)
 - `/api/coingecko/*` → CoinGecko cached proxy
 - `/api/binance/*` → Binance cached proxy
-- `/lifi-api/*` → LI.FI quote/execute
-- `/swap/*` → 1inch with server-side API key
+- `/lifi-api/*` → LI.FI quote/execute (bridges AND same-chain swaps)
 - `/news`, `/ctnews/*`, `/cdnews/*`, etc. → RSS feed proxies
 
 ---
@@ -118,7 +116,6 @@ All API calls go through `next.config.js` rewrites to the backend at `BACKEND_UR
 | **hl.ts** | `POST /api/hl/*` | api.hyperliquid.xyz |
 | **aster.ts** | `GET/POST /api/aster-fapi/*`, `/api/aster-signed/*`, `/api/aster-oi-bulk`, `/api/aster-leverage-brackets`, `/api/aster-approve-agent`, `/api/aster-agent-address` | fapi.aster.trade |
 | **market-data.ts** | `GET /api/binance/*`, `/api/coingecko/*`, `/api/feargreed/*`, `/api/lifi-api/*` | Various APIs |
-| **swap.ts** | `GET /api/swap/*` | api.1inch.dev (needs ONEINCH_API_KEY) |
 | **news.ts** | `GET /api/news` | Aggregated from 8 RSS sources |
 | **rss.ts** | `GET /api/ctnews/*`, `/api/cdnews/*`, etc. | Per-source RSS proxies |
 | **health.ts** | `GET /health` | Self (health check) |
@@ -153,11 +150,12 @@ All API calls go through `next.config.js` rewrites to the backend at `BACKEND_UR
 ### Hyperliquid (BASIC Mode)
 
 1. **Connect wallet** → MetaMask/Rabby signs EIP-712 typed data
-2. **Place order** → `trading.ts:openPosition()` builds HL order action, signs with EIP-712, POSTs to `/api/hl/exchange`
-3. **TP/SL** → HL native `grouping: 'normalTpsl'` bundles entry + triggers atomically
-4. **Positions** → `loadAccountState()` fetches from `/api/hl/info` with `type: 'clearinghouseState'`
-5. **Candles** → `/api/hl/info` with `type: 'candleSnapshot'`, pushed to Lightweight Charts
-6. **Live price** → WebSocket subscription to `allMids` channel
+2. **Approve trading key** (one time, `hl-agent.ts`) → mints an agent keypair in the browser and authorizes it with the user-signed `approveAgent` action. Required, not an optimization: HL L1 actions must sign over domain `chainId: 1337`, and MetaMask rejects any typed data whose domain chainId ≠ the active chain, so an order signed by the user's own wallet is refused on every network. The agent key is trade-only — it cannot withdraw or transfer.
+3. **Place order** → `trading.ts:openPosition()` builds the HL order action; `submitAction()` signs it with the **agent** key (no wallet popup) and POSTs to `/api/hl/exchange`. A response meaning "unknown agent" (revoked exchange-side) re-approves and retries once.
+4. **TP/SL** → HL native `grouping: 'normalTpsl'` bundles entry + triggers atomically
+5. **Positions** → `loadAccountState()` fetches from `/api/hl/info` with `type: 'clearinghouseState'`
+6. **Candles** → `/api/hl/info` with `type: 'candleSnapshot'`, pushed to Lightweight Charts
+7. **Live price** → WebSocket subscription to `allMids` channel
 
 ### Aster DEX (EXTRA Mode)
 
@@ -195,7 +193,6 @@ All API calls go through `next.config.js` rewrites to the backend at `BACKEND_UR
 
 | Variable | Feature | How to get |
 |---|---|---|
-| `ONEINCH_API_KEY` | Token swaps on Transfer page | [portal.1inch.dev](https://portal.1inch.dev) |
 | `ASTER_SIGNER_ADDRESS` | EXTRA mode trading | Aster Pro API dashboard |
 | `ASTER_SIGNER_PRIVATE_KEY` | EXTRA mode trading | Aster Pro API dashboard |
 | `AGENT_KEY_ENCRYPTION_SECRET` | Per-user Aster agent keys | Any random string |
@@ -230,7 +227,6 @@ See `TODO.md` for the full breakdown with file paths and implementation details.
 ### Must Build
 1. **Proper wallet connect** — Multi-wallet modal + WalletConnect v2 QR flow. WC deps in `package.json` are unused. All signing paths must work through the chosen provider.
 2. **Deposit flow** — No deposit tab. HL auto-detects USDC on Arbitrum; Aster needs `asterDepositAddr()` (already exists) + ERC-20 send.
-3. **Swap UI** — Backend 1inch proxy complete (`/api/swap/quote`, `/build`, `/tokens`). Frontend has no UI. Needs `ONEINCH_API_KEY`.
 
 ### Must Fix
 - Aster leverage not controllable from UI (uses account default silently)
@@ -264,7 +260,7 @@ rdo-one-setup/
 │   │   ├── markets/page.tsx      # Markets overview
 │   │   ├── news/page.tsx         # News aggregator
 │   │   ├── portfolio/page.tsx    # Wallet PnL tracker
-│   │   ├── transfer/page.tsx     # LI.FI bridge + 1inch swaps
+│   │   ├── transfer/page.tsx     # LI.FI bridges + same-chain swaps
 │   │   ├── layout.tsx            # Root layout + providers
 │   │   ├── globals.css           # CSS variables + component styles
 │   │   └── subpage.css           # Shared sub-page styles
@@ -311,7 +307,6 @@ rdo-one-setup/
 │   │   │   ├── market-data.ts   # Binance/CoinGecko/LI.FI
 │   │   │   ├── news.ts          # Aggregated news
 │   │   │   ├── rss.ts           # Per-source RSS
-│   │   │   ├── swap.ts          # 1inch proxy
 │   │   │   └── health.ts        # Health check
 │   │   ├── plugins/
 │   │   │   ├── redis.ts         # Redis (graceful fallback)

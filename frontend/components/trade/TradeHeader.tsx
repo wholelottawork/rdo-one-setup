@@ -6,7 +6,14 @@ export function TradeHeader() {
     <>
       {/* ══ HEADER ═══════════════════════════════════════════════ */}
       <header className="flex items-center justify-between px-3 gap-0 bg-black border-b border-[#1f1f1f] relative z-[200] h-[var(--hdr)]">
-        <div className="flex items-center gap-2 shrink-0">
+        {/* min-w-0, not shrink-0: this side holds the widest content (stats +
+            nav), so pinning it rigid pushed the right-hand cluster — network
+            switcher, language, and the wallet Connect button — straight past
+            the viewport edge below ~1400px. body{overflow:hidden} then left no
+            scrollbar to reach them, so the only way to connect a wallet simply
+            vanished on smaller windows. Everything that must stay reachable is
+            marked shrink-0 individually; the stats block absorbs the squeeze. */}
+        <div className="flex items-center gap-2 min-w-0">
           <div className="flex items-baseline gap-0.5 pr-1">
             <span className="text-[13px] font-bold text-[#50d2c1] tracking-[0.5px]">RDO</span>
             <span className="text-[13px] font-light text-white">ONE</span>
@@ -112,7 +119,7 @@ export function TradeHeader() {
           <div className="w-px h-[31px] shrink-0"></div>
 
           {/* Market picker — now before nav */}
-          <button className="flex items-center gap-1 font-[var(--hl-font)] text-[13px] font-semibold text-white bg-transparent border-none cursor-pointer py-1 px-2 rounded-md transition-colors duration-150 hover:bg-[#0d0d0d]" id="mktBtn">
+          <button className="flex items-center gap-1 shrink-0 font-[var(--hl-font)] text-[13px] font-semibold text-white bg-transparent border-none cursor-pointer py-1 px-2 rounded-md transition-colors duration-150 hover:bg-[#0d0d0d]" id="mktBtn">
             <span id="mktSymbol">BTC-USDC</span>
             <span className="text-[10px] text-[#878c8f] mt-px">▾</span>
           </button>
@@ -139,7 +146,11 @@ export function TradeHeader() {
             </div>
           </div>
 
-          {/* Stat blocks — now before nav */}
+          {/* Stat blocks — now before nav. Wrapped so the squeeze lands here
+              (min-w-0 + overflow-hidden) instead of on the nav or the wallet
+              controls: a clipped funding countdown is recoverable, an
+              off-screen Connect button is not. */}
+          <div className="flex items-center min-w-0 overflow-hidden">
           <div className="flex flex-col items-start py-0 px-3.5 gap-px shrink-0">
             <span className="text-[9px] text-[#878c8f] tracking-[0.4px] uppercase" data-i18n="mark">
               Mark
@@ -173,8 +184,10 @@ export function TradeHeader() {
             </span>
           </div>
 
+          </div>
+
           {/* Nav links — now after ticker blocks */}
-          <nav className="flex items-center gap-1 mx-4">
+          <nav className="flex items-center gap-1 mx-4 shrink-0">
             <a className="text-xs font-medium text-white no-underline py-[5px] px-3 rounded-[7px] transition-colors duration-150 bg-[#1f1f1f] font-semibold pb-[5px]" href="/" data-i18n="trade">
               Trade
             </a>
