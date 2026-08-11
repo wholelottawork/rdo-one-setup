@@ -26,6 +26,40 @@ const ASTER_HEADERS = {
 
 const SIGNED_HEADERS = { 'Content-Type': 'application/x-www-form-urlencoded', ...ASTER_HEADERS };
 
+/** One `chainBalances[CHAIN]` cell, reduced to the numbers a withdrawal
+ *  actually needs. `withdrawable` is the binding one: Aster publishes two
+ *  independent ceilings and the smaller wins. */
+function flattenWithdrawCell(perChain: Record<string, unknown> | undefined) {
+  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+  const perpMax = num(perChain?.perpMaxWithdrawAmount);
+  const chainLimit = num(perChain?.chainLimit);
+  return {
+    withdrawable:
+      perpMax === null ? null : chainLimit === null ? perpMax : Math.min(perpMax, chainLimit),
+    perpMaxWithdrawAmount: perpMax,
+    chainLimit,
+    withdrawFee: num(perChain?.withdrawFee),
+  };
+}
+
+/** `balances` reduced to {ASSET: {CHAIN: cell}} — the full picture of what can
+ *  leave this account and where, which is NOT derivable from the account
+ *  balance. Capacity is per asset AND per chain and the two do not track each
+ *  other (a live account had USDT withdrawable only on Arbitrum while BNB was
+ *  only on BSC), so an asset picker that offers a pairing Aster has no capacity
+ *  for earns "You've exceeded the withdrawal limit for this chain" — a routing
+ *  mistake wearing a ban's clothing. */
+function mapWithdrawMatrix(balances: Record<string, Record<string, unknown>>) {
+  const out: Record<string, Record<string, ReturnType<typeof flattenWithdrawCell>>> = {};
+  for (const [asset, entry] of Object.entries(balances ?? {})) {
+    const chains = (entry?.chainBalances ?? {}) as Record<string, Record<string, unknown>>;
+    const perAsset: Record<string, ReturnType<typeof flattenWithdrawCell>> = {};
+    for (const [chainId, cell] of Object.entries(chains)) perAsset[chainId] = flattenWithdrawCell(cell);
+    if (Object.keys(perAsset).length) out[asset] = perAsset;
+  }
+  return out;
+}
+
 export default async function asterRoutes(fastify: FastifyInstance) {
   // ── Aster DEX fapi (GET public market data — cached) ───────────────────────
   registerCachedProxy(fastify, {
@@ -491,23 +525,27 @@ export default async function asterRoutes(fastify: FastifyInstance) {
     const balances = (data?.balances ?? {}) as Record<string, Record<string, unknown>>;
     const entry = balances[asset];
     const perChain = ((entry?.chainBalances ?? {}) as Record<string, Record<string, unknown>>)[chainId];
-    const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
-    const perpMax = num(perChain?.perpMaxWithdrawAmount);
-    const chainLimit = num(perChain?.chainLimit);
-    const withdrawable =
-      perpMax === null ? null : chainLimit === null ? perpMax : Math.min(perpMax, chainLimit);
+    const cell = flattenWithdrawCell(perChain);
 
     return {
-      withdrawable,
-      perpMaxWithdrawAmount: perpMax,
-      chainLimit,
-      withdrawFee: num(perChain?.withdrawFee),
+      ...cell,
       chainId,
       asset,
       // Absent entirely when Aster errored; the frontend distinguishes "zero
       // withdrawable" from "could not read" on this.
       ok: perChain !== undefined,
       msg: typeof data?.msg === 'string' ? data.msg : null,
+      // THE SAME RESPONSE ALREADY CARRIES EVERY ASSET ON EVERY CHAIN — the
+      // query's `asset`/`chainId` select which cell gets hoisted to the top
+      // level above, they do not narrow what Aster sends. Handing the whole
+      // matrix back turns "which of my currencies can I withdraw, and where?"
+      // into a question the withdrawal form already has the answer to, rather
+      // than one asset x chain probe per candidate pairing.
+      //
+      // Not assumed — a caller must still cope with a one-entry map, which is
+      // what a future Aster that DID filter would return. The frontend falls
+      // back to the account's own asset list in that case.
+      all: mapWithdrawMatrix(balances),
     };
   });
 

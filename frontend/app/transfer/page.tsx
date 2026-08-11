@@ -17,6 +17,14 @@ import {
   normalizeAsterAmount,
   toPlainDecimal,
 } from '@/lib/asterWithdraw';
+import {
+  ASTER_WITHDRAW_ASSETS,
+  asterDisplayDecimals,
+  asterMaxAmount,
+  asterPayoutToken,
+  asterWithdrawChains,
+  type AsterPayoutToken,
+} from '@/lib/asterAssets';
 
 const PAGE_CSS = `
 main{max-width:600px;margin:0 auto;padding:0 24px 60px;padding-top:calc(40px + 8px)}
@@ -193,11 +201,22 @@ export default function TransferPage() {
     // signature — execWithdraw re-quotes just before prompting and refuses to
     // sign a different number than the one on screen.
     let asterWdFee: string | null = null;
-    // The chain that fee was quoted for, and a generation counter for the
-    // quote: the fee is per-chain (0.11 USDT on BNB Chain, 0.51 on Arbitrum)
-    // and both are part of what the user is authorizing.
+    // The chain AND asset that fee was quoted for, and a generation counter for
+    // the quote. The fee is per-chain and per-asset (0.11 USDT on BNB Chain,
+    // 0.51 on Arbitrum, 0.00017 BNB on BNB Chain) and all three are part of
+    // what the user is authorizing — comparing the number alone would wave
+    // through an asset change that happens to quote the same figure.
     let asterWdFeeChain = '';
+    let asterWdFeeAsset = '';
     let asterWdFeeGen = 0;
+    // Which currency is leaving Aster. Was a hardcoded 'USDT' — an account
+    // holding BNB or ETH could see it but never move it.
+    let wdAsset = 'USDT';
+    // Aster's full withdrawal matrix, asset -> chainId -> {withdrawable,...},
+    // as served by /aster-withdraw-info. Empty until the first read; every
+    // caller has to cope with that rather than treat a missing entry as zero,
+    // because "not read yet" and "no capacity" lead to opposite advice.
+    let asterMatrix: Record<string, Record<string, { withdrawable: number | null }>> = {};
     let btwDir   = 'hl-to-aster';
     let hlEquity = 0;
     // Aster's withdrawable balance, and a generation counter for the load that
@@ -278,17 +297,24 @@ export default function TransferPage() {
       el('wd-btn-as')?.classList.toggle('active', !isHL);
       const amtWrap = el('wd-amt-wrap'); if (amtWrap) amtWrap.className = 'amt-wrap' + (isHL ? '' : ' af');
       const execBtn = el('wd-exec-btn'); if (execBtn) execBtn.className = 'exec-btn ' + (isHL ? 'hl' : 'as');
-      set('wd-from-cur', isHL ? 'USDC' : 'USDT');
-      fillTokenSel('wd-to-token', '42161', isHL ? 'USDC' : 'USDT');
+      set('wd-from-cur', isHL ? 'USDC' : wdAsset);
+      fillTokenSel('wd-to-token', '42161', isHL ? 'USDC' : wdAsset);
+      // Hyperliquid pays out USDC and nothing else, so the currency picker is
+      // meaningless there rather than merely unused.
+      const assetRow = el('wd-asset-row');
+      if (assetRow) assetRow.style.display = isHL ? 'none' : '';
       // Aster's fee is a signed field — quote it as soon as the user picks
       // Aster so it is on screen well before the wallet prompt, not revealed
       // by it. Hyperliquid's withdrawal fee is fixed and not signed.
       asterWdFee = null;
+      asterWdFeeChain = '';
+      asterWdFeeAsset = '';
       set('wd-fee', ' ');
       // Invalidates any Aster balance read still in flight (see asterBalGen).
       asterBalGen++;
       asterAvail = 0;
       asterWithdrawable = 0;
+      asterWithdrawableChain = '';
 
       if (isHL) {
         set('wd-bal', hlEquity ? `Balance: $${fmt(hlEquity)} USDC` : ' ');
@@ -337,17 +363,36 @@ export default function TransferPage() {
         const avail  = parseFloat(String(acct.availableBalance ?? wallet)) || 0;
         asterAvail = avail;
 
+        const asset = wdAsset;
         const chain = asterWdChain();
-        const cap = await readAsterWithdrawable(chain, ASTER_WD_ASSET);
+        const cap = await readAsterWithdrawable(chain, asset);
         if (stale()) return;
         // The binding number is whichever is smaller: margin can lock funds
         // below Aster's payout cap, and the cap can sit below free margin.
-        const usable = cap === null ? avail : Math.min(avail, cap);
+        //
+        // ONLY FOR USDT. `availableBalance` is free margin denominated in the
+        // account's margin currency, so mining it for a BNB or ETH ceiling
+        // compares two different units — "0.019 BNB withdrawable" against
+        // "12.07 available" would clamp a valid withdrawal to nonsense in one
+        // direction and wave a bad one through in the other. For anything else
+        // Aster's own per-asset cap is the only number that means anything.
+        const isMarginAsset = asset === 'USDT';
+        const usable = cap === null ? (isMarginAsset ? avail : 0) : isMarginAsset ? Math.min(avail, cap) : cap;
         asterWithdrawable = usable;
         asterWithdrawableChain = chain;
+        const d = asterDisplayDecimals(asset);
         set('wd-bal', cap === null
-          ? `Available: ${fmt(avail)} USDT  ·  Account: ${fmt(wallet)} USDT`
-          : `Withdrawable: ${fmt(usable)} USDT on ${chainName(chain)}  ·  Account: ${fmt(wallet)} USDT`);
+          ? isMarginAsset
+            ? `Available: ${fmt(avail)} USDT  ·  Account: ${fmt(wallet)} USDT`
+            : `Could not read your withdrawable ${asset} — Aster did not answer`
+          : `Withdrawable: ${fmt(usable, d)} ${asset} on ${chainName(chain)}  ·  Account: ${fmt(wallet)} USDT`);
+        // "Could not read" and "nothing to withdraw" lead to opposite advice —
+        // retry versus close a position — so MAX must not report one as the
+        // other. Only USDT has a second source (free margin) to fall back on.
+        if (cap === null && !isMarginAsset)
+          asterBalErr = `Could not read how much ${asset} Aster will pay out — try again in a moment`;
+        else if (usable <= 0)
+          asterBalErr = `No withdrawable ${asset} on ${chainName(chain)} right now`;
       } catch (e: any) {
         if (stale()) return;
         asterBalErr = `Could not read your Aster balance: ${e?.message ?? 'unknown error'}`;
@@ -369,10 +414,76 @@ export default function TransferPage() {
         const res = await asterFetch(`/aster-withdraw-info?chainId=${chainId}&asset=${asset}`);
         if (!res.ok) return null;
         const d = await res.json();
+        // The same response carries EVERY asset on every chain — the query only
+        // picks which cell gets hoisted to the top level. Keeping the whole
+        // matrix means the currency picker can say what is actually withdrawable
+        // where without one round trip per candidate pairing.
+        if (d?.all && typeof d.all === 'object') {
+          asterMatrix = d.all;
+          fillWdAssetSel();
+        }
         return d?.ok && typeof d.withdrawable === 'number' ? d.withdrawable : null;
       } catch {
         return null;
       }
+    }
+
+    /** Withdrawable amount of `asset` across every chain Aster pays it out on,
+     *  per the last matrix read. Null when the matrix has not been read — which
+     *  is NOT the same as zero and must not be shown as "nothing to withdraw". */
+    function matrixBest(asset: string): { chain: string; amount: number } | null {
+      const perChain = asterMatrix[asset];
+      if (!perChain) return null;
+      let best: { chain: string; amount: number } | null = null;
+      for (const chain of asterWithdrawChains(asset)) {
+        const amount = perChain[chain]?.withdrawable ?? 0;
+        if (!best || amount > best.amount) best = { chain, amount };
+      }
+      return best;
+    }
+
+    /** The currency picker. Options come from what this app can actually see a
+     *  withdrawal through end to end (@/lib/asterAssets), annotated with what
+     *  Aster says is withdrawable once the matrix has been read. */
+    function fillWdAssetSel() {
+      const sel = el('wd-asset') as HTMLSelectElement | null;
+      if (!sel) return;
+      const prev = sel.value || wdAsset;
+      sel.innerHTML = ASTER_WITHDRAW_ASSETS.map(a => {
+        const best = matrixBest(a);
+        const label = best && best.amount > 0
+          ? `${a} — ${fmt(best.amount, asterDisplayDecimals(a))} on ${chainName(best.chain)}`
+          : best
+            ? `${a} — none withdrawable`
+            : a;
+        return `<option value="${a}">${label}</option>`;
+      }).join('');
+      sel.value = prev;
+      if (sel.value !== prev) sel.value = wdAsset;
+    }
+
+    /** Switching currency invalidates the fee, the balance and the payout
+     *  chain all at once — none of them survive the change, and a stale one is
+     *  either a rejected signature or a number the user never authorized. */
+    function setWdAsset(asset: string) {
+      if (!asterWithdrawChains(asset).length) return;
+      wdAsset = asset;
+      set('wd-from-cur', asset);
+      asterWdFee = null;
+      asterWdFeeChain = '';
+      asterWdFeeAsset = '';
+      set('wd-fee', ' ');
+      asterBalGen++;
+      asterAvail = 0;
+      asterWithdrawable = 0;
+      asterWithdrawableChain = '';
+      const amt = el('wd-amt') as HTMLInputElement | null;
+      if (amt) { amt.value = ''; amt.step = String(1 / 10 ** asterDisplayDecimals(asset)); }
+      // updateWdConvHint re-quotes the fee itself whenever Aster is the source,
+      // so this must not also do it — two quotes in flight for the same change
+      // is just a race the generation counter has to clean up.
+      updateWdConvHint();
+      loadAsterAvail();
     }
 
     /** The Between Accounts variant: same number, but pinned to Arbitrum,
@@ -395,7 +506,7 @@ export default function TransferPage() {
         }
         const acct = await getAsterAccount(addr);
         const avail = parseFloat(String(acct?.availableBalance ?? 0)) || 0;
-        const cap = await readAsterWithdrawable(ASTER_WD_FALLBACK_CHAIN, ASTER_WD_ASSET);
+        const cap = await readAsterWithdrawable(ASTER_WD_FALLBACK_CHAIN, ASTER_BTW_ASSET);
         asterWithdrawable = cap === null ? avail : Math.min(avail, cap);
         asterWithdrawableChain = ASTER_WD_FALLBACK_CHAIN;
         if (asterWithdrawable <= 0)
@@ -415,9 +526,10 @@ export default function TransferPage() {
           : evmAddressRef.current ? `Balance: $${fmt(hlEquity)} USDC` : 'Connect wallet to see balance');
       } else if (asterWithdrawable > 0) {
         const on = asterWithdrawableChain ? ` on ${chainName(asterWithdrawableChain)}` : '';
+        const d = asterDisplayDecimals(wdAsset);
         set('wd-bal', a
-          ? `Withdrawable: ${fmt(asterWithdrawable)} USDT${on}  ·  After: ${fmt(Math.max(0, asterWithdrawable - a))}`
-          : `Withdrawable: ${fmt(asterWithdrawable)} USDT${on}`);
+          ? `Withdrawable: ${fmt(asterWithdrawable, d)} ${wdAsset}${on}  ·  After: ${fmt(Math.max(0, asterWithdrawable - a), d)}`
+          : `Withdrawable: ${fmt(asterWithdrawable, d)} ${wdAsset}${on}`);
       }
     }
 
@@ -436,8 +548,13 @@ export default function TransferPage() {
       // chain well below free margin, and offering the larger number produced
       // a rejection that reads like a ban ("exceeded the withdrawal limit for
       // this chain") rather than a too-large amount.
-      if (asterWithdrawable > 0) { wdAmt.value = asterWithdrawable.toFixed(2); onWdAmtInput(); }
-      else showSt('wd-st', 'err', asterBalErr || 'No withdrawable USDT in your Aster account — an open position or resting order may be holding it as margin');
+      //
+      // toFixed(2) is not enough precision for a gas token: a real withdrawable
+      // BNB balance of 0.019 rounds to "0.02", which is MORE than the account
+      // holds and gets rejected. asterMaxAmount truncates at the asset's own
+      // display precision instead.
+      if (asterWithdrawable > 0) { wdAmt.value = asterMaxAmount(asterWithdrawable, wdAsset); onWdAmtInput(); }
+      else showSt('wd-st', 'err', asterBalErr || `No withdrawable ${wdAsset} in your Aster account — an open position or resting order may be holding it as margin`);
     }
 
     function onWdToChainChange() {
@@ -462,19 +579,19 @@ export default function TransferPage() {
       const direct = wdSrc === 'hl'
         // Hyperliquid only ever pays out native USDC on Arbitrum.
         ? toToken === USDC_ARB && toChain === '42161'
-        // Aster can pay out on any of ASTER_WD_CHAINS, so "direct" is
-        // whatever asterWdChain resolved the destination to.
-        : asterWdChain() === toChain && toSym === ASTER_WD_ASSET;
+        // Aster's payout chains are per-asset, so "direct" is whatever
+        // asterWdChain resolved the destination to for the selected currency.
+        : asterWdChain() === toChain && toSym === wdAsset;
       if (direct) {
         hint.style.color = 'var(--text3,#878c8f)';
         hint.textContent = wdSrc === 'hl'
           ? 'Direct withdrawal — arrives as-is on Arbitrum'
-          : `Direct withdrawal — Aster pays out ${ASTER_WD_ASSET} on ${chainName(toChain)}, no bridge`;
+          : `Direct withdrawal — Aster pays out ${wdAsset} on ${chainName(toChain)}, no bridge`;
       } else {
         hint.style.color = 'var(--accent,#50d2c1)';
         hint.textContent = wdSrc === 'hl'
           ? `LI.FI will convert to ${toSym} after the withdrawal lands`
-          : `Aster pays out ${ASTER_WD_ASSET} on ${chainName(asterWdChain())}, then LI.FI converts to ${toSym} on ${chainName(toChain)}`;
+          : `Aster pays out ${wdAsset} on ${chainName(asterWdChain())}, then LI.FI converts to ${toSym} on ${chainName(toChain)}`;
       }
       // The fee is quoted per chain (0.11 USDT on BNB Chain against 0.51 on
       // Arbitrum) and it is a SIGNED field, so a destination change has to
@@ -502,12 +619,12 @@ export default function TransferPage() {
         const toToken  = toTokenEl?.value || '';
         const toSym    = selSym('wd-to-token');
         // Hyperliquid always pays out native USDC on Arbitrum; Aster pays out
-        // USDT on whichever of ASTER_WD_CHAINS the destination resolved to, so
+        // the SELECTED asset on whichever chain it supports that asset on, so
         // "no conversion needed" is a different test per venue.
         const wdChain  = wdSrc === 'hl' ? '42161' : asterWdChain();
         const isSame   = wdSrc === 'hl'
           ? toToken === USDC_ARB && toChain === '42161'
-          : wdChain === toChain && toSym === ASTER_WD_ASSET;
+          : wdChain === toChain && toSym === wdAsset;
         const destShort = destAddr === user ? 'your wallet' : destAddr.slice(0,10) + '…';
 
         if (wdSrc === 'hl') {
@@ -543,44 +660,68 @@ export default function TransferPage() {
           // screen before the wallet prompt — and it has to be the number the
           // user already saw. A quote that moved between then and now stops
           // the withdrawal rather than substituting itself silently.
+          const asset = wdAsset;
+          const dec = asterDisplayDecimals(asset);
+          const payout = wdPayout(asset, wdChain);
           const shown = asterWdFee;
           const shownChain = asterWdFeeChain;
+          const shownAsset = asterWdFeeAsset;
           let fee: string;
           try { fee = (await refreshAsterWdFee()).fee; }
           catch (e: any) { return showSt('wd-st', 'err', e.message); }
           if (shown === null)
-            return showSt('wd-st', 'err', `Aster’s withdrawal fee is ${fee} USDT — press Withdraw again to authorize it.`);
-          // The chain counts as much as the number: the same 0.51 USDT is
-          // quoted on both Arbitrum and Ethereum, so comparing fees alone would
-          // wave through a destination change the user never re-confirmed.
-          if (shown !== fee || shownChain !== wdChain)
-            return showSt('wd-st', 'err', `Aster’s withdrawal terms are now ${fee} USDT paid out on ${chainName(wdChain)} — check them and press Withdraw again.`);
+            return showSt('wd-st', 'err', `Aster’s withdrawal fee is ${fee} ${asset} — press Withdraw again to authorize it.`);
+          // The chain and the currency count as much as the number: the same
+          // 0.51 is quoted for USDT and USDC alike on Arbitrum, so comparing
+          // fees alone would wave through a change the user never re-confirmed.
+          if (shown !== fee || shownChain !== wdChain || shownAsset !== asset)
+            return showSt('wd-st', 'err', `Aster’s withdrawal terms are now ${fee} ${asset} paid out on ${chainName(wdChain)} — check them and press Withdraw again.`);
           if (amt <= Number(fee))
-            return showSt('wd-st', 'err', `Amount must be more than the ${fee} USDT Aster withdrawal fee`);
+            return showSt('wd-st', 'err', `Amount must be more than the ${fee} ${asset} Aster withdrawal fee`);
           // What actually lands in the wallet is net of the fee; polling for
           // the gross amount would time out on a withdrawal that succeeded.
-          const arriving = BigInt(Math.round((amt - Number(fee)) * 1e6 * 0.97));
+          //
+          // In the PAYOUT TOKEN's decimals, which are a property of the token on
+          // that chain and not of the symbol — USDT is 6 on Arbitrum and 18 on
+          // BNB Chain. The old flat 1e6 was right for exactly the one pairing
+          // this flow used to support.
+          const arriving = (toUnits(toPlainDecimal(amt - Number(fee)), payout.decimals) * BigInt(97)) / BigInt(100);
           if (isSame) {
-            initProg('wd', [`Withdraw USDT from Aster to ${chainName(wdChain)}`]);
-            stepSet(0, 'active', `Fee ${fee} USDT — confirm both signatures in your wallet…`);
-            await asterWithdrawRaw(prov, user, amt, destAddr, fee, wdChain);
-            stepSet(0, 'done', `${fmt(amt)} USDT → ${destShort} on ${chainName(wdChain)}`);
+            initProg('wd', [`Withdraw ${asset} from Aster to ${chainName(wdChain)}`]);
+            stepSet(0, 'active', `Fee ${fee} ${asset} — confirm the withdrawal in your wallet…`);
+            await asterWithdrawRaw(prov, user, amt, destAddr, fee, wdChain, asset);
+            stepSet(0, 'done', `${fmt(amt, dec)} ${asset} → ${destShort} on ${chainName(wdChain)}`);
           } else {
+            // The conversion leg is a transaction on the PAYOUT chain, so it
+            // needs that chain's gas — and an account withdrawing USDT to BNB
+            // Chain has no particular reason to hold BNB. Checked BEFORE the
+            // signature: finding out afterwards means the funds have already
+            // left Aster and are sitting somewhere the user cannot move them.
+            //
+            // Not checked when the payout IS the gas token: the arriving funds
+            // are what pays for the swap.
+            if (!payout.native) {
+              const gas = await nativeBalOn(prov, wdChain, user).catch(() => null);
+              if (gas !== null && gas === BigInt(0))
+                return showSt('wd-st', 'err',
+                  `Converting to ${toSym} happens on ${chainName(wdChain)} and your wallet has no gas there. `
+                  + `Fund it first, or withdraw ${asset} on ${chainName(wdChain)} directly.`);
+            }
             initProg('wd', [
-              `Withdraw USDT from Aster to ${chainName(wdChain)}`,
-              'Wait for USDT in wallet',
-              `Convert USDT → ${toSym} via LI.FI`,
+              `Withdraw ${asset} from Aster to ${chainName(wdChain)}`,
+              `Wait for ${asset} in wallet`,
+              `Convert ${asset} → ${toSym} via LI.FI`,
             ]);
-            stepSet(0, 'active', `Fee ${fee} USDT — confirm both signatures in your wallet…`);
-            await asterWithdrawRaw(prov, user, amt, user, fee, wdChain);
-            stepSet(0, 'done', `${fmt(amt)} USDT withdrawal submitted`);
+            stepSet(0, 'active', `Fee ${fee} ${asset} — confirm the withdrawal in your wallet…`);
+            await asterWithdrawRaw(prov, user, amt, user, fee, wdChain, asset);
+            stepSet(0, 'done', `${fmt(amt, dec)} ${asset} withdrawal submitted`);
             stepSet(1, 'active', 'Polling every 12s…');
-            const before = await erc20BalOn(prov, ARB_CHAIN, USDT_ARB, user);
-            await pollBal(prov, USDT_ARB, user, arriving, before, 600000);
-            stepSet(1, 'done', 'USDT arrived in wallet');
+            const before = await payoutBalOn(prov, wdChain, payout, user);
+            await pollPayoutBal(prov, wdChain, payout, user, arriving, before, 600000);
+            stepSet(1, 'done', `${asset} arrived in wallet`);
             stepSet(2, 'active', `Getting LI.FI route to ${toSym}…`);
-            const bal = await erc20BalOn(prov, ARB_CHAIN, USDT_ARB, user);
-            const q = await lifiQuote('42161', toChain, USDT_ARB, toToken, bal.toString(), user, destAddr);
+            const swapping = await convertibleBalance(prov, wdChain, payout, user);
+            const q = await lifiQuote(wdChain, toChain, payout.address, toToken, swapping.toString(), user, destAddr);
             stepSet(2, 'active', 'Approve + convert — confirm in wallet…');
             const h = await lifiExec(prov, q, user);
             stepSet(2, 'active', 'Confirming…');
@@ -1288,7 +1429,7 @@ export default function TransferPage() {
           // swap that USDT to USDC and hand it to the Hyperliquid bridge, both
           // of which only exist on Arbitrum.
           let fee: string;
-          try { fee = await asterWithdrawFee(ASTER_WD_FALLBACK_CHAIN); }
+          try { fee = await asterWithdrawFee(ASTER_WD_FALLBACK_CHAIN, ASTER_BTW_ASSET); }
           catch (e: any) { return showSt('btw-st', 'err', e.message); }
           if (amt <= Number(fee))
             return showSt('btw-st', 'err', `Amount must be more than the ${fee} USDT Aster withdrawal fee`);
@@ -1306,7 +1447,7 @@ export default function TransferPage() {
             'Send USDC to the Hyperliquid bridge',
           ]);
           stepSet(0, 'active', `Fee ${fee} USDT — confirm both signatures in your wallet…`);
-          await asterWithdrawRaw(prov, user, amt, user, fee, ASTER_WD_FALLBACK_CHAIN);
+          await asterWithdrawRaw(prov, user, amt, user, fee, ASTER_WD_FALLBACK_CHAIN, ASTER_BTW_ASSET);
           stepSet(0, 'done', `${fmt(amt)} USDT withdrawal submitted`);
           stepSet(1, 'active', 'Polling every 12s (up to 10 min)…');
           const tb = await erc20BalOn(prov, ARB_CHAIN, USDT_ARB, user);
@@ -1507,6 +1648,44 @@ export default function TransferPage() {
       throw new Error('Confirmation timeout');
     }
 
+    /** Balance of an Aster payout token, whichever kind it is. A native payout
+     *  (BNB on BSC, ETH on Arbitrum) has no balanceOf to call — eth_call to the
+     *  zero address answers '0x', which hexToBigInt rightly refuses to read as
+     *  a balance, so this has to branch rather than pass an address through. */
+    async function payoutBalOn(prov: any, chainId: string, token: AsterPayoutToken, owner: string): Promise<bigint> {
+      return token.native
+        ? nativeBalOn(prov, chainId, owner)
+        : erc20BalOn(prov, chainId, token.address, owner);
+    }
+
+    async function pollPayoutBal(
+      prov: any, chainId: string, token: AsterPayoutToken, owner: string,
+      needed: bigint, baseline: bigint, timeoutMs: number,
+    ): Promise<bigint> {
+      const end = Date.now() + timeoutMs;
+      while (Date.now() < end) {
+        const bal = await payoutBalOn(prov, chainId, token, owner);
+        if (bal >= baseline + needed) return bal;
+        await sleep(12000);
+      }
+      throw new Error('Timeout — funds did not arrive. Check your account and retry.');
+    }
+
+    /** How much of a just-arrived payout can actually be handed to LI.FI.
+     *
+     *  Everything, unless it is the gas token — in which case the swap's own
+     *  fee comes out of the same balance being swapped, so offering all of it
+     *  produces a route the wallet cannot pay for. Same reserve MAX uses on the
+     *  Send tab, for the same reason. */
+    async function convertibleBalance(prov: any, chainId: string, token: AsterPayoutToken, owner: string): Promise<bigint> {
+      const bal = await payoutBalOn(prov, chainId, token, owner);
+      if (!token.native) return bal;
+      const reserve = toUnits(String(NATIVE_GAS_RESERVE), token.decimals);
+      if (bal <= reserve)
+        throw new Error(`Not enough ${chainName(chainId)} gas left to convert — the withdrawal is in your wallet`);
+      return bal - reserve;
+    }
+
     async function pollBal(prov: any, token: string, owner: string, needed: bigint, baseline: bigint, timeoutMs: number, chainId = ARB_CHAIN) {
       const end = Date.now() + timeoutMs;
       while (Date.now() < end) {
@@ -1602,33 +1781,58 @@ export default function TransferPage() {
     }
 
     // ── Aster withdrawal (V3) ─────────────────────────────────────────────
-    const ASTER_WD_ASSET = 'USDT';
+    // Which chains Aster pays which asset out on, and as which token, lives in
+    // @/lib/asterAssets — it is per-asset data (BNB only on BSC, USDT on three
+    // chains) rather than the one flat set this page used to carry.
 
-    // Chains Aster will pay a USDT withdrawal out on. Probed against Aster's
-    // own estimateFee endpoint — every other chain this page offers (Base,
-    // Optimism, Polygon, Avalanche) answers "Unsupport token". All three are
-    // switchable, which is not a coincidence we can drop: signature 1's
-    // EIP-712 domain carries the destination chainId, so the wallet has to be
-    // switched to that chain to produce it, and ensureChain can only switch to
-    // a network findEvmNetwork describes.
-    const ASTER_WD_CHAINS = new Set(['1', '56', '42161']);
-
-    // Where a withdrawal goes when the user's destination isn't one Aster pays
-    // out on. Arbitrum, because that is where the LI.FI conversion leg and the
-    // Between Accounts flow both expect the USDT to land.
+    // The Between Accounts flow is still USDT-pinned: its next legs are a LI.FI
+    // swap and the Hyperliquid bridge, both of which only exist on Arbitrum.
+    // Named separately from the Withdraw tab's fallback so that stays true when
+    // this one stops being.
     const ASTER_WD_FALLBACK_CHAIN = '42161';
+    const ASTER_BTW_ASSET = 'USDT';
+
+    /** Where a withdrawal of `asset` goes when the user's chosen destination
+     *  isn't a chain Aster pays that asset out on.
+     *
+     *  Arbitrum when it is an option, because that is where the LI.FI leg has
+     *  the most depth and where the rest of this page already operates.
+     *  Otherwise whichever chain Aster does pay out on — for BNB that is only
+     *  ever BSC, and defaulting it to Arbitrum the way the old flat constant
+     *  did would have signed a withdrawal Aster rejects outright. */
+    function asterWdFallbackChain(asset: string): string {
+      const chains = asterWithdrawChains(asset);
+      if (!chains.length) return ASTER_WD_FALLBACK_CHAIN;
+      if (chains.includes(ASTER_WD_FALLBACK_CHAIN)) return ASTER_WD_FALLBACK_CHAIN;
+      // Prefer a chain Aster currently has capacity on, when the matrix has
+      // been read — otherwise the first supported one, which is still a chain
+      // it CAN pay out on rather than a guess.
+      const withCapacity = chains.find(c => (asterMatrix[asset]?.[c]?.withdrawable ?? 0) > 0);
+      return withCapacity ?? chains[0];
+    }
 
     /** The chain the withdrawal itself leaves Aster on — which is NOT always
-     *  the chain the user picked to receive on. Direct when Aster pays out
-     *  there and the user asked for USDT (one signature pair, one fee, no
-     *  bridge); otherwise it lands on Arbitrum and LI.FI converts from there.
-     *  Withdrawing straight to BNB Chain costs 0.11 USDT against Arbitrum's
-     *  0.51, so this is real money, not just a hop saved. */
+     *  the chain the user picked to receive on. Direct when Aster pays the
+     *  selected asset out there and the user asked for that same asset (one
+     *  signature pair, one fee, no bridge); otherwise it lands on the fallback
+     *  chain and LI.FI converts from there. Withdrawing USDT straight to BNB
+     *  Chain costs 0.11 against Arbitrum's 0.51, so this is real money, not
+     *  just a hop saved. */
     function asterWdChain(): string {
-      const toChain = (el('wd-to-chain') as HTMLSelectElement | null)?.value || ASTER_WD_FALLBACK_CHAIN;
-      return ASTER_WD_CHAINS.has(toChain) && selSym('wd-to-token') === ASTER_WD_ASSET
+      const toChain = (el('wd-to-chain') as HTMLSelectElement | null)?.value || '';
+      return asterPayoutToken(wdAsset, toChain) && selSym('wd-to-token') === wdAsset
         ? toChain
-        : ASTER_WD_FALLBACK_CHAIN;
+        : asterWdFallbackChain(wdAsset);
+    }
+
+    /** The token Aster will actually deliver, for the asset and chain a
+     *  withdrawal is about to use. Throws rather than defaulting: every caller
+     *  needs its decimals and its native-ness to watch the funds arrive, and
+     *  the wrong answer is a conversion leg that never fires. */
+    function wdPayout(asset: string, chainId: string): AsterPayoutToken {
+      const t = asterPayoutToken(asset, chainId);
+      if (!t) throw new Error(`Aster does not pay ${asset} out on ${chainName(chainId)}`);
+      return t;
     }
 
     const chainName = (id: string) => CHAINS[chainIdx(id)]?.name ?? `chain ${id}`;
@@ -1637,8 +1841,8 @@ export default function TransferPage() {
      *  string that goes into the signature. Throws rather than returning a
      *  fallback: `fee` is signed, so a guessed one is either a rejected
      *  signature or a withdrawal on terms the user never saw. */
-    async function asterWithdrawFee(chainId: string): Promise<string> {
-      const r = await fetch(`/aster-withdraw-fee?chainId=${chainId}&asset=${ASTER_WD_ASSET}`);
+    async function asterWithdrawFee(chainId: string, asset: string): Promise<string> {
+      const r = await fetch(`/aster-withdraw-fee?chainId=${chainId}&asset=${asset}`);
       const d = await r.json().catch(() => ({}));
       if (!r.ok || typeof d?.fee !== 'string')
         throw new Error(d?.msg || 'Could not get Aster’s withdrawal fee — not signing a withdrawal without it');
@@ -1646,11 +1850,15 @@ export default function TransferPage() {
     }
 
     /** Quote the fee and put it on screen. Returns it so the caller can check
-     *  the user was actually shown what they are about to sign. */
-    async function refreshAsterWdFee(): Promise<{ fee: string; chain: string }> {
+     *  the user was actually shown what they are about to sign.
+     *
+     *  The fee is denominated in the asset being withdrawn, not in dollars —
+     *  0.00017 BNB, not 0.11 USDT — so the asset travels with it everywhere. */
+    async function refreshAsterWdFee(): Promise<{ fee: string; chain: string; asset: string }> {
       const gen = ++asterWdFeeGen;
       const chain = asterWdChain();
-      const fee = await asterWithdrawFee(chain);
+      const asset = wdAsset;
+      const fee = await asterWithdrawFee(chain, asset);
       // Flicking through destinations leaves several quotes in flight, and they
       // do not answer in issue order — an earlier one landing last would leave
       // the label describing a chain the user has already moved off. Only the
@@ -1659,9 +1867,10 @@ export default function TransferPage() {
       if (gen === asterWdFeeGen) {
         asterWdFee = fee;
         asterWdFeeChain = chain;
-        set('wd-fee', `Aster network fee: ${fee} ${ASTER_WD_ASSET} — paid out on ${chainName(chain)}`);
+        asterWdFeeAsset = asset;
+        set('wd-fee', `Aster network fee: ${fee} ${asset} — paid out on ${chainName(chain)}`);
       }
-      return { fee, chain };
+      return { fee, chain, asset };
     }
 
     /** The wallet will only sign a typed-data payload whose domain chainId is
@@ -1733,12 +1942,12 @@ export default function TransferPage() {
      * authorization to move funds and it can only come from the wallet. The
      * backend verifies it recovers to the session's user before signing.
      */
-    async function asterWithdrawRaw(prov: any, user: string, amt: number, dest: string, fee: string, chainId: string) {
+    async function asterWithdrawRaw(prov: any, user: string, amt: number, dest: string, fee: string, chainId: string, asset: string) {
       await ensureWdChain(prov, chainId);
       const amount = normalizeAsterAmount(toPlainDecimal(amt));
       const params = {
         chainId,
-        asset: ASTER_WD_ASSET,
+        asset,
         amount,
         fee,
         receiver: dest,
@@ -1787,8 +1996,8 @@ export default function TransferPage() {
       if (status === 401)
         return 'Your Aster session expired — reconnect your wallet and try again';
       if (/withdrawal limit for this chain/i.test(msg))
-        return `Aster has no ${ASTER_WD_ASSET} withdrawal capacity on ${chainName(asterWdChain())} right now. `
-          + 'Try a different destination chain, or a smaller amount.';
+        return `Aster has no ${wdAsset} withdrawal capacity on ${chainName(asterWdChain())} right now. `
+          + 'Try a different currency or destination chain, or a smaller amount.';
       return msg || 'Aster withdrawal failed';
     }
 
@@ -1800,6 +2009,7 @@ export default function TransferPage() {
     // Expose to window for JSX handlers
     (window as any).setTab       = setTab;
     (window as any).setWdSrc     = setWdSrc;
+    (window as any).setWdAsset   = setWdAsset;
     (window as any).onWdAmtInput = onWdAmtInput;
     (window as any).wdMax        = wdMax;
     (window as any).onWdToChainChange = onWdToChainChange;
@@ -1833,6 +2043,9 @@ export default function TransferPage() {
     setTab(['withdraw','deposit','swap','send','between'].includes(wanted) ? wanted : 'withdraw');
     fillChainSel('wd-to-chain');
     fillTokenSel('wd-to-token', '42161', 'USDC');
+    // Populated before any balance is read, so the picker is never empty; the
+    // withdrawable annotations fill in once the matrix lands.
+    fillWdAssetSel();
     updateWdConvHint();
     fillChainSel('dp-from-chain');
     setDpDest('hl');
@@ -1891,9 +2104,17 @@ export default function TransferPage() {
               <button className="src-tab hl active" id="wd-btn-hl" onClick={() => (window as any).setWdSrc('hl')}>BASIC · Hyperliquid</button>
               <button className="src-tab as" id="wd-btn-as" onClick={() => (window as any).setWdSrc('aster')}>EXTRA · Aster</button>
             </div>
+            {/* Aster holds more than one currency and will pay any of them out;
+                Hyperliquid pays USDC only, so this row hides for that source. */}
+            <div id="wd-asset-row" style={{display:'none'}}>
+              <div className="field-lbl">Currency</div>
+              <div className="sel-wrap">
+                <select id="wd-asset" onChange={(e) => (window as any).setWdAsset(e.currentTarget.value)}></select>
+              </div>
+            </div>
             <div className="field-lbl" data-i18n="amount">Amount</div>
             <div className="amt-wrap" id="wd-amt-wrap">
-              <input className="amt-input" type="number" id="wd-amt" placeholder="0.00" min="0" onInput={() => (window as any).onWdAmtInput()} />
+              <input className="amt-input" type="number" id="wd-amt" placeholder="0.00" min="0" step="any" onInput={() => (window as any).onWdAmtInput()} />
               <div className="amt-right">
                 <span className="cur-badge" id="wd-from-cur">USDC</span>
                 <button className="max-btn" onClick={() => (window as any).wdMax()}>MAX</button>
