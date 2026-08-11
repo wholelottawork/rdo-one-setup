@@ -222,6 +222,10 @@ main{max-width:1400px;margin:0 auto;padding:0 24px 60px;padding-top:calc(var(--n
 .evm-bal-right{text-align:right}
 .evm-bal-amount{font-size:12px;font-weight:600;font-variant-numeric:tabular-nums}
 .evm-bal-usd{font-size:10px;color:var(--text3)}
+.evm-chain-group{margin-bottom:10px}
+.evm-chain-group:last-child{margin-bottom:0}
+.evm-chain-hdr{display:flex;align-items:center;justify-content:space-between;font-size:10px;font-weight:700;color:var(--text2);padding:4px 0;border-bottom:1px solid var(--border);margin-bottom:2px}
+.evm-bal-empty{font-size:11px;color:var(--text3);padding:10px 0}
 `;
 
 export default function PortfolioPage() {
@@ -265,10 +269,19 @@ export default function PortfolioPage() {
     const SOL_MINT   = 'So11111111111111111111111111111111111111112';
     const USDC_MINT  = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
     const TOKEN_PROG = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
-    const SOL_RPC    = 'https://api.mainnet-beta.solana.com';
+    // Token-2022. Its accounts live under a different program id, so the
+    // single-program query this page used to run simply could not see them —
+    // any Token-2022 holding was missing from the list with no error shown.
+    const TOKEN22_PROG = 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb';
+    // All three of these are backend routes now, not upstream URLs. The direct
+    // calls they replace are dead ends: api.mainnet-beta.solana.com answers
+    // 403 to browsers, tokens.jup.ag no longer resolves, and
+    // api.jup.ag/price/v2 is a 404 (that host wants an API key now).
+    const SOL_RPC    = '/rpc/solana';
+    const JUP_PRICE  = '/jup-price/v3';
+    const JUP_TOKENS = '/jup-tokens/search';
+    const JUP_ULTRA  = '/jup-ultra/balances';
     const HL_API     = '/hl/info';
-    const ARB_RPC    = 'https://arb1.arbitrum.io/rpc';
-    const USDC_ARB   = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831';
 
     let tokenMeta: Record<string, any> = {};
     let hlFills: any[] = [];
@@ -279,6 +292,12 @@ export default function PortfolioPage() {
     let shareData: any = null;
     let portfolioMode = 'hl';
     let asterFills: any[] = [];
+    // The two halves of the headline total, kept as numbers. They used to be
+    // merged by parsing the rendered "$1,234.56" back out of the DOM and adding
+    // to it, which double-counted the EVM side on every refresh (and lost the
+    // total entirely once either half was still showing "$—").
+    let solTotalUsd: number | null = null;
+    let evmTotalUsd: number | null = null;
 
     const el = (id: string) => document.getElementById(id);
     const set = (id: string, v: string) => { const e = el(id); if (e) e.textContent = v; };
@@ -310,7 +329,8 @@ export default function PortfolioPage() {
 
     function onSolDisconnected() {
       const chip = el('addr-chip'); if (chip) chip.textContent = '—';
-      set('total-val', '$—'); set('total-sub', 'No Solana wallet connected');
+      solTotalUsd = null; renderTotal();
+      set('total-sub', 'No Solana wallet connected');
       const ab = el('assets-body');
       if (ab) ab.innerHTML = '<div class="empty-assets">Connect a Solana wallet (e.g. Phantom) from the top nav to view SPL holdings.</div>';
     }
@@ -346,7 +366,7 @@ export default function PortfolioPage() {
       // only ever used for HL/BASIC. switchPortfolioMode('aster') already
       // covers "the user just opened the tab."
       loadHLData(addr);
-      loadEVMBalance(addr);
+      loadEVMBalances(addr);
     }
     onEvmConnectedRef.current = onEvmConnected;
 
@@ -355,6 +375,7 @@ export default function PortfolioPage() {
       if (hlInp) hlInp.value = '';
       const card = el('evm-bal-card');
       if (card) card.classList.remove('visible');
+      evmTotalUsd = null; renderTotal();
       const asterInp = el('aster-addr-input') as HTMLInputElement | null;
       if (asterInp) asterInp.value = '';
     }
@@ -375,83 +396,223 @@ export default function PortfolioPage() {
     if (evmAddressRef.current) onEvmConnected(evmAddressRef.current); else onEvmDisconnected();
     onConnAnyChanged(!!(solAddressRef.current || evmAddressRef.current));
 
-    async function loadEVMBalance(addr: string) {
+    /**
+     * Repaints the headline total from whichever halves have reported. Either
+     * side may still be loading or may have failed outright; the total shows
+     * what is known rather than waiting for both or silently dropping one.
+     */
+    function renderTotal() {
+      const known = [solTotalUsd, evmTotalUsd].filter((v): v is number => v !== null);
+      if (!known.length) { set('total-val', '$—'); return; }
+      set('total-val', '$' + fmt(known.reduce((s, v) => s + v, 0)));
+    }
+
+    /**
+     * Every EVM chain at once, through one backend call.
+     *
+     * The page previously read exactly two balances (ETH and USDC) on exactly
+     * one chain (Arbitrum) — so a wallet holding anything on Base, Optimism,
+     * Polygon, BNB Chain, Avalanche or mainnet showed nothing, which is the
+     * "doesn't load all tokens across chains" complaint. The fan-out now
+     * happens server-side (backend/src/routes/evm-balances.ts) where it is
+     * cached and shares the VPS's rate limit instead of the user's.
+     */
+    async function loadEVMBalances(addr: string) {
       const card = el('evm-bal-card');
       if (card) card.classList.add('visible');
-      set('evm-eth-bal', '…'); set('evm-eth-usd', '');
-      set('evm-usdc-bal', '…'); set('evm-usdc-usd', '');
+      const body = el('evm-bal-body');
+      if (body) body.innerHTML = '<div class="evm-bal-empty">Loading balances…</div>';
+      set('evm-bal-chain-tag', 'All chains');
       try {
-        const callData = '0x70a08231' + addr.replace('0x','').padStart(64, '0');
-        const [ethRes, usdcRes, priceRes] = await Promise.all([
-          fetch(ARB_RPC, { method:'POST', headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({jsonrpc:'2.0',id:1,method:'eth_getBalance',params:[addr,'latest']}) }),
-          fetch(ARB_RPC, { method:'POST', headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({jsonrpc:'2.0',id:2,method:'eth_call',params:[{to:USDC_ARB,data:callData},'latest']}) }),
-          fetch('/coingecko/api/v3/simple/price?ids=ethereum&vs_currencies=usd').catch(() => null),
-        ]);
-        const [ethData, usdcData] = await Promise.all([ethRes.json(), usdcRes.json()]);
-        const ethBal  = parseInt(ethData.result  || '0x0', 16) / 1e18;
-        const usdcBal = parseInt(usdcData.result || '0x0', 16) / 1e6;
-        const ethPx   = priceRes ? ((await priceRes.json())?.ethereum?.usd ?? 0) : 0;
-        set('evm-eth-bal',  fmt(ethBal, ethBal < 0.01 ? 4 : 3) + ' ETH');
-        set('evm-eth-usd',  ethPx ? '$' + fmt(ethBal * ethPx) : '');
-        set('evm-usdc-bal', fmt(usdcBal) + ' USDC');
-        set('evm-usdc-usd', usdcBal > 0 ? '$' + fmt(usdcBal) : '—');
-        if (ethPx && (ethBal > 0 || usdcBal > 0)) {
-          const totalEl = el('total-val');
-          if (totalEl && totalEl.textContent !== '$—') {
-            const existing = parseFloat(totalEl.textContent!.replace(/[$,]/g,'')) || 0;
-            const evmTotal = ethBal * ethPx + usdcBal;
-            if (evmTotal > 0) totalEl.textContent = '$' + fmt(existing + evmTotal);
-          }
+        const res = await fetch(`/evm-balances?address=${addr}`);
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        // Errored chains are kept, not filtered out — an unreachable node is
+        // shown as an unreachable node rather than as a zero balance.
+        const chains = (data.chains ?? []).filter((c: any) => (c.assets ?? []).length || c.error);
+        evmTotalUsd = typeof data.total === 'number' ? data.total : 0;
+        renderTotal();
+
+        if (!chains.length) {
+          if (body) body.innerHTML = `<div class="evm-bal-empty">No balances found on ${
+            data.discovery === 'curated' ? 'the tracked tokens across 7 chains' : 'any supported chain'
+          }.</div>`;
+          set('evm-bal-chain-tag', chainTagFor(data));
+          return;
         }
-      } catch {
-        set('evm-eth-bal', '—'); set('evm-usdc-bal', '—');
+
+        set('evm-bal-chain-tag', chainTagFor(data, chains.length));
+        if (body) {
+          body.innerHTML = chains.map((c: any) => `
+            <div class="evm-chain-group">
+              <div class="evm-chain-hdr"><span>${c.name}</span><span>${c.total > 0.005 ? '$'+fmt(c.total) : '—'}</span></div>
+              ${c.error ? `<div class="evm-bal-empty">Unavailable: ${c.error}</div>` : ''}
+              ${(c.assets ?? []).map((a: any) => `
+                <div class="evm-bal-row">
+                  <div class="evm-bal-left">
+                    <div class="evm-tok-dot">${(a.symbol||'?')[0]}</div>
+                    <div><div class="evm-bal-sym">${a.symbol}</div><div class="evm-bal-name">${a.price ? fmtUSD(a.price) : 'no price'}</div></div>
+                  </div>
+                  <div class="evm-bal-right">
+                    <div class="evm-bal-amount">${fmt(a.balance, a.balance < 1 ? 4 : 2)}</div>
+                    <div class="evm-bal-usd">${a.value > 0.005 ? '$'+fmt(a.value) : '—'}</div>
+                  </div>
+                </div>`).join('')}
+            </div>`).join('');
+        }
+      } catch (e: any) {
+        evmTotalUsd = null;
+        renderTotal();
+        if (body) body.innerHTML = `<div class="evm-bal-empty">Could not load EVM balances: ${e.message}</div>`;
       }
     }
 
+    // The tag is where "we only looked at a fixed list" gets admitted, so an
+    // empty card is not read as "you definitely hold nothing".
+    function chainTagFor(data: any, count?: number) {
+      const scope = count ? `${count} chain${count === 1 ? '' : 's'}` : 'All chains';
+      return data?.discovery === 'curated' ? `${scope} · major tokens` : scope;
+    }
+
+    // The backend RPC proxy answers {result} / {error}, not raw JSON-RPC, and
+    // it surfaces upstream failures as a non-2xx — worth throwing on, because
+    // the old direct-to-mainnet-beta version treated a 403 body as "no
+    // accounts" and rendered an empty, confident-looking portfolio.
     async function rpc(method: string, params: any[]) {
-      const r = await fetch(SOL_RPC, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({jsonrpc:'2.0',id:1,method,params}) });
-      return r.json();
+      const r = await fetch(SOL_RPC, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({method,params}) });
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok || body.error) throw new Error(body.error || `Solana RPC HTTP ${r.status}`);
+      return body.result;
     }
     async function getSolBal() {
-      const { result } = await rpc('getBalance', [solAddressRef.current, {commitment:'confirmed'}]);
+      const result = await rpc('getBalance', [solAddressRef.current, {commitment:'confirmed'}]);
       return (result?.value ?? 0) / 1e9;
     }
+    function parseTokenAccs(result: any) {
+      return (result?.value ?? [])
+        .map((a: any) => ({ mint: a.account.data.parsed.info.mint, balance: a.account.data.parsed.info.tokenAmount.uiAmount ?? 0 }))
+        .filter((t: any) => t.balance > 0);
+    }
+    /**
+     * Primary source for Solana holdings: one keyless call that returns SOL
+     * and every SPL balance the address holds.
+     *
+     * Preferred over the RPC path because listing a wallet's token accounts
+     * (getTokenAccountsByOwner) is blocked on every free public Solana node —
+     * so on the default configuration the RPC path can report SOL and nothing
+     * else. Returns null (not an empty list) when it fails, so the caller can
+     * tell "no tokens" apart from "could not ask".
+     */
+    async function getUltraBalances(owner: string): Promise<{ sol: number; tokens: any[] } | null> {
+      try {
+        const r = await fetch(`${JUP_ULTRA}/${owner}`);
+        if (!r.ok) return null;
+        const body = await r.json();
+        if (!body || typeof body !== 'object') return null;
+        let sol = 0;
+        const tokens: any[] = [];
+        for (const [key, v] of Object.entries<any>(body)) {
+          const balance = typeof v?.uiAmount === 'number' ? v.uiAmount : 0;
+          if (balance <= 0) continue;
+          // Native SOL comes back under the literal key "SOL"; everything else
+          // is keyed by mint.
+          if (key === 'SOL') sol = balance;
+          else tokens.push({ mint: key, balance });
+        }
+        return { sol, tokens };
+      } catch { return null; }
+    }
+
+    // Both token programs. Token-2022 is a separate program id, and querying
+    // only the original one silently hid every Token-2022 holding. A wallet
+    // with no Token-2022 accounts just gets an empty list back, so this costs
+    // one extra call and nothing else. Settled, not awaited as a pair: a
+    // failure on one program should not blank out the other's results.
     async function getTokenAccs() {
-      const { result } = await rpc('getTokenAccountsByOwner', [solAddressRef.current, {programId:TOKEN_PROG}, {encoding:'jsonParsed',commitment:'confirmed'}]);
-      return (result?.value ?? []).map((a: any) => ({ mint: a.account.data.parsed.info.mint, balance: a.account.data.parsed.info.tokenAmount.uiAmount ?? 0 })).filter((t: any) => t.balance > 0);
+      const opts = [{encoding:'jsonParsed',commitment:'confirmed'}];
+      const [classic, t22] = await Promise.allSettled([
+        rpc('getTokenAccountsByOwner', [solAddressRef.current, {programId:TOKEN_PROG}, ...opts]),
+        rpc('getTokenAccountsByOwner', [solAddressRef.current, {programId:TOKEN22_PROG}, ...opts]),
+      ]);
+      if (classic.status === 'rejected' && t22.status === 'rejected') throw classic.reason;
+      return [
+        ...(classic.status === 'fulfilled' ? parseTokenAccs(classic.value) : []),
+        ...(t22.status === 'fulfilled' ? parseTokenAccs(t22.value) : []),
+      ];
     }
+    /** Splits a mint list into chunks small enough for a URL query param. */
+    function chunk<T>(items: T[], size: number): T[][] {
+      const out: T[][] = [];
+      for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+      return out;
+    }
+    // Jupiter Price V3. Keyed by mint, and the field is `usdPrice` — V2's
+    // `data[mint].price` shape is gone along with the endpoint.
     async function getJupPrices(mints: string[]) {
-      if (!mints.length) return {};
-      try { const r = await fetch(`https://api.jup.ag/price/v2?ids=${mints.join(',')}`); return (await r.json())?.data ?? {}; } catch { return {}; }
+      const out: Record<string, number> = {};
+      await Promise.all(chunk(mints, 50).map(async (ids) => {
+        try {
+          const r = await fetch(`${JUP_PRICE}?ids=${ids.join(',')}`);
+          if (!r.ok) return;
+          const body = await r.json();
+          for (const [mint, v] of Object.entries<any>(body ?? {})) {
+            if (typeof v?.usdPrice === 'number') out[mint] = v.usdPrice;
+          }
+        } catch {}
+      }));
+      return out;
     }
-    async function loadTokenMeta() {
-      if (Object.keys(tokenMeta).length) return;
-      try { const list = await (await fetch('https://tokens.jup.ag/tokens?tags=strict')).json(); list.forEach((t: any) => { tokenMeta[t.address] = {name:t.name,symbol:t.symbol,logo:t.logoURI}; }); } catch {}
-      tokenMeta[SOL_MINT] = {name:'Solana',symbol:'SOL',logo:'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png'};
+    // Metadata for the held mints only. The old version downloaded Jupiter's
+    // entire strict list on every load to look up a handful of tokens; that
+    // list is now a 5MB document behind a dead hostname. Searching by the
+    // mints actually held is both correct and a few KB.
+    async function loadTokenMeta(mints: string[]) {
+      const missing = mints.filter((m) => !tokenMeta[m]);
+      if (!missing.length) return;
+      await Promise.all(chunk(missing, 40).map(async (ids) => {
+        try {
+          const r = await fetch(`${JUP_TOKENS}?query=${ids.join(',')}`);
+          if (!r.ok) return;
+          const list = await r.json();
+          (Array.isArray(list) ? list : []).forEach((t: any) => {
+            tokenMeta[t.id] = { name: t.name, symbol: t.symbol, logo: t.icon };
+          });
+        } catch {}
+      }));
     }
     async function loadPortfolio() {
       const ab = el('assets-body'); if (ab) ab.innerHTML = skeleRows(3);
-      set('total-val','$—'); set('total-sub','Loading…');
+      solTotalUsd = null; renderTotal(); set('total-sub','Loading…');
       try {
-        await loadTokenMeta();
-        const [solBal, tokenAccs] = await Promise.all([getSolBal(), getTokenAccs()]);
+        // Ultra first, RPC only if it did not answer. The fallback still needs
+        // getBalance for native SOL, since the RPC token query covers only
+        // token accounts.
+        const ultra = await getUltraBalances(solAddressRef.current!);
+        const [solBal, tokenAccs] = ultra
+          ? [ultra.sol, ultra.tokens]
+          : await Promise.all([getSolBal(), getTokenAccs()]);
         const mints = [SOL_MINT, ...tokenAccs.map((t: any) => t.mint)];
-        const prices = await getJupPrices(mints);
+        // Metadata and prices are independent lookups on disjoint services —
+        // no reason to pay for them in sequence.
+        const [prices] = await Promise.all([getJupPrices(mints), loadTokenMeta(mints)]);
         const assets: any[] = [];
-        const solPx = parseFloat(prices[SOL_MINT]?.price ?? 0);
+        const solPx = prices[SOL_MINT] ?? 0;
         assets.push({mint:SOL_MINT,balance:solBal,price:solPx,value:solBal*solPx,...(tokenMeta[SOL_MINT]??{name:'Solana',symbol:'SOL',logo:''})});
         tokenAccs.forEach((t: any) => {
-          const px = parseFloat(prices[t.mint]?.price ?? 0);
+          const px = prices[t.mint] ?? 0;
           const meta = tokenMeta[t.mint] ?? {name:t.mint.slice(0,8)+'…',symbol:'???',logo:''};
           assets.push({mint:t.mint,balance:t.balance,price:px,value:t.balance*px,...meta});
         });
         assets.sort((a,b) => b.value - a.value);
-        const total = assets.reduce((s,a) => s+a.value, 0);
-        set('total-val','$'+fmt(total)); set('total-sub',assets.length+' asset'+(assets.length!==1?'s':''));
+        solTotalUsd = assets.reduce((s,a) => s+a.value, 0);
+        renderTotal();
+        set('total-sub',assets.length+' Solana asset'+(assets.length!==1?'s':''));
         renderAssets(assets);
-      } catch(e: any) { set('total-sub','Error'); const ab2 = el('assets-body'); if (ab2) ab2.innerHTML=`<div class="empty-assets">${e.message}</div>`; }
+      } catch(e: any) {
+        solTotalUsd = null; renderTotal();
+        set('total-sub','Error');
+        const ab2 = el('assets-body'); if (ab2) ab2.innerHTML=`<div class="empty-assets">${e.message}</div>`;
+      }
     }
     function renderAssets(assets: any[]) {
       const ab = el('assets-body');
@@ -1211,17 +1372,10 @@ export default function PortfolioPage() {
             <div id="assets-body"><div className="empty-assets">Loading…</div></div>
           </div>
           <div className="evm-bal-card" id="evm-bal-card">
-            <div className="evm-bal-hdr">EVM Wallet<span className="evm-bal-chain" id="evm-bal-chain-tag">Arbitrum</span></div>
-            <div id="evm-bal-body">
-              <div className="evm-bal-row">
-                <div className="evm-bal-left"><div className="evm-tok-dot" style={{background:'#1b2429',color:'#627EEA'}}>Ξ</div><div><div className="evm-bal-sym">ETH</div><div className="evm-bal-name">Ethereum</div></div></div>
-                <div className="evm-bal-right"><div className="evm-bal-amount" id="evm-eth-bal">—</div><div className="evm-bal-usd" id="evm-eth-usd">—</div></div>
-              </div>
-              <div className="evm-bal-row">
-                <div className="evm-bal-left"><div className="evm-tok-dot" style={{background:'#1b2429',color:'#2775ca'}}>$</div><div><div className="evm-bal-sym">USDC</div><div className="evm-bal-name">USD Coin</div></div></div>
-                <div className="evm-bal-right"><div className="evm-bal-amount" id="evm-usdc-bal">—</div><div className="evm-bal-usd" id="evm-usdc-usd">—</div></div>
-              </div>
-            </div>
+            <div className="evm-bal-hdr">EVM Wallet<span className="evm-bal-chain" id="evm-bal-chain-tag">All chains</span></div>
+            {/* Rendered by loadEVMBalances — the rows are per chain and per
+                token held, so there is nothing static to put here. */}
+            <div id="evm-bal-body"><div className="evm-bal-empty">Connect an EVM wallet to view balances.</div></div>
           </div>
         </div>
 

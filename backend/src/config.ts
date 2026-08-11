@@ -64,8 +64,20 @@ export const config = {
   // than redacting them field by field.
   logRequestBodies: process.env.LOG_REQUEST_BODIES === 'true',
 
+  // Solana JSON-RPC for the read-only proxy in routes/rpc.ts. The default is a
+  // keyless public node, deliberately NOT api.mainnet-beta.solana.com — that
+  // one returns 403 to everyone now. Point this at a Helius/Alchemy/Triton URL
+  // for real rate limits; those URLs carry an API key, which is why this is a
+  // server env var and never a NEXT_PUBLIC_* one.
+  solanaRpc: process.env.SOLANA_RPC ?? 'https://solana-rpc.publicnode.com',
+
   // Optional secrets — empty string when unset; feature code guards on these.
   lifiApiKey: process.env.LIFI_API_KEY ?? '',
+  // Optional. When set, the multi-chain portfolio sweep asks Alchemy which
+  // tokens an address actually holds instead of probing a curated list — see
+  // routes/evm-balances.ts. Unset is a supported configuration; the sweep just
+  // falls back to the curated list.
+  alchemyApiKey: process.env.ALCHEMY_API_KEY ?? '',
   // Not a secret — the Partner Portal integration string that owns the key
   // above. Sent as the `integrator` query param on every LI.FI call so the
   // traffic is attributed to this integration; unset means LI.FI books the
