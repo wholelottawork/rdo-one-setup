@@ -18,7 +18,11 @@ import {
   toPlainDecimal,
 } from '@/lib/asterWithdraw';
 import {
+  ASTER_DEPOSIT_ASSETS,
+  ASTER_VAULT_CURRENCY_NOT_SUPPORT,
   ASTER_WITHDRAW_ASSETS,
+  NATIVE_TOKEN,
+  asterDepositChain,
   asterDisplayDecimals,
   asterMaxAmount,
   asterPayoutToken,
@@ -161,6 +165,12 @@ export default function TransferPage() {
     const set   = (id: string, v: string) => { const e = el(id); if (e) e.textContent = v; };
     const disableBtn = (id: string) => { const b = el(id) as HTMLButtonElement | null; if (b) b.disabled = true; };
     const fmt   = (n: number, d = 2) => Number(n).toLocaleString('en-US', {minimumFractionDigits:d, maximumFractionDigits:d});
+    /** Integer token units -> a display string with its symbol. Takes the
+     *  token's OWN decimals rather than assuming 1e6, which is only right for
+     *  the stables on the chains this page started out supporting. */
+    const fmtUnits = (v: bigint, decimals: number, sym: string) =>
+      `${fmt(Number(fromUnits(v, decimals)), asterDisplayDecimals(sym))} ${sym}`;
+    const min = (a: bigint, b: bigint) => (a < b ? a : b);
     const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
     /**
@@ -218,6 +228,10 @@ export default function TransferPage() {
     // because "not read yet" and "no capacity" lead to opposite advice.
     let asterMatrix: Record<string, Record<string, { withdrawable: number | null }>> = {};
     let btwDir   = 'hl-to-aster';
+    // The Aster-side currency of a Between Accounts transfer. Hyperliquid's
+    // side is always USDC — it holds nothing else — so this names what leaves
+    // Aster going out, and what the account ends up holding coming in.
+    let btwAsset = 'USDT';
     let hlEquity = 0;
     // Aster's withdrawable balance, and a generation counter for the load that
     // produced it: reading it is an async round trip that can outlive the user
@@ -490,14 +504,19 @@ export default function TransferPage() {
      *  because that leg's LI.FI swap and the Hyperliquid bridge both only
      *  exist there. Needs the agent approved first — this is the deliberate
      *  action that prompt hangs off. */
-    async function loadAsterWithdrawable(): Promise<void> {
+    async function loadAsterWithdrawable(asset = ASTER_BTW_ASSET): Promise<void> {
       asterWithdrawable = 0;
+      asterWithdrawableChain = '';
       asterBalErr = '';
       const addr = evmAddressRef.current;
       if (!addr) {
         asterBalErr = 'Connect your wallet from the top nav first';
         return;
       }
+      // Per asset, not pinned: BNB is only ever paid out on BSC, so asking for
+      // it on Arbitrum reads zero and reports "nothing to withdraw" about an
+      // account that holds plenty.
+      const chain = asterWdFallbackChain(asset);
       try {
         const approval = await ensureAsterAgentApprovedAuto(addr);
         if (!approval.ok) {
@@ -506,11 +525,16 @@ export default function TransferPage() {
         }
         const acct = await getAsterAccount(addr);
         const avail = parseFloat(String(acct?.availableBalance ?? 0)) || 0;
-        const cap = await readAsterWithdrawable(ASTER_WD_FALLBACK_CHAIN, ASTER_BTW_ASSET);
-        asterWithdrawable = cap === null ? avail : Math.min(avail, cap);
-        asterWithdrawableChain = ASTER_WD_FALLBACK_CHAIN;
-        if (asterWithdrawable <= 0)
-          asterBalErr = `No withdrawable USDT on ${chainName(ASTER_WD_FALLBACK_CHAIN)} — `
+        const cap = await readAsterWithdrawable(chain, asset);
+        // Same unit rule as the Withdraw tab: availableBalance is free margin
+        // in the account's margin currency, so it only bounds USDT.
+        const isMarginAsset = asset === 'USDT';
+        asterWithdrawable = cap === null ? (isMarginAsset ? avail : 0) : isMarginAsset ? Math.min(avail, cap) : cap;
+        asterWithdrawableChain = chain;
+        if (cap === null && !isMarginAsset)
+          asterBalErr = `Could not read how much ${asset} Aster will pay out — try again in a moment`;
+        else if (asterWithdrawable <= 0)
+          asterBalErr = `No withdrawable ${asset} on ${chainName(chain)} — `
             + 'it may be locked as margin behind open positions.';
       } catch (e: any) {
         asterBalErr = `Could not read your Aster balance: ${e?.message ?? 'unknown error'}`;
@@ -1341,15 +1365,100 @@ export default function TransferPage() {
       scheduleQuote();
     }
 
+    /** The Aster-side currency of a Between Accounts transfer. It means the
+     *  opposite thing per direction, which is why the label moves with it:
+     *  going OUT of Aster it is what gets withdrawn, going IN it is what the
+     *  account ends up holding. Hyperliquid's side is always USDC either way —
+     *  it holds nothing else. */
+    function fillBtwAssetSel() {
+      const sel = el('btw-asset') as HTMLSelectElement | null;
+      if (!sel) return;
+      const toAster = btwDir === 'hl-to-aster';
+      const assets = toAster ? ASTER_DEPOSIT_ASSETS : ASTER_WITHDRAW_ASSETS;
+      if (!assets.includes(btwAsset)) btwAsset = assets[0] ?? ASTER_BTW_ASSET;
+      sel.innerHTML = assets.map(a => {
+        // Only the withdrawal direction has a capacity to annotate; a deposit
+        // is bounded by the Hyperliquid balance, which is shown separately.
+        const best = toAster ? null : matrixBest(a);
+        const label = best && best.amount > 0
+          ? `${a} — ${fmt(best.amount, asterDisplayDecimals(a))} on ${chainName(best.chain)}`
+          : best ? `${a} — none withdrawable` : a;
+        return `<option value="${a}">${label}</option>`;
+      }).join('');
+      sel.value = btwAsset;
+      set('btw-asset-lbl', toAster ? 'Deposit into Aster as' : 'Currency to move');
+    }
+
+    /** The amount field's unit badge: whatever LEAVES the source account —
+     *  USDC out of Hyperliquid, the chosen asset out of Aster. */
+    function setBtwCurBadge() {
+      set('btw-cur', btwDir === 'hl-to-aster' ? 'USDC' : btwAsset);
+    }
+
+    function setBtwAsset(asset: string) {
+      btwAsset = asset;
+      setBtwCurBadge();
+      const btwAmt = el('btw-amt') as HTMLInputElement | null;
+      if (btwAmt) { btwAmt.value = ''; btwAmt.step = String(1 / 10 ** asterDisplayDecimals(asset)); }
+      const btwSt = el('btw-st'); if (btwSt) btwSt.style.display = 'none';
+      // Only the Aster->HL direction reads a per-asset balance; the other one
+      // is bounded by Hyperliquid, whose balance does not change with this.
+      if (btwDir === 'aster-to-hl') refreshBtwAsterBal();
+      else updateBtwHint();
+    }
+
+    function refreshBtwAsterBal() {
+      const asset = btwAsset;
+      set('btw-bal', `Reading your Aster ${asset} balance…`);
+      loadAsterWithdrawable(asset).then(() => {
+        // The user can switch direction or currency while this is in flight,
+        // and a late reply must not describe something no longer selected.
+        if (btwDir !== 'aster-to-hl' || btwAsset !== asset) return;
+        set('btw-bal', asterWithdrawable > 0
+          ? `Withdrawable: ${fmt(asterWithdrawable, asterDisplayDecimals(asset))} ${asset} on ${chainName(asterWithdrawableChain)}`
+          : asterBalErr || `No withdrawable ${asset} in your Aster account`);
+        updateBtwHint();
+      });
+    }
+
+    /** What the transfer will actually do, spelled out before it is started —
+     *  the route is no longer one fixed sequence, and a BSC payout converting
+     *  cross-chain to Arbitrum is a materially different trip from a same-chain
+     *  swap. */
+    function updateBtwHint() {
+      const hint = el('btw-hint');
+      if (!hint) return;
+      const asset = btwAsset;
+      if (btwDir === 'hl-to-aster') {
+        const chain = asterDepositChain(asset);
+        hint.textContent = asset === 'USDC' && chain === '42161'
+          ? 'Hyperliquid pays out USDC on Arbitrum — deposited straight into Aster, no conversion'
+          : `Hyperliquid pays out USDC on Arbitrum, then LI.FI converts it to ${asset}`
+            + `${chain && chain !== '42161' ? ` on ${chainName(chain)}` : ''} for the Aster deposit`;
+      } else {
+        const chain = asterWithdrawableChain || asterWdFallbackChain(asset);
+        hint.textContent = asset === 'USDC' && chain === '42161'
+          ? 'Aster pays out USDC on Arbitrum — sent straight to the Hyperliquid bridge'
+          : `Aster pays out ${asset} on ${chainName(chain)}, then LI.FI converts it to USDC on Arbitrum`
+            + ' for the Hyperliquid bridge';
+      }
+    }
+
     function setDir(dir: string) {
       btwDir = dir;
       const isHL = dir === 'hl-to-aster';
       const hl2as = el('dtab-hl2as'); if (hl2as) hl2as.className = 'dir-tab ' + (isHL ? 'aHL' : '');
       const as2hl = el('dtab-as2hl'); if (as2hl) as2hl.className = 'dir-tab ' + (isHL ? '' : 'aAS');
-      set('btw-cur', isHL ? 'USDC' : 'USDT');
       const btwBtn = el('btw-btn'); if (btwBtn) btwBtn.className = 'exec-btn ' + (isHL ? 'hl' : 'as');
       const btwProg = el('btw-prog'); if (btwProg) btwProg.style.display = 'none';
       const btwSt = el('btw-st'); if (btwSt) btwSt.style.display = 'none';
+      const btwAmt = el('btw-amt') as HTMLInputElement | null;
+      if (btwAmt) btwAmt.value = '';
+      // Before the badge: this is the call that settles which asset ends up
+      // selected, and the badge names it.
+      fillBtwAssetSel();
+      setBtwCurBadge();
+      updateBtwHint();
       if (isHL) {
         set('btw-bal', hlEquity ? `Balance: $${fmt(hlEquity)} USDC` : ' ');
       } else {
@@ -1358,14 +1467,14 @@ export default function TransferPage() {
         // funds" to anyone who did. Same deliberate-action rule as the
         // Withdraw tab: picking this direction is what the agent-approval
         // prompt hangs off, never a page load or a wallet connect.
-        set('btw-bal', 'Reading your Aster balance…');
-        loadAsterWithdrawable().then(() => {
-          if (btwDir !== 'aster-to-hl') return; // user moved on mid-flight
-          set('btw-bal', asterWithdrawable > 0
-            ? `Withdrawable: ${fmt(asterWithdrawable)} USDT`
-            : asterBalErr || 'No withdrawable USDT in your Aster account');
-        });
+        refreshBtwAsterBal();
       }
+    }
+
+    function onBtwAmtInput() {
+      // The badge is kept current by setBtwAsset/setDir; this exists so a typed
+      // amount still refreshes it if either is ever bypassed.
+      setBtwCurBadge();
     }
 
     function btwMax() {
@@ -1375,11 +1484,11 @@ export default function TransferPage() {
         if (hlEquity > 0) btwAmt.value = hlEquity.toFixed(2);
         return;
       }
-      // Withdrawable, not account balance — see loadAsterWithdrawable. The
-      // Between Accounts route is pinned to Arbitrum because the LI.FI leg and
-      // the Hyperliquid bridge both only exist there.
-      if (asterWithdrawable > 0) btwAmt.value = asterWithdrawable.toFixed(2);
-      else showSt('btw-st', 'err', asterBalErr || 'No withdrawable USDT in your Aster account');
+      // Withdrawable, not account balance — see loadAsterWithdrawable. Rendered
+      // at the asset's own precision: toFixed(2) turns a withdrawable 0.019 BNB
+      // into "0.02", which is more than the account holds.
+      if (asterWithdrawable > 0) btwAmt.value = asterMaxAmount(asterWithdrawable, btwAsset);
+      else showSt('btw-st', 'err', asterBalErr || `No withdrawable ${btwAsset} in your Aster account`);
     }
 
     async function execBtw() {
@@ -1391,88 +1500,165 @@ export default function TransferPage() {
       const st = el('btw-st'); if (st) st.style.display = 'none';
       try {
         const user = await requireEVM(); const prov = getProv();
+        const asset = btwAsset;
         if (btwDir === 'hl-to-aster') {
-          initProg('btw', [
-            'Withdraw USDC from Hyperliquid',
-            'Wait for USDC in wallet (~2 min)',
-            'Swap USDC → USDT on Arbitrum',
-            'Deposit USDT to your Aster futures account',
-          ]);
+          // Hyperliquid pays out native USDC on Arbitrum and nothing else, so
+          // the currency choice describes the OTHER end: what the Aster account
+          // should end up holding.
+          const chain = asterDepositChain(asset);
+          if (!chain) throw new Error(`Aster’s vault does not accept ${asset}`);
+          const target = wdPayout(asset, chain);
+          const direct = asset === 'USDC' && chain === ARB_CHAIN;
+
+          // Asked of the vault BEFORE anything is signed. The vault reverts on
+          // a currency it does not take, and finding that out after the swap
+          // would leave the user holding a token they converted into for a
+          // deposit that cannot happen.
+          if (!direct) await assertVaultAccepts(chain, target, user);
+
+          const labels = ['Withdraw USDC from Hyperliquid', 'Wait for USDC in wallet (~2 min)'];
+          if (!direct) labels.push(`Convert USDC → ${asset}${chain === ARB_CHAIN ? '' : ` on ${chainName(chain)}`} via LI.FI`);
+          labels.push(`Deposit ${asset} to your Aster futures account`);
+          initProg('btw', labels);
+          const last = labels.length - 1;
+
           stepSet(0, 'active', 'Sign withdrawal in wallet…');
           await hlWithdrawRaw(prov, user, amt, user);
           stepSet(0, 'done', `$${fmt(amt)} USDC submitted to Arbitrum`);
           stepSet(1, 'active', 'Polling every 12s (up to 6 min)…');
           const ub = await erc20BalOn(prov, ARB_CHAIN, USDC_ARB, user);
-          await pollBal(prov, USDC_ARB, user, BigInt(Math.round(amt*1e6*0.97)), ub, 360000);
+          await pollBal(prov, USDC_ARB, user, BigInt(Math.round(amt * 1e6 * 0.97)), ub, 360000);
           stepSet(1, 'done', 'USDC arrived in wallet');
-          stepSet(2, 'active', 'Getting LI.FI swap route…');
-          const usdcBal = await erc20BalOn(prov, ARB_CHAIN, USDC_ARB, user);
-          const q = await lifiQuote('42161', '42161', USDC_ARB, USDT_ARB, usdcBal.toString(), user, user);
-          stepSet(2, 'active', 'Approve + swap — confirm in wallet…');
-          const sh = await lifiExec(prov, q, user);
-          stepSet(2, 'active', 'Confirming swap…');
-          await pollReceipt(prov, sh);
-          stepSet(2, 'done', 'USDC → USDT swapped');
-          await ensureChain(prov, ASTER_DEPOSIT_CHAIN, 'Switch your wallet to Arbitrum to deposit to Aster');
-          const usdtBal = await erc20BalOn(prov, ARB_CHAIN, USDT_ARB, user);
-          stepSet(3, 'active', 'Checking USDT allowance — approve in wallet if prompted…');
-          await ensureApproval(prov, USDT_ARB, user, asterVault(ASTER_DEPOSIT_CHAIN), usdtBal.toString());
-          stepSet(3, 'active', `Depositing ${fmt(Number(usdtBal)/1e6, 2)} USDT — confirm…`);
-          const dh = await asterDepositFor(prov, ASTER_DEPOSIT_CHAIN, USDT_ARB, user, usdtBal.toString());
+
+          // What ends up being deposited, in the TARGET token's units — which
+          // are not USDC's once a conversion happens, and not 6 decimals once
+          // the target chain is BNB Chain.
+          let depositing: bigint;
+          if (direct) {
+            // The DELTA, not the wallet's whole USDC balance. The user asked to
+            // move a specific amount out of Hyperliquid; anything else that
+            // happened to be sitting in the wallet is not part of that.
+            depositing = (await erc20BalOn(prov, ARB_CHAIN, USDC_ARB, user)) - ub;
+          } else {
+            stepSet(2, 'active', 'Getting LI.FI route…');
+            const usdcBal = await erc20BalOn(prov, ARB_CHAIN, USDC_ARB, user);
+            const q = await lifiQuote(ARB_CHAIN, chain, USDC_ARB, target.address, usdcBal.toString(), user, user);
+            const arrivedBefore = await payoutBalOn(prov, chain, target, user);
+            stepSet(2, 'active', 'Approve + convert — confirm in wallet…');
+            const sh = await lifiExec(prov, q, user);
+            stepSet(2, 'active', 'Confirming…');
+            await pollReceipt(prov, sh);
+            // A cross-chain route settles on the far side after the source
+            // transaction confirms, so the arrival is polled rather than
+            // assumed. 3% under the quote: bridges land slightly below it.
+            const expect = (BigInt(q.estimate?.toAmount ?? '0') * BigInt(97)) / BigInt(100);
+            const after = await pollPayoutBal(prov, chain, target, user, expect, arrivedBefore, 600000);
+            depositing = after - arrivedBefore;
+            stepSet(2, 'done', `${fmtUnits(depositing, target.decimals, asset)} arrived`);
+          }
+
+          // eth_sendTransaction goes wherever the wallet is pointed, and a
+          // cross-chain conversion leaves it on the SOURCE chain.
+          await ensureChain(prov, chain, `Switch your wallet to ${chainName(chain)} to deposit to Aster`);
+          // A native deposit pays its own gas out of the amount being
+          // deposited, so it cannot be the whole balance.
+          // A native deposit pays gas out of the same balance, so it cannot be
+          // the whole of it — but the reserve is a CEILING on what this
+          // transfer produced, never a replacement for it. Assigning the
+          // wallet's spendable balance outright would sweep in native funds the
+          // user already held and never asked to move.
+          if (target.native)
+            depositing = min(depositing, await convertibleBalance(prov, chain, target, user));
+          if (depositing <= BigInt(0)) throw new Error(`No ${asset} arrived in the wallet — nothing to deposit.`);
+          stepSet(last, 'active', `Checking ${asset} allowance — approve in wallet if prompted…`);
+          await ensureApproval(prov, target.address, user, asterVault(chain), depositing.toString());
+          stepSet(last, 'active', `Depositing ${fmtUnits(depositing, target.decimals, asset)} — confirm…`);
+          const dh = await asterDepositFor(prov, chain, target.address, user, depositing.toString());
           await pollAsterDeposit(prov, dh);
-          stepSet(3, 'done', 'Credited to your Aster futures account ✓');
+          stepSet(last, 'done', 'Credited to your Aster futures account ✓');
           showSt('btw-st', 'ok', `Transfer complete — $${fmt(amt)} BASIC → EXTRA`);
         } else {
+          // Aster pays the chosen asset out on ITS OWN chain, which is not
+          // always Arbitrum — BNB only ever lands on BSC. The Hyperliquid
+          // bridge only exists on Arbitrum, so the conversion leg is whatever
+          // gets from one to the other: a same-chain swap or a bridge.
+          const wdChain = asterWdFallbackChain(asset);
+          const payout = wdPayout(asset, wdChain);
+          const direct = asset === 'USDC' && wdChain === ARB_CHAIN;
+          const dec = asterDisplayDecimals(asset);
+
           // Same rule as the Withdraw tab: the fee is signed, so it has to be
-          // quoted and shown before the wallet prompt, never after it.
-          // Pinned to Arbitrum, unlike the Withdraw tab: the next three steps
-          // swap that USDT to USDC and hand it to the Hyperliquid bridge, both
-          // of which only exist on Arbitrum.
+          // quoted and shown before the wallet prompt, never after it. It is
+          // denominated in the asset being withdrawn, not in dollars.
           let fee: string;
-          try { fee = await asterWithdrawFee(ASTER_WD_FALLBACK_CHAIN, ASTER_BTW_ASSET); }
+          try { fee = await asterWithdrawFee(wdChain, asset); }
           catch (e: any) { return showSt('btw-st', 'err', e.message); }
           if (amt <= Number(fee))
-            return showSt('btw-st', 'err', `Amount must be more than the ${fee} USDT Aster withdrawal fee`);
+            return showSt('btw-st', 'err', `Amount must be more than the ${fee} ${asset} Aster withdrawal fee`);
           // Checked BEFORE the first wallet prompt. Aster's payout cap sits
           // well below availableBalance, and finding out afterwards would mean
           // the user has already signed a withdrawal that cannot succeed.
-          if (asterWithdrawableChain !== ASTER_WD_FALLBACK_CHAIN) await loadAsterWithdrawable();
+          if (asterWithdrawableChain !== wdChain) await loadAsterWithdrawable(asset);
           if (asterWithdrawable > 0 && amt > asterWithdrawable)
             return showSt('btw-st', 'err',
-              `Aster will only pay out ${fmt(asterWithdrawable)} USDT on ${chainName(ASTER_WD_FALLBACK_CHAIN)} right now — lower the amount`);
-          initProg('btw', [
-            `Withdraw USDT from Aster (fee ${fee} USDT)`,
-            'Wait for USDT in wallet',
-            'Swap USDT → USDC on Arbitrum',
-            'Send USDC to the Hyperliquid bridge',
-          ]);
-          stepSet(0, 'active', `Fee ${fee} USDT — confirm both signatures in your wallet…`);
-          await asterWithdrawRaw(prov, user, amt, user, fee, ASTER_WD_FALLBACK_CHAIN, ASTER_BTW_ASSET);
-          stepSet(0, 'done', `${fmt(amt)} USDT withdrawal submitted`);
+              `Aster will only pay out ${fmt(asterWithdrawable, dec)} ${asset} on ${chainName(wdChain)} right now — lower the amount`);
+          // The conversion runs on the payout chain and needs that chain's gas.
+          // Skipped when the payout IS the gas token: it pays for its own swap.
+          if (!direct && !payout.native) {
+            const gas = await nativeBalOn(prov, wdChain, user).catch(() => null);
+            if (gas !== null && gas === BigInt(0))
+              return showSt('btw-st', 'err',
+                `Converting ${asset} to USDC happens on ${chainName(wdChain)} and your wallet has no gas there. Fund it first.`);
+          }
+
+          const labels = [`Withdraw ${asset} from Aster (fee ${fee} ${asset})`, `Wait for ${asset} in wallet`];
+          if (!direct) labels.push(`Convert ${asset} → USDC on Arbitrum via LI.FI`);
+          labels.push('Send USDC to the Hyperliquid bridge');
+          initProg('btw', labels);
+          const last = labels.length - 1;
+
+          stepSet(0, 'active', `Fee ${fee} ${asset} — confirm the withdrawal in your wallet…`);
+          await asterWithdrawRaw(prov, user, amt, user, fee, wdChain, asset);
+          stepSet(0, 'done', `${fmt(amt, dec)} ${asset} withdrawal submitted`);
           stepSet(1, 'active', 'Polling every 12s (up to 10 min)…');
-          const tb = await erc20BalOn(prov, ARB_CHAIN, USDT_ARB, user);
-          await pollBal(prov, USDT_ARB, user, BigInt(Math.round((amt - Number(fee)) * 1e6 * 0.97)), tb, 600000);
-          stepSet(1, 'done', 'USDT arrived in wallet');
-          stepSet(2, 'active', 'Getting LI.FI swap route…');
-          const usdtBal = await erc20BalOn(prov, ARB_CHAIN, USDT_ARB, user);
-          const q = await lifiQuote('42161', '42161', USDT_ARB, USDC_ARB, usdtBal.toString(), user, user);
-          const usdcBefore = await erc20BalOn(prov, ARB_CHAIN, USDC_ARB, user);
-          stepSet(2, 'active', 'Approve + swap — confirm in wallet…');
-          const sh = await lifiExec(prov, q, user);
-          stepSet(2, 'active', 'Confirming swap…');
-          await pollReceipt(prov, sh);
-          stepSet(2, 'done', 'USDT → USDC swapped on Arbitrum');
+          const paidBefore = await payoutBalOn(prov, wdChain, payout, user);
+          const arriving = (toUnits(toPlainDecimal(amt - Number(fee)), payout.decimals) * BigInt(97)) / BigInt(100);
+          await pollPayoutBal(prov, wdChain, payout, user, arriving, paidBefore, 600000);
+          stepSet(1, 'done', `${asset} arrived in wallet`);
+
+          // How much USDC on Arbitrum this leg produced, which is the only
+          // figure the bridge transfer may use.
+          let swapped: bigint;
+          if (direct) {
+            swapped = (await erc20BalOn(prov, ARB_CHAIN, USDC_ARB, user)) - paidBefore;
+          } else {
+            stepSet(2, 'active', 'Getting LI.FI route…');
+            const held = await convertibleBalance(prov, wdChain, payout, user);
+            const q = await lifiQuote(wdChain, ARB_CHAIN, payout.address, USDC_ARB, held.toString(), user, user);
+            const usdcBefore = await erc20BalOn(prov, ARB_CHAIN, USDC_ARB, user);
+            stepSet(2, 'active', 'Approve + convert — confirm in wallet…');
+            const sh = await lifiExec(prov, q, user);
+            stepSet(2, 'active', 'Confirming…');
+            await pollReceipt(prov, sh);
+            const expect = (BigInt(q.estimate?.toAmount ?? '0') * BigInt(97)) / BigInt(100);
+            const after = await pollBal(prov, USDC_ARB, user, expect, usdcBefore, 600000);
+            swapped = after - usdcBefore;
+            stepSet(2, 'done', `${asset} → USDC converted on Arbitrum`);
+          }
+
           // HL does NOT pick up USDC sitting in the wallet — this step used to
           // just declare success and leave the funds stranded there. The
           // deposit is an explicit transfer to Bridge2.
-          const swapped = (await erc20BalOn(prov, ARB_CHAIN, USDC_ARB, user)) - usdcBefore;
           if (swapped < HL_MIN_DEPOSIT)
-            throw new Error('Swapped USDC is under the 5 USDC Hyperliquid minimum — it stays in your wallet');
-          stepSet(3, 'active', `Sending ${fmt(Number(swapped) / 1e6)} USDC — confirm in wallet…`);
+            throw new Error('The USDC is under the 5 USDC Hyperliquid minimum — it stays in your wallet');
+          // The bridge transfer is an Arbitrum transaction; a cross-chain
+          // conversion leaves the wallet on the payout chain.
+          await ensureChain(prov, ARB_CHAIN, 'Switch your wallet to Arbitrum to finish the transfer');
+          stepSet(last, 'active', `Sending ${fmt(Number(swapped) / 1e6)} USDC — confirm in wallet…`);
           const bh = await erc20Send(prov, USDC_ARB, user, HL_BRIDGE, swapped.toString());
           await pollReceipt(prov, bh);
-          stepSet(3, 'done', 'USDC sent — Hyperliquid credits it in ~1 min');
-          showSt('btw-st', 'ok', `Transfer complete — $${fmt(amt)} EXTRA → BASIC`);
+          stepSet(last, 'done', 'USDC sent — Hyperliquid credits it in ~1 min');
+          showSt('btw-st', 'ok', `Transfer complete — ${fmt(amt, dec)} ${asset} EXTRA → BASIC`);
         }
       } catch (e: any) {
         stepFail(e.code === 4001 ? 'Rejected by wallet' : e.message);
@@ -1605,6 +1791,48 @@ export default function TransferPage() {
      *  the calldata and for why the `broker` argument is the dangerous one.
      *  ERC-20s must be approved for the vault first — the CALLER does that, so
      *  it can report that extra wallet prompt as its own progress step. */
+    /**
+     * Stop before a swap the deposit cannot follow through on.
+     *
+     * Aster's vault takes an arbitrary `currency` argument and its API does not
+     * publish which ones it honors, but the CONTRACT answers: a zero-amount
+     * eth_call reverts with CurrencyNotSupport(address) for a token it rejects,
+     * and with ZeroAmount() for one it accepts — the latter meaning the call got
+     * past the currency gate. Nothing is signed and no state changes either way.
+     *
+     * This matters because the deposit is the LAST leg: without it, an
+     * unsupported currency is discovered only after the user has already
+     * converted into it, leaving them holding a token they did not want.
+     */
+    async function assertVaultAccepts(chainId: string, token: AsterPayoutToken, user: string) {
+      const data = encodeDepositFor({ token: token.address, forAddress: user, amount: '0' });
+      // Straight through the backend proxy rather than ethCallOn: the answer
+      // lives in the REVERT DATA, and a wallet buries that under its own error
+      // wrapping in a shape that differs per wallet. The proxy hands back the
+      // node's `revertData` verbatim.
+      let body: any;
+      try {
+        const r = await fetch(`/rpc/${chainId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ method: 'eth_call', params: [{ to: asterVault(chainId), from: user, data }, 'latest'] }),
+        });
+        body = await r.json().catch(() => ({}));
+      } catch {
+        return; // could not ask — see below, this must not block the deposit
+      }
+      const revert = `${body?.revertData ?? ''} ${body?.error ?? ''}`;
+      if (revert.includes(ASTER_VAULT_CURRENCY_NOT_SUPPORT.slice(2)))
+        throw new Error(
+          `Aster’s vault on ${chainName(chainId)} does not accept ${token.address === NATIVE_TOKEN ? 'the native token' : 'this token'}, `
+          + 'so the deposit would fail. Nothing has been signed.',
+        );
+      // Anything else — ZeroAmount (the accepting case), an unreachable node, a
+      // shape we do not recognise — is NOT a reason to block. This check exists
+      // to catch a knowably-doomed route early, not to become a new way for the
+      // transfer to fail.
+    }
+
     async function asterDepositFor(prov: any, chainId: string, token: string, user: string, amount: string) {
       const data = encodeDepositFor({ token, forAddress: user, amount });
       return prov.request({method:'eth_sendTransaction', params:[{
@@ -2010,6 +2238,8 @@ export default function TransferPage() {
     (window as any).setTab       = setTab;
     (window as any).setWdSrc     = setWdSrc;
     (window as any).setWdAsset   = setWdAsset;
+    (window as any).setBtwAsset  = setBtwAsset;
+    (window as any).onBtwAmtInput = onBtwAmtInput;
     (window as any).onWdAmtInput = onWdAmtInput;
     (window as any).wdMax        = wdMax;
     (window as any).onWdToChainChange = onWdToChainChange;
@@ -2324,15 +2554,23 @@ export default function TransferPage() {
                 <span className="dt-from">EXTRA → BASIC</span>
               </button>
             </div>
+            {/* Which currency moves. Hyperliquid only ever holds USDC, so this
+                always describes the ASTER side — see fillBtwAssetSel for why
+                the label changes with the direction. */}
+            <div className="field-lbl" id="btw-asset-lbl">Currency to move</div>
+            <div className="sel-wrap">
+              <select id="btw-asset" onChange={(e) => (window as any).setBtwAsset(e.currentTarget.value)}></select>
+            </div>
             <div className="field-lbl" data-i18n="amount">Amount</div>
             <div className="amt-wrap" id="btw-amt-wrap">
-              <input className="amt-input" type="number" id="btw-amt" placeholder="0.00" min="0" />
+              <input className="amt-input" type="number" id="btw-amt" placeholder="0.00" min="0" step="any" onInput={() => (window as any).onBtwAmtInput()} />
               <div className="amt-right">
                 <span className="cur-badge" id="btw-cur">USDC</span>
                 <button className="max-btn" onClick={() => (window as any).btwMax()}>MAX</button>
               </div>
             </div>
             <div className="bal-hint" id="btw-bal">&nbsp;</div>
+            <div className="conv-hint" id="btw-hint">&nbsp;</div>
             <button className="exec-btn hl" id="btw-btn" onClick={() => (window as any).execBtw()}>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                 <path d="M5 12h14M12 5l7 7-7 7"/>

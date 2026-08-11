@@ -145,3 +145,48 @@ export function asterMaxAmount(balance: number, asset: string): string {
   const truncated = Math.floor(balance * factor) / factor;
   return truncated.toFixed(d);
 }
+
+/**
+ * DEPOSITS USE THE SAME MAP, and that is verified rather than assumed.
+ *
+ * Aster's vault takes an arbitrary `currency` argument, so "which tokens does
+ * it accept?" is not answerable from its API — but it IS answerable from the
+ * contract, because the vault reverts with a distinguishable custom error. An
+ * eth_call of `depositFor(token, addr, 0, 0)` against each vault answers:
+ *
+ *   CurrencyNotSupport(address)  0x61eb0d6e  -> the token is rejected outright
+ *   ZeroAmount()                 0x1f2a2005  -> it got PAST the currency gate,
+ *                                               i.e. the token is accepted
+ *
+ * Probed against all three vaults. Every pairing in ASTER_PAYOUT_TOKENS above
+ * answered ZeroAmount, so anything Aster pays out can also be deposited. The
+ * probe also rejected ARB and WBTC on Arbitrum, which is why "the vault takes
+ * any ERC-20" would have been the wrong assumption to build a picker on.
+ */
+export const ASTER_VAULT_CURRENCY_NOT_SUPPORT = '0x61eb0d6e';
+
+/** Vaults exist on these chains only (ASTER_VAULTS in ./asterDeposit). */
+const ASTER_VAULT_CHAINS = ['42161', '1', '56'];
+
+/** The token to hand the vault to end up holding `asset` in Aster, or null if
+ *  this app has no verified way to deposit it. Same data as the payout map —
+ *  see the probe note above for why that is a measurement, not a shortcut. */
+export function asterDepositToken(asset: string, chainId: string): AsterPayoutToken | null {
+  return ASTER_VAULT_CHAINS.includes(chainId) ? asterPayoutToken(asset, chainId) : null;
+}
+
+/**
+ * Which chain to deposit `asset` on.
+ *
+ * Arbitrum whenever the vault there takes it: that is where a Hyperliquid
+ * withdrawal already lands, so choosing it turns the conversion into a
+ * same-chain swap instead of a bridge. BNB has no Arbitrum vault entry, so it
+ * goes to BSC — and the arriving BNB is itself the gas for that deposit.
+ */
+export function asterDepositChain(asset: string): string | null {
+  const chains = ASTER_VAULT_CHAINS.filter(c => asterDepositToken(asset, c));
+  return chains[0] ?? null;
+}
+
+/** Assets this app can put INTO Aster, in picker order. */
+export const ASTER_DEPOSIT_ASSETS = ASTER_WITHDRAW_ASSETS.filter(a => asterDepositChain(a));

@@ -62,7 +62,21 @@ interface RpcCall {
 interface JsonRpcResponse {
   id?: number;
   result?: unknown;
-  error?: { message?: string };
+  // `data` carries a reverting contract's own error selector and arguments.
+  // Nodes are inconsistent about whether they also spell it into `message`, so
+  // it is forwarded as its own field rather than left to chance — a caller that
+  // wants to tell one revert reason from another has nothing else to go on.
+  error?: { message?: string; data?: unknown };
+}
+
+/** A JSON-RPC error, flattened for the wire. `revertData` is the raw `0x…`
+ *  of a custom error where the node supplied one; absent otherwise. */
+function rpcError(error: { message?: string; data?: unknown } | undefined) {
+  const data = error?.data;
+  return {
+    error: error?.message ?? 'RPC error',
+    ...(typeof data === 'string' && data.startsWith('0x') ? { revertData: data } : {}),
+  };
 }
 
 export default async function rpcRoutes(fastify: FastifyInstance) {
@@ -118,7 +132,7 @@ export default async function rpcRoutes(fastify: FastifyInstance) {
 
     if (!batch) {
       const single = res as JsonRpcResponse;
-      if (single.error) return reply.code(502).send({ error: single.error.message ?? 'RPC error' });
+      if (single.error) return reply.code(502).send(rpcError(single.error));
       return { result: single.result };
     }
 
@@ -135,7 +149,7 @@ export default async function rpcRoutes(fastify: FastifyInstance) {
       results: calls.map((_, i) => {
         const entry = byId.get(i + 1);
         return entry?.error
-          ? { error: entry.error.message ?? 'RPC error' }
+          ? rpcError(entry.error)
           : { result: entry?.result ?? null };
       }),
     };
