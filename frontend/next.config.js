@@ -150,10 +150,17 @@ const nextConfig = {
       { source: '/aster-agent-address',     destination: `${BACKEND_URL}/api/aster-agent-address` },
       { source: '/aster-leverage-brackets', destination: `${BACKEND_URL}/api/aster-leverage-brackets` },
       { source: '/aster-approve-agent',     destination: `${BACKEND_URL}/api/aster-approve-agent` },
-      // Aster V3 withdrawal — the browser signs both signatures itself, the
-      // backend only verifies and forwards (see backend/src/lib/aster-withdraw.ts).
+      // What the browser must bake into the agent approval — the server's
+      // whitelisted IP and whether to ask for canWithdraw at all. MISSING THIS
+      // REWRITE IS NOT A COSMETIC BUG: the lookup 404s, and the approval then
+      // mints a trade-only agent that Aster will not let anyone amend.
+      { source: '/aster-agent-params',      destination: `${BACKEND_URL}/api/aster-agent-params` },
+      // Aster V3 withdrawal — the browser signs the Action; the backend
+      // verifies it and adds the chain-1666 wrapper with the user's agent key
+      // (see backend/src/lib/aster-withdraw.ts).
       { source: '/aster-withdraw',          destination: `${BACKEND_URL}/api/aster-withdraw` },
       { source: '/aster-withdraw-fee',      destination: `${BACKEND_URL}/api/aster-withdraw-fee` },
+      { source: '/aster-withdraw-info',     destination: `${BACKEND_URL}/api/aster-withdraw-info` },
       // Aster V1 (API key + HMAC) — credentials are stored and signed
       // server-side; the browser never holds a withdrawal-capable secret.
       { source: '/aster-creds',             destination: `${BACKEND_URL}/api/aster-creds` },

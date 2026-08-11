@@ -34,6 +34,7 @@
 // address (used purely for fee attribution), unrelated to whichever
 // per-user agent actually signs a given trade.
 import { asterFetch } from './aster-session';
+import { fetchAsterAgentParams } from './asterAgentParams';
 import { getBscCapableProvider, ensureBscNetwork, getEVMProvider } from './wallet';
 
 export const ASTER_BUILDER_ADDRESS = '0xdA480541aDB8D00E4783E5180CE70D3Da52D99F9';
@@ -243,22 +244,17 @@ async function signAsterManagementAction(
  * Falls back to a trade-only agent rather than failing: an unset
  * ASTER_AGENT_IP_WHITELIST should cost withdrawals, not trading.
  */
-async function fetchAgentParams(): Promise<{ ipWhitelist: string; canWithdraw: boolean }> {
-  try {
-    const res = await fetch('/aster-agent-params');
-    const d = await res.json();
-    return typeof d?.ipWhitelist === 'string' && d.ipWhitelist
-      ? { ipWhitelist: d.ipWhitelist, canWithdraw: Boolean(d.canWithdraw) }
-      : { ipWhitelist: '', canWithdraw: false };
-  } catch {
-    return { ipWhitelist: '', canWithdraw: false };
-  }
-}
-
 export async function approveAsterAgent(userAddress: string, agentAddress: string, signer: Signer): Promise<{ ok: boolean; message: string }> {
   const nonce = Date.now() * 1000; // microseconds, per Aster's V3 nonce convention
   const expired = Date.now() + 365 * 24 * 60 * 60 * 1000; // 1 year validity
-  const { ipWhitelist, canWithdraw } = await fetchAgentParams();
+
+  // Refuse to mint rather than guess at the permissions. Aster will not let an
+  // agent be amended afterwards, so approving with the wrong ones is not a
+  // retryable mistake — it burns the user's signature and leaves a dead agent
+  // they can only remove by hand on Aster's site.
+  const agentParams = await fetchAsterAgentParams();
+  if (!agentParams.ok) return { ok: false, message: agentParams.message };
+  const { ipWhitelist, canWithdraw } = agentParams;
 
   // Field set and order match Aster's own reference implementation
   // (github.com/jupiter-hongc/aster-code-builder-demo/docs/demo-code.md's
@@ -331,7 +327,13 @@ export async function ensureAsterAgentApproved(
   // true for a builder we never asked the user to approve), re-prompting
   // a signature on every single load even for an already-agent-approved
   // user. Only require it once we're actually asking for it.
-  const { canWithdraw: wantWithdraw } = await fetchAgentParams();
+  // Same fail-closed rule as approveAsterAgent: without knowing whether this
+  // deployment offers withdrawals we cannot tell an adequate existing agent
+  // from one that needs replacing, and guessing "no" would silently accept a
+  // trade-only agent that can never be upgraded.
+  const params = await fetchAsterAgentParams();
+  if (!params.ok) return { ok: false, alreadyApproved: false, message: params.message };
+  const wantWithdraw = params.canWithdraw;
   const [agentOk, builderOk] = await Promise.all([
     isAsterAgentApproved(userAddress, agentAddress, wantWithdraw),
     ASTER_BUILDER_REGISTERED ? isAsterBuilderApproved(userAddress) : Promise.resolve(true),
