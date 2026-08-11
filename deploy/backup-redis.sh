@@ -5,8 +5,11 @@
 #   ./deploy/backup-redis.sh [destination-dir]     (default: ./backups)
 #
 # Worst case without any backup is that every EXTRA-mode user re-approves an
-# Aster agent: one wallet signature each, no funds at risk (agents are
-# registered canWithdraw: false). That is an annoyance, not an incident.
+# Aster agent: one wallet signature each, no funds at risk. Agents carry
+# canWithdraw so the server can sign Aster's chain-1666 auth wrapper, but
+# Aster rejects an agent-signed withdrawal Action — the user's own wallet
+# signature over destination/amount/fee is the only thing that moves funds.
+# That is an annoyance, not an incident.
 #
 # READ THIS BEFORE RESTORING ONE.
 # A restore is NOT automatically the right move. The dump contains

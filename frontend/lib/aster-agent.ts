@@ -125,12 +125,24 @@ export async function getAsterAgents(userAddress: string): Promise<AsterAgentApp
  * param at all and would return SOME account as long as the (then shared)
  * agent had a live mapping to anyone.
  */
-export async function isAsterAgentApproved(userAddress: string, agentAddress: string): Promise<boolean> {
+export async function isAsterAgentApproved(
+  userAddress: string,
+  agentAddress: string,
+  requireWithdraw = false,
+): Promise<boolean> {
   const agents = await getAsterAgents(userAddress);
   const now = Date.now();
   return agents.some(a =>
     a.agentAddress?.toLowerCase() === agentAddress.toLowerCase() &&
     a.canPerpTrade &&
+    // Agents cannot be amended through Aster's API, so an agent approved
+    // before withdrawals existed can never gain the flag — it has to be
+    // replaced by a fresh approval. Treating trade-only as "approved" here
+    // would leave those users permanently unable to withdraw, with no prompt
+    // to fix it. Only demanded when the server can actually use it (i.e. it
+    // has an IP to whitelist), so a deployment without one doesn't re-prompt
+    // every user forever for a capability it cannot offer.
+    (!requireWithdraw || a.canWithdraw) &&
     (!a.expired || a.expired > now),
   );
 }
@@ -221,9 +233,32 @@ async function signAsterManagementAction(
  * tested, doesn't honor) the builder/maxFeeRate/builderName fields needed
  * to collect a per-trade fee.
  */
+/**
+ * The withdrawal-related half of the approval, which is deployment state, not
+ * a constant: Aster REFUSES `canWithdraw: true` unless an IP is named
+ * ("api withdraw permission must specify IP."), and the IP that must be named
+ * is the SERVER's, since the server's agent key is what signs the chainId-1666
+ * wrapper on the user's behalf. The backend is the only thing that knows it.
+ *
+ * Falls back to a trade-only agent rather than failing: an unset
+ * ASTER_AGENT_IP_WHITELIST should cost withdrawals, not trading.
+ */
+async function fetchAgentParams(): Promise<{ ipWhitelist: string; canWithdraw: boolean }> {
+  try {
+    const res = await fetch('/aster-agent-params');
+    const d = await res.json();
+    return typeof d?.ipWhitelist === 'string' && d.ipWhitelist
+      ? { ipWhitelist: d.ipWhitelist, canWithdraw: Boolean(d.canWithdraw) }
+      : { ipWhitelist: '', canWithdraw: false };
+  } catch {
+    return { ipWhitelist: '', canWithdraw: false };
+  }
+}
+
 export async function approveAsterAgent(userAddress: string, agentAddress: string, signer: Signer): Promise<{ ok: boolean; message: string }> {
   const nonce = Date.now() * 1000; // microseconds, per Aster's V3 nonce convention
   const expired = Date.now() + 365 * 24 * 60 * 60 * 1000; // 1 year validity
+  const { ipWhitelist, canWithdraw } = await fetchAgentParams();
 
   // Field set and order match Aster's own reference implementation
   // (github.com/jupiter-hongc/aster-code-builder-demo/docs/demo-code.md's
@@ -236,11 +271,17 @@ export async function approveAsterAgent(userAddress: string, agentAddress: strin
   const params: Record<string, Eip712Value> = {
     agentName: 'RDOONE',
     agentAddress,
-    ipWhitelist: '',
+    ipWhitelist,
     expired,
     canSpotTrade: false,
     canPerpTrade: true,
-    canWithdraw: false,
+    // Grants the server's per-user agent key the ability to sign the V3 auth
+    // wrapper for a withdrawal — NOT the ability to withdraw. Aster rejects an
+    // agent-signed withdrawal Action outright, so the user's own wallet
+    // signature over destination/amount/fee remains mandatory and the server
+    // cannot originate a withdrawal on its own. Measured, not assumed:
+    // docs/aster-withdrawal-findings.md.
+    canWithdraw,
     ...(ASTER_BUILDER_REGISTERED ? {
       builder: ASTER_BUILDER_ADDRESS,
       maxFeeRate: ASTER_BUILDER_MAX_FEE_RATE,
@@ -290,8 +331,9 @@ export async function ensureAsterAgentApproved(
   // true for a builder we never asked the user to approve), re-prompting
   // a signature on every single load even for an already-agent-approved
   // user. Only require it once we're actually asking for it.
+  const { canWithdraw: wantWithdraw } = await fetchAgentParams();
   const [agentOk, builderOk] = await Promise.all([
-    isAsterAgentApproved(userAddress, agentAddress),
+    isAsterAgentApproved(userAddress, agentAddress, wantWithdraw),
     ASTER_BUILDER_REGISTERED ? isAsterBuilderApproved(userAddress) : Promise.resolve(true),
   ]);
   if (agentOk && builderOk) {

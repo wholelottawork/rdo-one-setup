@@ -8,8 +8,9 @@ import { getOrCreateUserAgent } from '../lib/agent-keystore';
 import { addTpslWatch, startTpslWatcher } from '../lib/aster-tpsl-watcher';
 import { verifyWalletAuth } from '../lib/wallet-auth';
 import { endSession, peekSession, requireSession, startSession } from '../lib/aster-session';
-import { toPlainDecimal, verifyAsterWithdrawRequest } from '../lib/aster-withdraw';
+import { asterWithdrawParams, toPlainDecimal, verifyAsterWithdrawAuthorization } from '../lib/aster-withdraw';
 import { moneyLog, moneyWarn } from '../lib/money-log';
+import { config } from '../config';
 import type { AsterOIBulkBody } from '../types';
 
 const ASTER_FAPI = 'https://fapi.asterdex.com';
@@ -308,7 +309,7 @@ export default async function asterRoutes(fastify: FastifyInstance) {
   // V1 credentials it wanted cannot be issued any more (Aster stopped on
   // 2026-03-25). It had never been run against a live account, which is why
   // nobody noticed. The V3 replacement below was confirmed live; see
-  // todo/01-RESULT.md for the recipe and the evidence.
+  // docs/aster-withdrawal-findings.md for the recipe and the evidence.
   //
   // THE SERVER HOLDS NO WITHDRAWAL CAPABILITY. Both signatures are made by
   // the user's own wallet in the browser (frontend/lib/asterWithdraw.ts) and
@@ -321,7 +322,7 @@ export default async function asterRoutes(fastify: FastifyInstance) {
   // prompt — the user is authorizing it. This quote is public (no signer, no
   // agent, unlike /fapi/v3/aster/user-withdraw-info which hard-requires
   // `signer`) and it is the same number Aster verifies against: confirmed by
-  // the live withdrawal in todo/01-RESULT.md, where BNB-on-BSC quoted
+  // the live withdrawal in docs/aster-withdrawal-findings.md, where BNB-on-BSC quoted
   // gasCost 1.7E-4 and the accepted signature carried fee "0.00017".
   //
   // Which is the catch worth spelling out: Aster returns small fees in
@@ -361,23 +362,27 @@ export default async function asterRoutes(fastify: FastifyInstance) {
     };
   });
 
-  // `user` is a public address, so it is never taken on trust — but here the
-  // proof travels with the request rather than in a cookie:
-  // verifyAsterWithdrawRequest recovers BOTH signatures and requires each to
-  // be `user`'s. That checks more than a session would: the second signature
-  // covers the destination, amount and fee, so this route also confirms that
-  // what is going on the wire is what the wallet was shown. Nothing is
-  // forwarded that we could not verify ourselves.
+  // TWO independent checks, and the withdrawal needs both:
   //
-  // `query` is forwarded byte for byte — it IS the signed payload of the auth
-  // signature, so rebuilding it from parsed parts would invalidate it.
+  //   the session cookie decides WHOSE agent key signs the V3 auth wrapper —
+  //   a `user` in the body would be a public address anyone could type; and
+  //
+  //   the user's own Action signature, recovered here, decides WHETHER this
+  //   withdrawal was authorized at all, and for exactly which destination,
+  //   amount and fee.
+  //
+  // The second is what keeps the agent key from being a hot wallet: Aster
+  // rejects an agent-signed Action outright (measured — see
+  // docs/aster-withdrawal-findings.md), so a stolen session or a
+  // compromised keystore still cannot originate a withdrawal. It could only
+  // replay one the user already signed, which the userNonce bounds.
   fastify.post('/aster-withdraw', async (req: FastifyRequest, reply: FastifyReply) => {
-    const { query, signature } = (req.body ?? {}) as Record<string, unknown>;
-    const check = verifyAsterWithdrawRequest(query, signature);
+    const auth = await sessionAgent(req, reply);
+    if (!auth) return;
+
+    const check = verifyAsterWithdrawAuthorization(req.body, auth.user);
     if (!check.ok) {
-      // No user to attribute it to — the signatures are exactly what failed to
-      // verify — so this records the shape of the rejection and nothing else.
-      moneyWarn(fastify, 'withdraw.rejected', { status: check.status, reason: check.msg });
+      moneyWarn(fastify, 'withdraw.rejected', { user: auth.user, status: check.status, reason: check.msg });
       return reply.code(check.status).send({ msg: check.msg });
     }
 
@@ -395,10 +400,16 @@ export default async function asterRoutes(fastify: FastifyInstance) {
     const start = Date.now();
     moneyLog(fastify, 'withdraw.forwarded', { user, asset, amount, fee, chainId, receiver });
 
+    // The wrapper signature is made HERE, with this user's own agent key —
+    // the step the browser can no longer perform. signAsterV3RequestAs appends
+    // `signer`, `nonce` and `signature`, so the string signed is by
+    // construction the string sent.
+    const signedQuery = await signAsterV3RequestAs(auth.wallet, asterWithdrawParams(check.fields));
+
     const data = await signedPassthrough(`${ASTER_FAPI}/fapi/v3/aster/user-withdraw`, {
       method: 'POST',
       headers: SIGNED_HEADERS,
-      body: `${query as string}&signature=${signature as string}`,
+      body: signedQuery,
     });
 
     const r = (data ?? {}) as { code?: number; msg?: string };
@@ -442,6 +453,64 @@ export default async function asterRoutes(fastify: FastifyInstance) {
   // generic "HTTP 400" — Aster always returns a real {code, msg} body even
   // on failure (e.g. "Signature check failed"), and the frontend needs that
   // actual message, not a swallowed one.
+  // What the browser must bake into the agent approval it asks the user to
+  // sign. Served rather than hardcoded in the frontend because the IP is
+  // deployment state, and because `canWithdraw` has to be false when we have
+  // no IP to name — Aster rejects the approval outright otherwise, which would
+  // block trading for a config gap that only affects withdrawals.
+  fastify.get('/aster-agent-params', async () => ({
+    ipWhitelist: config.asterAgentIpWhitelist,
+    canWithdraw: Boolean(config.asterAgentIpWhitelist),
+  }));
+
+  // What can ACTUALLY leave the account, which is not `availableBalance` and
+  // not the same on every chain — a live account read 12.07 USDT available
+  // with only 1.09 withdrawable, and USDT withdrawable on Arbitrum but not on
+  // BSC while BNB was the reverse. Offering the account balance as MAX just
+  // earns "You've exceeded the withdrawal limit for this chain", which reads
+  // like a permissions failure and is not one.
+  //
+  // Aster hard-requires `signer` here, which is why this endpoint went unused
+  // until per-user agent keys existed.
+  fastify.get('/aster-withdraw-info', async (req: FastifyRequest, reply: FastifyReply) => {
+    const auth = await sessionAgent(req, reply);
+    if (!auth) return;
+    const { chainId, asset } = req.query as Record<string, string>;
+    if (!/^\d+$/.test(chainId ?? '')) return reply.code(400).send({ msg: 'chainId required' });
+    if (!/^[A-Z0-9]{1,20}$/.test(asset ?? '')) return reply.code(400).send({ msg: 'asset required' });
+
+    const signedQuery = await signAsterV3RequestAs(auth.wallet, { user: auth.user, chainId, asset });
+    const data = (await signedPassthrough(
+      `${ASTER_FAPI}/fapi/v3/aster/user-withdraw-info?${signedQuery}`,
+      { headers: SIGNED_HEADERS },
+    )) as Record<string, unknown>;
+
+    // Flattened to the one number the UI needs, so no caller has to know the
+    // balances[ASSET].chainBalances[CHAIN] shape or which of the three limits
+    // in there actually binds.
+    const balances = (data?.balances ?? {}) as Record<string, Record<string, unknown>>;
+    const entry = balances[asset];
+    const perChain = ((entry?.chainBalances ?? {}) as Record<string, Record<string, unknown>>)[chainId];
+    const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+    const perpMax = num(perChain?.perpMaxWithdrawAmount);
+    const chainLimit = num(perChain?.chainLimit);
+    const withdrawable =
+      perpMax === null ? null : chainLimit === null ? perpMax : Math.min(perpMax, chainLimit);
+
+    return {
+      withdrawable,
+      perpMaxWithdrawAmount: perpMax,
+      chainLimit,
+      withdrawFee: num(perChain?.withdrawFee),
+      chainId,
+      asset,
+      // Absent entirely when Aster errored; the frontend distinguishes "zero
+      // withdrawable" from "could not read" on this.
+      ok: perChain !== undefined,
+      msg: typeof data?.msg === 'string' ? data.msg : null,
+    };
+  });
+
   fastify.post('/aster-approve-agent', async (req: FastifyRequest, reply: FastifyReply) => {
     const body = new URLSearchParams((req.body ?? {}) as Record<string, string>).toString();
     const res = await fetch(`${ASTER_FAPI}/fapi/v3/approveAgent`, {

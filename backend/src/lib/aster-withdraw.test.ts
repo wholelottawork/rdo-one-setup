@@ -10,7 +10,8 @@ import {
   buildAsterWithdrawAction,
   normalizeAsterAmount,
   toPlainDecimal,
-  verifyAsterWithdrawRequest,
+  asterWithdrawParams,
+  verifyAsterWithdrawAuthorization,
 } from './aster-withdraw.ts';
 
 // ── The signature format itself ───────────────────────────────────────────
@@ -101,88 +102,113 @@ assert.equal(toPlainDecimal(1.5e21), '1500000000000000000000');
 assert.equal(normalizeAsterAmount('.5'), '0.5');
 assert.equal(normalizeAsterAmount('0.5'), '0.5');
 
-// ── Request verification ──────────────────────────────────────────────────
+
+// ── Authorization verification ────────────────────────────────────────────
+// The browser now sends ONE signature: the Action. The V3 auth wrapper is
+// signed by the user's own server-held agent key at forwarding time, so it is
+// no longer something this module can or should check.
+//
+// That makes the Action check the ONLY thing standing between this endpoint
+// and an open relay, and the only reason the agent key is not a hot wallet —
+// Aster rejects an agent-signed Action, so a user's own signature over
+// destination/amount/fee is the sole authorization to move funds.
 const wallet = new Wallet(`0x${'11'.repeat(32)}`);
 const attacker = new Wallet(`0x${'22'.repeat(32)}`);
 
-async function makeRequest(over: Record<string, string> = {}, actionSigner = wallet, authSigner = wallet) {
-  const userNonce = String(Date.now() * 1000);
+async function makeBody(over: Record<string, string> = {}, actionSigner = wallet) {
   const base = {
     chainId: '42161', asset: 'USDT', amount: '1.23', fee: '0.51',
-    receiver: RECEIVER, userNonce, ...over,
+    receiver: RECEIVER, userNonce: String(Date.now() * 1000), ...over,
   };
   const userSignature = await actionSigner.signTypedData(
     asterWithdrawActionDomain(Number(base.chainId)),
     ASTER_WITHDRAW_ACTION_TYPES,
     buildAsterWithdrawAction(base as Parameters<typeof buildAsterWithdrawAction>[0]),
   );
-  const query = new URLSearchParams({
-    ...base,
-    userSignature,
-    signatureType: 'EOA',
-    user: wallet.address,
-    nonce: String(Date.now() * 1000),
-  }).toString();
-  const signature = await authSigner.signTypedData(asterAuthDomain(), ASTER_AUTH_TYPES, { msg: query });
-  return { query, signature };
+  return { ...base, userSignature };
 }
 
+// Happy path, and `user` comes from the session rather than the body.
 {
-  const { query, signature } = await makeRequest();
-  const res = verifyAsterWithdrawRequest(query, signature);
+  const body = await makeBody();
+  const res = verifyAsterWithdrawAuthorization(body, wallet.address);
   assert.equal(res.ok, true, res.ok ? '' : res.msg);
-  assert.equal(res.ok && res.fields.user.toLowerCase(), wallet.address.toLowerCase());
+  assert.equal(res.ok && res.fields.user, wallet.address);
 }
 
-// Someone else's auth signature over our query — the classic "user is a
-// public address" attack.
+// Someone else's signature presented under our session — the whole point of
+// recovering it rather than trusting the body.
 {
-  const { query, signature } = await makeRequest({}, wallet, attacker);
-  const res = verifyAsterWithdrawRequest(query, signature);
+  const body = await makeBody({}, attacker);
+  const res = verifyAsterWithdrawAuthorization(body, wallet.address);
   assert.equal(res.ok, false);
   assert.equal(res.ok === false && res.status, 403);
 }
 
-// The Action signature must cover the destination/amount/fee actually sent:
+// A `user` in the body must NOT redirect which account is used — the session
+// address wins and the body's is ignored outright.
+{
+  const body = { ...(await makeBody()), user: attacker.address };
+  const res = verifyAsterWithdrawAuthorization(body, wallet.address);
+  assert.equal(res.ok, true, 'body `user` is ignored, not trusted');
+  assert.equal(res.ok && res.fields.user, wallet.address);
+}
+
+// The signature must cover the destination/amount/fee actually forwarded:
 // rewriting any of them after signing has to fail.
-for (const [k, v] of [['receiver', '0xdead000000000000000000000000000000000000'], ['amount', '999'], ['fee', '0']] as const) {
-  const { query, signature } = await makeRequest();
-  const p = new URLSearchParams(query);
-  p.set(k, v);
-  const tampered = p.toString();
-  // Re-sign the wrapper so the tamper is tested against the ACTION check,
-  // not caught earlier by the wrapper's own signature.
-  const resigned = await wallet.signTypedData(asterAuthDomain(), ASTER_AUTH_TYPES, { msg: tampered });
-  const res = verifyAsterWithdrawRequest(tampered, resigned);
+for (const [k, v] of [
+  ['receiver', '0xdead000000000000000000000000000000000000'],
+  ['amount', '999'],
+  ['fee', '0'],
+  ['chainId', '56'],
+] as const) {
+  const body = { ...(await makeBody()), [k]: v };
+  const res = verifyAsterWithdrawAuthorization(body, wallet.address);
   assert.equal(res.ok, false, `tampering with ${k} must be rejected`);
-  assert.equal(res.ok === false && res.status, 403);
-  void signature;
 }
 
-// A withdrawal is never agent-signed — Aster rejects an agent without
-// canWithdraw at the permission check, and we do not mint agents that have it.
+// No session, no withdrawal — even with a perfectly good signature.
 {
-  const { query, signature } = await makeRequest();
-  const withSigner = `${query}&signer=${wallet.address}`;
-  const res = verifyAsterWithdrawRequest(withSigner, signature);
+  const body = await makeBody();
+  const res = verifyAsterWithdrawAuthorization(body, '');
+  assert.equal(res.ok === false && res.status, 401);
+}
+
+// Fail closed on a missing fee rather than forwarding a guessed one.
+{
+  const { fee, ...body } = await makeBody();
+  void fee;
+  const res = verifyAsterWithdrawAuthorization(body, wallet.address);
   assert.equal(res.ok === false && res.status, 400);
 }
 
-// `signature` goes on last, appended by the route — never inside the signed
-// string.
+// A stale userNonce is rejected here rather than at Aster, where discovering
+// it costs the user a wallet round trip.
 {
-  const { query, signature } = await makeRequest();
-  const res = verifyAsterWithdrawRequest(`${query}&signature=0xdead`, signature);
+  const body = await makeBody({ userNonce: '1' });
+  const res = verifyAsterWithdrawAuthorization(body, wallet.address);
   assert.equal(res.ok === false && res.status, 400);
 }
 
-// Fail closed on a missing fee rather than sending a guessed one.
+// A chain Aster cannot pay out on is refused, not forwarded.
 {
-  const { query, signature } = await makeRequest();
-  const p = new URLSearchParams(query);
-  p.delete('fee');
-  const res = verifyAsterWithdrawRequest(p.toString(), signature);
+  const body = await makeBody();
+  const res = verifyAsterWithdrawAuthorization({ ...body, chainId: '999999' }, wallet.address);
   assert.equal(res.ok === false && res.status, 400);
+}
+
+// ── What goes on the wire ─────────────────────────────────────────────────
+// signer/nonce/signature are appended by signAsterV3RequestAs, never here —
+// one place decides what an agent-signed V3 request looks like.
+{
+  const body = await makeBody();
+  const res = verifyAsterWithdrawAuthorization(body, wallet.address);
+  assert.equal(res.ok, true);
+  const params = res.ok ? asterWithdrawParams(res.fields) : {};
+  assert.equal(params.signatureType, 'EOA');
+  assert.equal(params.user, wallet.address);
+  assert.equal(params.userSignature, body.userSignature);
+  for (const k of ['signer', 'nonce', 'signature']) assert.ok(!(k in params), `${k} must not be set here`);
 }
 
 console.log('aster-withdraw: all checks passed');

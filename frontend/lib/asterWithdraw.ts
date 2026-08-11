@@ -1,20 +1,22 @@
-// Aster V3 withdrawal — the two signatures the browser has to produce.
+// Aster V3 withdrawal — the ONE signature the browser has to produce.
 //
 // Mirrors backend/src/lib/aster-withdraw.ts, which verifies what this file
 // builds. The two must agree byte for byte; both are pinned by tests
 // (./asterWithdraw.test.ts and backend/src/lib/aster-withdraw.test.ts).
 //
-// Why the browser and not the server: Aster accepts a withdrawal only when
-// the USER's own key signs it. An agent registered with canWithdraw:false —
-// which is the only kind this app mints — is rejected at the permission
-// check. So the server holds no withdrawal capability at all, by
-// construction. See todo/01-RESULT.md.
+// A withdrawal carries two signatures. The other one — the V3 request-auth
+// wrapper on domain chainId 1666 — used to be built here too, and that made
+// Aster withdrawals impossible in MetaMask: it refuses to sign a typed-data
+// domain whose chainId is not the connected chain, and Aster publishes no RPC
+// for 1666, so there was nothing to switch to. It is now signed by the user's
+// own server-held agent key (backend/src/lib/aster-auth.ts).
 //
-// The two signatures use DIFFERENT domains and DIFFERENT chainIds. Sharing a
-// code path between them by accident is the likeliest way to break this, so
-// they are built by two separate functions here and never composed.
+// This one stays in the wallet, and that is the security property rather than
+// an accident of layering: Aster REJECTS an agent-signed Action (measured, see
+// docs/aster-withdrawal-findings.md), so this signature over destination,
+// amount and fee is the sole authorization to move funds and the server cannot
+// manufacture it.
 
-export const ASTER_AUTH_CHAIN_ID = 1666;
 export const ASTER_ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 export const ASTER_CHAIN_NAME = 'Mainnet';
 
@@ -125,56 +127,6 @@ export function buildAsterWithdrawTypedData(p: AsterWithdrawParams) {
       'aster chain': ASTER_CHAIN_NAME,
     },
   };
-}
-
-/**
- * Signature 1 — the V3 request-auth wrapper every signed Aster call carries.
- * `msg` is the literal query string. chainId is ALWAYS 1666 here, whoever
- * signs: the destination chain belongs to signature 2 only.
- */
-export function buildAsterAuthTypedData(msg: string) {
-  return {
-    types: {
-      EIP712Domain: EIP712_DOMAIN_FIELDS,
-      Message: [{ name: 'msg', type: 'string' }],
-    },
-    primaryType: 'Message',
-    domain: {
-      name: 'AsterSignTransaction',
-      version: '1',
-      chainId: ASTER_AUTH_CHAIN_ID,
-      verifyingContract: ASTER_ZERO_ADDRESS,
-    },
-    message: { msg },
-  };
-}
-
-/**
- * The query string signature 1 covers. Forwarded verbatim by the backend and
- * re-verified there, so it must be built once, here — never rebuilt from
- * parsed parts downstream.
- *
- * `signer` is deliberately absent: a withdrawal is authorized by the user, so
- * naming an agent here only ever earns a permissions rejection. `signature`
- * is appended last, after signing.
- */
-export function buildAsterWithdrawQuery(p: AsterWithdrawParams & {
-  userSignature: string;
-  user: string;
-  nonce: string;
-}): string {
-  return new URLSearchParams({
-    chainId: p.chainId,
-    asset: p.asset,
-    amount: p.amount,
-    fee: p.fee,
-    receiver: p.receiver,
-    userNonce: p.userNonce,
-    userSignature: p.userSignature,
-    signatureType: 'EOA',
-    user: p.user,
-    nonce: p.nonce,
-  }).toString();
 }
 
 /** Microsecond nonce, per Aster's V3 convention. */

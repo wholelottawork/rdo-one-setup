@@ -105,7 +105,11 @@ Use `./deploy/deploy.sh stop` — it stops containers and leaves volumes alone. 
 | `sess:*` | Users re-sign. 12h TTL anyway |
 | cache keys | Nothing |
 
-Funds are never at risk: agents are registered `canWithdraw: false`.
+Funds are never at risk. Agents are registered `canWithdraw: true` so the server can sign
+Aster's chain-1666 auth wrapper on the user's behalf — but that is not the ability to
+withdraw: Aster rejects an agent-signed withdrawal *Action*, and the Action is what
+authorizes destination, amount and fee. Only the user's own wallet can produce it, so
+losing this store cannot move anyone's funds.
 
 ### Restoring a backup is not automatically correct
 

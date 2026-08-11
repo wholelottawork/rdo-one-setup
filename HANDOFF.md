@@ -116,11 +116,31 @@ The direct `/fapi/*` Next rewrite remains the only upstream path outside the Fas
 | Between accounts       | HL↔Aster progress flow; Aster-bound leg ends in `depositFor`; converted-delta forwarding preserved                                                       | ⚠️                                               |
 | Swap                   | LI.FI same-chain quote (`fromChain === toChain`) → chain switch → allowance → send → receipt, using the curated token list                                | ⚠️ live verification                             |
 
-#### Aster withdrawal wallet caveat
+#### Aster withdrawals: the server signs the chain-1666 wrapper
 
-Aster accepts the user's wallet as the V3 signer only with EIP-712 domain chain ID **1666**. MetaMask refuses to sign a domain whose chain differs from the connected chain, and Aster exposes no usable EVM RPC to add/switch to chain 1666. Rabby and most mobile wallets over WalletConnect sign the payload; MetaMask does not. The UI now warns as soon as Aster is picked as the withdrawal source (`walletBlocksAsterAuth`, which requires `isMetaMask` and not `isRabby`/`isCoinbaseWallet`, since Rabby also sets `isMetaMask`), and still explains the refusal if it happens anyway.
+A withdrawal carries two EIP-712 signatures. The browser now makes **one** of them.
 
-Do not solve this by giving an agent withdrawal permission without a deliberate security decision. The spike proved `canWithdraw:false` cannot sign withdrawals, and Aster agents cannot be amended or revoked through the API; they must be removed on Aster's API-wallet page. Current per-user agents remain trade-only (`canWithdraw:false`).
+| | domain | chainId | signed by |
+| --- | --- | --- | --- |
+| Action — destination, amount, fee | `Aster` | destination (e.g. 42161) | the user's wallet |
+| V3 auth wrapper | `AsterSignTransaction` | **1666** | the user's server-held agent key |
+
+The wrapper moved server-side because it could not be made in the browser: MetaMask refuses to sign a domain whose chainId differs from the connected chain, and Aster publishes no EVM RPC for 1666, so there was nothing to switch to. That made Aster withdrawals unavailable to most users, and the old MetaMask warning (`walletBlocksAsterAuth`) has been deleted along with the dead end it described.
+
+**This does not give the server the ability to withdraw, and that is measured rather than assumed.** A live spike found Aster rejects an *agent-signed Action* with `Invalid signature. Please sign again.`, while accepting an agent-signed wrapper. The Action is the sole authorization to move funds, it binds destination/amount/fee, and only the user's own key can produce it. So a stolen session or a compromised keystore still cannot originate a withdrawal — it could only replay one the user already signed, which `userNonce` bounds. `backend/src/lib/aster-withdraw.ts` verifies that signature recovers to the session's user before anything is signed or forwarded.
+
+Two consequences that are easy to trip over:
+
+- **`ipWhitelist` is mandatory.** Aster refuses `canWithdraw: true` without one (`api withdraw permission must specify IP.`). It is the SERVER's IP, set via `ASTER_AGENT_IP_WHITELIST`. Agents cannot be amended through the API, so changing it does not migrate anything — every user's agent stops working and each must re-approve. **The deployment needs a static egress IP.** Unset means withdrawals are simply unavailable; trading is unaffected.
+- **Agents approved before this change are trade-only and cannot gain the flag.** `isAsterAgentApproved` therefore requires `canWithdraw` when the server has an IP configured, so those users get re-prompted once for a fresh approval.
+
+Full evidence, including the raw responses: `docs/aster-withdrawal-findings.md`.
+
+#### What can actually be withdrawn is not `availableBalance`
+
+Aster caps payouts per asset AND per chain, well below free margin — a live account read 12.07 USDT `availableBalance` with only **1.09** withdrawable, and had USDT withdrawable on Arbitrum but not BSC while BNB was the reverse. Asking for the wrong pairing fails with `You've exceeded the withdrawal limit for this chain`, which reads like a ban and is really a routing mistake.
+
+The real numbers come from `GET /fapi/v3/aster/user-withdraw-info` (`balances[ASSET].chainBalances[CHAIN]`), which hard-requires a `signer` — which is why the app could not read it until per-user agent keys existed. Exposed as `/aster-withdraw-info`, flattened to a single `withdrawable`; the transfer page uses it for the balance hint and MAX on both the Withdraw tab and Between Accounts.
 
 ---
 

@@ -3,8 +3,6 @@ import assert from 'node:assert/strict';
 import {
   ASTER_CHAIN_SHORT_NAME,
   ASTER_WITHDRAW_ACTION_FIELDS,
-  buildAsterAuthTypedData,
-  buildAsterWithdrawQuery,
   buildAsterWithdrawTypedData,
   normalizeAsterAmount,
   toPlainDecimal,
@@ -98,41 +96,6 @@ assert.equal(
 assert.throws(() => buildAsterWithdrawTypedData({
   chainId: '999999', receiver: RECEIVER, asset: 'USDT', amount: '1', fee: '0', userNonce: '1',
 }), /does not support/);
-
-// ── Signature 1: the V3 auth wrapper ──────────────────────────────────────
-const auth = buildAsterAuthTypedData('chainId=42161&asset=USDT');
-assert.deepEqual(auth.domain, {
-  name: 'AsterSignTransaction',
-  version: '1',
-  chainId: 1666,
-  verifyingContract: '0x0000000000000000000000000000000000000000',
-});
-assert.equal(auth.primaryType, 'Message');
-assert.deepEqual(auth.types.Message, [{ name: 'msg', type: 'string' }]);
-assert.deepEqual(auth.message, { msg: 'chainId=42161&asset=USDT' });
-// The two domains must never converge.
-assert.notEqual(auth.domain.name, td.domain.name);
-assert.notEqual(auth.domain.chainId, td.domain.chainId);
-
-// ── The signed query string ───────────────────────────────────────────────
-const query = buildAsterWithdrawQuery({
-  chainId: '42161', asset: 'USDT', amount: '1.23', fee: '0.51',
-  receiver: RECEIVER, userNonce: '1786143846408000',
-  userSignature: '0xaa', user: USER, nonce: '1786143850420000',
-});
-assert.equal(
-  query,
-  'chainId=42161&asset=USDT&amount=1.23&fee=0.51'
-  + '&receiver=0x851d000000000000000000000000000000000a73'
-  + '&userNonce=1786143846408000&userSignature=0xaa&signatureType=EOA'
-  + `&user=${USER}&nonce=1786143850420000`,
-);
-// `signer` never appears — a withdrawal is authorized by the user, and an
-// agent without canWithdraw is rejected at the permission check anyway.
-assert.ok(!query.includes('signer='));
-// `signature` is appended last, after signing — it is not part of the signed
-// string.
-assert.ok(!query.includes('signature=') || query.indexOf('userSignature=') === query.indexOf('signature=') - 4);
 
 // ── Number formatting ─────────────────────────────────────────────────────
 assert.equal(toPlainDecimal(1.7e-4), '0.00017');   // Aster returns 1.7E-4 for BNB on BSC

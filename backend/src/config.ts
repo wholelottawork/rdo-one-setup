@@ -85,6 +85,19 @@ export const config = {
   lifiIntegrator: process.env.LIFI_INTEGRATOR ?? '',
   asterSignerPrivateKey: process.env.ASTER_SIGNER_PRIVATE_KEY ?? '',
   agentKeyEncryptionSecret: process.env.AGENT_KEY_ENCRYPTION_SECRET ?? '',
+  // This server's public egress IP, and a hard requirement for Aster
+  // withdrawals rather than optional hardening: Aster refuses to approve an
+  // agent with `canWithdraw: true` unless an IP is named, answering
+  // "api withdraw permission must specify IP." (measured — see
+  // docs/aster-withdrawal-findings.md).
+  //
+  // It is baked into each user's signed agent approval, and Aster agents
+  // cannot be amended through the API. So changing this value does not
+  // migrate anything: every user's agent stops working and each of them must
+  // re-approve. The deployment therefore needs a STATIC egress IP, and this
+  // must be that IP. Unset simply means withdrawals stay unavailable —
+  // trading and reads are unaffected.
+  asterAgentIpWhitelist: process.env.ASTER_AGENT_IP_WHITELIST ?? '',
 } as const;
 
 export type Config = typeof config;

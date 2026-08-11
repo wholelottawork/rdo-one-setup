@@ -4,6 +4,7 @@ import { SiteNav } from '@/components/shared/SiteNav';
 import { useWallet, getEVMProvider, switchEvmNetwork, findEvmNetwork } from '@/lib/wallet';
 import { walletAuth as signAction } from '@/lib/wallet-auth';
 import { ensureAsterAgentApprovedAuto, getAsterAccount } from '@/lib/aster-agent';
+import { asterFetch } from '@/lib/aster-session';
 import {
   ASTER_DEPOSIT_CHAIN,
   asterVault,
@@ -12,8 +13,6 @@ import {
 } from '@/lib/asterDeposit';
 import {
   asterNonce,
-  buildAsterAuthTypedData,
-  buildAsterWithdrawQuery,
   buildAsterWithdrawTypedData,
   normalizeAsterAmount,
   toPlainDecimal,
@@ -207,6 +206,12 @@ export default function TransferPage() {
     // overwrite the hint with a balance for the venue no longer selected.
     let asterAvail = 0;
     let asterBalGen = 0;
+    // What Aster will ACTUALLY pay out, which is neither the account balance
+    // nor availableBalance: a live account read 12.07 USDT available with only
+    // 1.09 withdrawable. Capacity is per asset AND per chain, so the number is
+    // meaningless without the chain that produced it.
+    let asterWithdrawable = 0;
+    let asterWithdrawableChain = '';
     // Why asterAvail is 0 when the reason is something other than "the account
     // holds nothing withdrawable" — MAX reports this instead of echoing the
     // balance line back at the user.
@@ -249,7 +254,7 @@ export default function TransferPage() {
       // whatever the disconnected state said. Still gated on the user having
       // already picked Aster — that selection is the deliberate action the
       // agent-approval prompt hangs off, not the connect itself.
-      if (wdSrc === 'aster') { showAsterWalletWarning(true); loadAsterAvail(); }
+      if (wdSrc === 'aster') loadAsterAvail();
     }
     onConnectedRef.current = onConnected;
 
@@ -283,7 +288,8 @@ export default function TransferPage() {
       // Invalidates any Aster balance read still in flight (see asterBalGen).
       asterBalGen++;
       asterAvail = 0;
-      showAsterWalletWarning(!isHL);
+      asterWithdrawable = 0;
+
       if (isHL) {
         set('wd-bal', hlEquity ? `Balance: $${fmt(hlEquity)} USDC` : ' ');
       } else {
@@ -302,6 +308,7 @@ export default function TransferPage() {
     async function loadAsterAvail() {
       const gen = ++asterBalGen;
       asterAvail = 0;
+      asterWithdrawable = 0;
       asterBalErr = '';
       const addr = evmAddressRef.current;
       if (!addr) {
@@ -324,12 +331,23 @@ export default function TransferPage() {
           return set('wd-bal', 'Could not read Aster balance');
         }
         const wallet = parseFloat(String(acct.totalWalletBalance ?? acct.totalMarginBalance ?? 0)) || 0;
-        // What can actually leave — the wallet balance less whatever is locked
-        // as margin behind open positions and resting orders. Offering the full
-        // account balance as MAX would just get the withdrawal rejected.
+        // availableBalance is the account balance less margin locked by open
+        // positions and resting orders — necessary, but NOT what Aster will
+        // pay out. It read 12.07 on an account with 1.09 withdrawable.
         const avail  = parseFloat(String(acct.availableBalance ?? wallet)) || 0;
         asterAvail = avail;
-        set('wd-bal', `Available: ${fmt(avail)} USDT  ·  Account: ${fmt(wallet)} USDT`);
+
+        const chain = asterWdChain();
+        const cap = await readAsterWithdrawable(chain, ASTER_WD_ASSET);
+        if (stale()) return;
+        // The binding number is whichever is smaller: margin can lock funds
+        // below Aster's payout cap, and the cap can sit below free margin.
+        const usable = cap === null ? avail : Math.min(avail, cap);
+        asterWithdrawable = usable;
+        asterWithdrawableChain = chain;
+        set('wd-bal', cap === null
+          ? `Available: ${fmt(avail)} USDT  ·  Account: ${fmt(wallet)} USDT`
+          : `Withdrawable: ${fmt(usable)} USDT on ${chainName(chain)}  ·  Account: ${fmt(wallet)} USDT`);
       } catch (e: any) {
         if (stale()) return;
         asterBalErr = `Could not read your Aster balance: ${e?.message ?? 'unknown error'}`;
@@ -337,42 +355,55 @@ export default function TransferPage() {
       }
     }
 
-    /**
-     * Aster's second withdrawal signature is stamped with EIP-712 domain
-     * chainId 1666 (Aster Chain), and MetaMask refuses to sign a domain whose
-     * chain differs from the connected one. Aster publishes no public RPC for
-     * 1666, so there is nothing to switch to — it is a dead end, not a prompt
-     * the user can work through. asterAuthSignError explains it when it
-     * happens; this says so BEFORE they enter an amount and burn a signature
-     * on a flow that cannot complete.
+    /** Aster's real payout cap for one asset on one chain, or null when it
+     *  cannot be read (in which case callers fall back to availableBalance
+     *  rather than blocking the withdrawal on a number we merely wanted).
      *
-     * Rabby sets isMetaMask too (and signs this fine), so the flag alone is
-     * not the test — it has to be MetaMask and nothing else claiming to be it.
-     */
-    function walletBlocksAsterAuth(): boolean {
-      const p = getProv() as { isMetaMask?: boolean; isRabby?: boolean; isCoinbaseWallet?: boolean } | null;
-      return !!p?.isMetaMask && !p?.isRabby && !p?.isCoinbaseWallet;
+     *  Capacity is per asset AND per chain and the two do not track each
+     *  other: on a live account USDT was withdrawable only on Arbitrum and BNB
+     *  only on BSC. Asking for the wrong pairing fails with "You've exceeded
+     *  the withdrawal limit for this chain", which sounds like a ban and is
+     *  really a routing mistake. */
+    async function readAsterWithdrawable(chainId: string, asset: string): Promise<number | null> {
+      try {
+        const res = await asterFetch(`/aster-withdraw-info?chainId=${chainId}&asset=${asset}`);
+        if (!res.ok) return null;
+        const d = await res.json();
+        return d?.ok && typeof d.withdrawable === 'number' ? d.withdrawable : null;
+      } catch {
+        return null;
+      }
     }
 
-    /* Static markup with no interpolation anywhere — carrying the two escape
-       hatches as real links is the only reason this is innerHTML rather than
-       textContent. Keep it that way: the moment any part of this string comes
-       from a balance, an address or an Aster response, it has to go back to
-       textContent or be built as nodes. */
-    const ASTER_WALLET_WARNING_HTML =
-      'MetaMask cannot complete an Aster withdrawal: Aster’s authorization is signed on chain 1666, '
-      + 'which MetaMask refuses and which has no public RPC to switch to. '
-      + '<a href="https://www.asterdex.com/en/withdraw" target="_blank" rel="noopener noreferrer">'
-      + 'Withdraw on Aster’s own site</a>, or use '
-      + '<a href="https://rabby.io/" target="_blank" rel="noopener noreferrer">Rabby</a> '
-      + 'or a mobile wallet over WalletConnect for this one action.';
-
-    function showAsterWalletWarning(on: boolean) {
-      const warn = el('wd-wallet-warn');
-      if (!warn) return;
-      const show = on && walletBlocksAsterAuth();
-      warn.style.display = show ? 'block' : 'none';
-      warn.innerHTML = show ? ASTER_WALLET_WARNING_HTML : '';
+    /** The Between Accounts variant: same number, but pinned to Arbitrum,
+     *  because that leg's LI.FI swap and the Hyperliquid bridge both only
+     *  exist there. Needs the agent approved first — this is the deliberate
+     *  action that prompt hangs off. */
+    async function loadAsterWithdrawable(): Promise<void> {
+      asterWithdrawable = 0;
+      asterBalErr = '';
+      const addr = evmAddressRef.current;
+      if (!addr) {
+        asterBalErr = 'Connect your wallet from the top nav first';
+        return;
+      }
+      try {
+        const approval = await ensureAsterAgentApprovedAuto(addr);
+        if (!approval.ok) {
+          asterBalErr = `Could not read your Aster balance: ${approval.message}`;
+          return;
+        }
+        const acct = await getAsterAccount(addr);
+        const avail = parseFloat(String(acct?.availableBalance ?? 0)) || 0;
+        const cap = await readAsterWithdrawable(ASTER_WD_FALLBACK_CHAIN, ASTER_WD_ASSET);
+        asterWithdrawable = cap === null ? avail : Math.min(avail, cap);
+        asterWithdrawableChain = ASTER_WD_FALLBACK_CHAIN;
+        if (asterWithdrawable <= 0)
+          asterBalErr = `No withdrawable USDT on ${chainName(ASTER_WD_FALLBACK_CHAIN)} — `
+            + 'it may be locked as margin behind open positions.';
+      } catch (e: any) {
+        asterBalErr = `Could not read your Aster balance: ${e?.message ?? 'unknown error'}`;
+      }
     }
 
     function onWdAmtInput() {
@@ -382,10 +413,11 @@ export default function TransferPage() {
         set('wd-bal', a && hlEquity
           ? `Balance: $${fmt(hlEquity)} USDC  ·  After: $${fmt(Math.max(0, hlEquity - a))}`
           : evmAddressRef.current ? `Balance: $${fmt(hlEquity)} USDC` : 'Connect wallet to see balance');
-      } else if (asterAvail > 0) {
+      } else if (asterWithdrawable > 0) {
+        const on = asterWithdrawableChain ? ` on ${chainName(asterWithdrawableChain)}` : '';
         set('wd-bal', a
-          ? `Available: ${fmt(asterAvail)} USDT  ·  After: ${fmt(Math.max(0, asterAvail - a))}`
-          : `Available: ${fmt(asterAvail)} USDT`);
+          ? `Withdrawable: ${fmt(asterWithdrawable)} USDT${on}  ·  After: ${fmt(Math.max(0, asterWithdrawable - a))}`
+          : `Withdrawable: ${fmt(asterWithdrawable)} USDT${on}`);
       }
     }
 
@@ -396,10 +428,15 @@ export default function TransferPage() {
         if (hlEquity > 0) { wdAmt.value = hlEquity.toFixed(2); onWdAmtInput(); }
         return;
       }
-      // Aster's fee comes OUT of the withdrawn amount, so the whole available
-      // balance is a valid amount to ask for — execWithdraw only rejects it if
-      // it does not exceed the fee. Nothing is reserved here beyond that.
-      if (asterAvail > 0) { wdAmt.value = asterAvail.toFixed(2); onWdAmtInput(); }
+      // Aster's fee comes OUT of the withdrawn amount, so the whole
+      // withdrawable amount is a valid ask — execWithdraw only rejects it if it
+      // does not exceed the fee. Nothing is reserved here beyond that.
+      //
+      // Withdrawable, not availableBalance: Aster caps payouts per asset per
+      // chain well below free margin, and offering the larger number produced
+      // a rejection that reads like a ban ("exceeded the withdrawal limit for
+      // this chain") rather than a too-large amount.
+      if (asterWithdrawable > 0) { wdAmt.value = asterWithdrawable.toFixed(2); onWdAmtInput(); }
       else showSt('wd-st', 'err', asterBalErr || 'No withdrawable USDT in your Aster account — an open position or resting order may be holding it as margin');
     }
 
@@ -407,6 +444,11 @@ export default function TransferPage() {
       const chainEl = el('wd-to-chain') as HTMLSelectElement | null;
       fillTokenSel('wd-to-token', chainEl?.value || '42161', selSym('wd-to-token'));
       updateWdConvHint();
+      // Withdrawal capacity is per chain, and asterWdChain() can resolve to a
+      // different payout chain than the one just picked. A stale figure here
+      // would put a number in MAX that Aster refuses on the new chain, so the
+      // balance is re-read rather than carried over.
+      if (wdSrc === 'aster') loadAsterAvail();
     }
 
     function updateWdConvHint() {
@@ -1165,14 +1207,38 @@ export default function TransferPage() {
       const as2hl = el('dtab-as2hl'); if (as2hl) as2hl.className = 'dir-tab ' + (isHL ? '' : 'aAS');
       set('btw-cur', isHL ? 'USDC' : 'USDT');
       const btwBtn = el('btw-btn'); if (btwBtn) btwBtn.className = 'exec-btn ' + (isHL ? 'hl' : 'as');
-      set('btw-bal', isHL && hlEquity ? `Balance: $${fmt(hlEquity)} USDC` : ' ');
       const btwProg = el('btw-prog'); if (btwProg) btwProg.style.display = 'none';
       const btwSt = el('btw-st'); if (btwSt) btwSt.style.display = 'none';
+      if (isHL) {
+        set('btw-bal', hlEquity ? `Balance: $${fmt(hlEquity)} USDC` : ' ');
+      } else {
+        // The Aster side of this tab never asked for a balance at all — it
+        // blanked the hint and MAX did nothing, which read as "you have no
+        // funds" to anyone who did. Same deliberate-action rule as the
+        // Withdraw tab: picking this direction is what the agent-approval
+        // prompt hangs off, never a page load or a wallet connect.
+        set('btw-bal', 'Reading your Aster balance…');
+        loadAsterWithdrawable().then(() => {
+          if (btwDir !== 'aster-to-hl') return; // user moved on mid-flight
+          set('btw-bal', asterWithdrawable > 0
+            ? `Withdrawable: ${fmt(asterWithdrawable)} USDT`
+            : asterBalErr || 'No withdrawable USDT in your Aster account');
+        });
+      }
     }
 
     function btwMax() {
       const btwAmt = el('btw-amt') as HTMLInputElement | null;
-      if (btwDir === 'hl-to-aster' && hlEquity > 0 && btwAmt) btwAmt.value = hlEquity.toFixed(2);
+      if (!btwAmt) return;
+      if (btwDir === 'hl-to-aster') {
+        if (hlEquity > 0) btwAmt.value = hlEquity.toFixed(2);
+        return;
+      }
+      // Withdrawable, not account balance — see loadAsterWithdrawable. The
+      // Between Accounts route is pinned to Arbitrum because the LI.FI leg and
+      // the Hyperliquid bridge both only exist there.
+      if (asterWithdrawable > 0) btwAmt.value = asterWithdrawable.toFixed(2);
+      else showSt('btw-st', 'err', asterBalErr || 'No withdrawable USDT in your Aster account');
     }
 
     async function execBtw() {
@@ -1226,6 +1292,13 @@ export default function TransferPage() {
           catch (e: any) { return showSt('btw-st', 'err', e.message); }
           if (amt <= Number(fee))
             return showSt('btw-st', 'err', `Amount must be more than the ${fee} USDT Aster withdrawal fee`);
+          // Checked BEFORE the first wallet prompt. Aster's payout cap sits
+          // well below availableBalance, and finding out afterwards would mean
+          // the user has already signed a withdrawal that cannot succeed.
+          if (asterWithdrawableChain !== ASTER_WD_FALLBACK_CHAIN) await loadAsterWithdrawable();
+          if (asterWithdrawable > 0 && amt > asterWithdrawable)
+            return showSt('btw-st', 'err',
+              `Aster will only pay out ${fmt(asterWithdrawable)} USDT on ${chainName(ASTER_WD_FALLBACK_CHAIN)} right now — lower the amount`);
           initProg('btw', [
             `Withdraw USDT from Aster (fee ${fee} USDT)`,
             'Wait for USDT in wallet',
@@ -1640,25 +1713,25 @@ export default function TransferPage() {
     }
 
     /**
-     * Two signatures, both from the user's own wallet, over two different
-     * EIP-712 domains — see @/lib/asterWithdraw for the exact payloads.
+     * A withdrawal still carries two EIP-712 signatures over two different
+     * domains — but only one of them is made here now.
      *
      * 1. the withdrawal authorization (domain `Aster`, destination chainId),
-     *    which binds destination + amount + fee, and
+     *    binding destination + amount + fee. THIS ONE, from the user's wallet.
      * 2. the V3 request-auth wrapper (domain `AsterSignTransaction`, chainId
-     *    1666) over the literal query string.
+     *    1666). Made by the backend with this user's own agent key.
      *
-     * Our backend never signs either one and holds no key Aster would accept
-     * for a withdrawal, so there is no server-side capability to steal. It
-     * verifies both and forwards.
+     * Signature 2 moved because it could not be made here: chainId 1666 is
+     * Aster Chain, which publishes no EVM RPC, and MetaMask refuses to sign a
+     * domain whose chain it is not connected to — with nothing to switch to,
+     * that was a dead end rather than a prompt a user could work through.
      *
-     * Signature 2 is the sharp edge: chainId 1666 is Aster Chain, which has
-     * no public EVM RPC, so a wallet that enforces "domain chainId must equal
-     * the connected chain" — MetaMask does — cannot produce it and there is
-     * no network to switch to. Wallets that show the domain instead of
-     * enforcing it (Rabby, most WalletConnect mobile wallets) sign fine.
-     * asterAuthSignError below turns that refusal into an explanation rather
-     * than a raw wallet error.
+     * The server gaining that ability is not the server gaining the ability to
+     * withdraw. Aster rejects an agent-signed signature 1 with "Invalid
+     * signature. Please sign again." (measured — see
+     * docs/aster-withdrawal-findings.md), so signature 1 above is the sole
+     * authorization to move funds and it can only come from the wallet. The
+     * backend verifies it recovers to the session's user before signing.
      */
     async function asterWithdrawRaw(prov: any, user: string, amt: number, dest: string, fee: string, chainId: string) {
       await ensureWdChain(prov, chainId);
@@ -1671,48 +1744,52 @@ export default function TransferPage() {
         receiver: dest,
         userNonce: asterNonce(),
       };
+      // ONE wallet signature, on the destination chain the wallet is already
+      // switched to. The second signature a withdrawal needs — the V3 auth
+      // wrapper, stamped chainId 1666 — is made by this user's server-held
+      // agent key instead, because no amount of UI could make MetaMask sign a
+      // domain whose chain has no RPC to switch to.
+      //
+      // This one stays in the wallet on purpose, and is the reason the server
+      // cannot move anyone's funds: Aster rejects an agent-signed Action, so
+      // this signature over destination/amount/fee is the sole authorization,
+      // and the user sees all three in the wallet prompt before granting it.
       const userSignature = await prov.request({
         method: 'eth_signTypedData_v4',
         params: [user, JSON.stringify(buildAsterWithdrawTypedData(params))],
       }) as string;
 
-      // Separate nonce from userNonce, deliberately — Aster treats them as
-      // unrelated and they may legitimately differ by up to an hour.
-      const query = buildAsterWithdrawQuery({...params, userSignature, user, nonce: asterNonce()});
-      let signature: string;
-      try {
-        signature = await prov.request({
-          method: 'eth_signTypedData_v4',
-          params: [user, JSON.stringify(buildAsterAuthTypedData(query))],
-        }) as string;
-      } catch (e: any) {
-        throw asterAuthSignError(e);
-      }
-
-      const res = await fetch('/aster-withdraw', {
+      // asterFetch, not fetch: the backend picks WHICH agent key signs the
+      // 1666 wrapper from the session cookie, so the withdrawal needs a live
+      // session the same way every signed read does. It also retries once on
+      // 401 after re-establishing one — safe here precisely because 401 can
+      // only mean "no session", and the route checks that before it forwards
+      // anything to Aster.
+      const res = await asterFetch('/aster-withdraw', {
         method: 'POST',
         headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({query, signature}),
+        body: JSON.stringify({...params, userSignature}),
       });
       // Aster answers 200 with {code,msg} on business failures, so status
       // alone never means success here.
       const d = await res.json().catch(() => ({}));
-      if (!res.ok || d.code) throw new Error(d?.msg || d?.message || 'Aster withdrawal failed');
+      if (!res.ok || d.code) throw new Error(asterWithdrawErrorMessage(res.status, d));
       return d as {withdrawId?: string; hash?: string};
     }
 
-    function asterAuthSignError(e: any): Error {
-      if (e?.code === 4001) return e;
-      const msg = String(e?.message ?? '');
-      if (/chain/i.test(msg) && /(match|mismatch|differ)/i.test(msg))
-        return new Error(
-          'Your wallet refused to sign Aster’s authorization message: it is stamped with Aster Chain '
-          + '(chainId 1666) and the wallet only signs for the network it is connected to. Aster publishes '
-          + 'no public RPC for that chain, so there is nothing to switch to — use a wallet that does not '
-          + 'enforce this (Rabby, or a mobile wallet over WalletConnect), or withdraw on Aster’s own site: '
-          + 'https://www.asterdex.com/en/withdraw',
-        );
-      return e instanceof Error ? e : new Error(msg || 'Wallet refused to sign');
+    /** Aster's own text where it is clear, and a translation where it is
+     *  actively misleading. "Exceeded the withdrawal limit for this chain"
+     *  reads as a permissions or ban message; it means this asset has no
+     *  withdrawal capacity on this particular chain, which is a routing
+     *  problem the user can act on. */
+    function asterWithdrawErrorMessage(status: number, d: any): string {
+      const msg = String(d?.msg ?? d?.message ?? '');
+      if (status === 401)
+        return 'Your Aster session expired — reconnect your wallet and try again';
+      if (/withdrawal limit for this chain/i.test(msg))
+        return `Aster has no ${ASTER_WD_ASSET} withdrawal capacity on ${chainName(asterWdChain())} right now. `
+          + 'Try a different destination chain, or a smaller amount.';
+      return msg || 'Aster withdrawal failed';
     }
 
     function showSt(id: string, type: string, msg: string) {
@@ -1826,9 +1903,6 @@ export default function TransferPage() {
             {/* Aster's withdrawal fee is a SIGNED field — it lives here so the
                 user reads it before the wallet prompt, not inside it. */}
             <div className="bal-hint" id="wd-fee">&nbsp;</div>
-            {/* Shown only when the connected wallet cannot produce Aster's
-                chain-1666 authorization signature — see walletBlocksAsterAuth. */}
-            <div className="info-box warn" id="wd-wallet-warn" style={{display:'none'}} />
             <div className="field-lbl" data-i18n="receiveAs">Receive as</div>
             <div className="pair-row">
               <div className="sel-wrap" style={{flex:'1.3'}}>
